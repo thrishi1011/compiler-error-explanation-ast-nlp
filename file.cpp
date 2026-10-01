@@ -1,57 +1,47 @@
-// Enter your C++ code here
-// Enter your C++ code here
-// Enter your C++ code here
+// TC-16 | Category: redefinition (compile error) + Double Free (SECURITY HIGH)
+//
+// Compilation Error:
+//   (a) redefinition — the function 'computeScore' is defined twice in the
+//       same translation unit. The compiler rejects the second definition.
+//       The classifier should label this 'redefinition' with high confidence.
+//
+// Security Threat:
+//   (b) Double Free — 'data' is deleted at the end of the first branch AND
+//       again at the end of main. On a real heap this causes undefined
+//       behaviour and is exploitable via heap metadata corruption.
+//       Detected by: security_analyzer freed_vars dataflow tracker.
+//
+// Expected pipeline behaviour:
+//   Compiler flags (a) first; the security analyzer flags (b) independently
+//   via its static scan pass even if the file does not compile cleanly.
+
 #include <iostream>
+using namespace std;
+
+// First (correct) definition
+int computeScore(int base, int bonus) {
+    return base + bonus;
+}
+
+// Duplicate definition — redefinition error
+computeScore(int base, int bonus) {
+    return base * bonus;      // Different body — still a redefinition
+}
 
 int main() {
+    int* data = new int(100);
 
-    // 1. Misspelled keyword
-    int i = 1;
-    while (i <= 5) {
-        std::cout << i << "\n";
-        i++;
+    int score = computeScore(*data, 25);
+    cout << "Score: " << score << endl;
+
+    if (score > 110) {
+        delete data;          // First delete — conditionally executed
+        cout << "High score! Memory released in branch." << endl;
     }
 
-    // 2. Missing semicolon
-    int x = 10;
-    int y = 20;
+    // Double free: data is deleted again unconditionally,
+    // even though it may already have been freed above.
+    delete data;              // HIGH: potential double free
 
-    // 3. Undeclared variable
-    auto z = 100;
-    z = 100;
-
-    // 4. Uninitialized variable
-    int uninit;
-    std::cout << uninit << "\n";
-
-    // 5. Integer overflow
-    long long big = 2147483647;
-    big = big + 1;
-
-    // 6. Division by zero
-    int a = 10;
-    int b = 0;
-    if (b == 0) {
-        std::cerr << "Error: division by zero\n";
-        return 1;
-    }
-    std::cout << a / b << "\n";
-
-    // 7. Wrong stream operator
-    std::cin >> y;
-
-    // 8. Missing return (handled below)
-
-    // 9. Redefinition
-    x = 99;
-
-    // 10. Assignment in condition
-    if (x == 50) {
-        std::cout << "x is 50\n";
-    }
-
-    // 11. Missing closing brace for if
-    if (y > 10) {
-        std::cout << "y is big\n";
-
-}} // closes function opened at line 6
+    return 0;
+}

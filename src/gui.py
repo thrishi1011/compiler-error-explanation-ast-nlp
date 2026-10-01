@@ -12,12 +12,13 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QPushButton, QFileDialog, QMessageBox, QLabel, QFrame,
                              QCheckBox, QDialog, QTreeWidget, QTreeWidgetItem, QLineEdit,
                              QGraphicsOpacityEffect, QGraphicsDropShadowEffect, QScrollArea, QSizePolicy, QTextBrowser,
-                             QProgressBar,
-                             QStackedWidget)
-from PyQt6.QtCore import Qt, QRect, QSize, QThread, pyqtSignal, QTimer, QVariantAnimation, QProcess, QPropertyAnimation
-from PyQt6.QtGui import QFont, QColor, QPainter, QTextFormat, QTextCharFormat, QSyntaxHighlighter, QTextCursor, QPainterPath, QPen, QLinearGradient
+                             QProgressBar, QStyleFactory,
+                             QStackedWidget, QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsLineItem, QGraphicsTextItem, QGraphicsItem)
+from PyQt6.QtCore import Qt, QRect, QSize, QThread, pyqtSignal, QTimer, QVariantAnimation, QProcess, QPropertyAnimation, QRectF, QPointF
+from PyQt6.QtGui import QFont, QColor, QPainter, QTextFormat, QTextCharFormat, QSyntaxHighlighter, QTextCursor, QPainterPath, QPen, QLinearGradient, QBrush
 import platform
 import socket
+import tempfile
 try:
     from codecarbon import EmissionsTracker
     CODECARBON_AVAILABLE = True
@@ -33,6 +34,19 @@ try:
     from error_classifier import ErrorClassifier
 except ImportError:
     ErrorClassifier = None
+
+try:
+    from second_opinion import get_second_opinion, format_second_opinion, RegexClassifier
+    SECOND_OPINION_AVAILABLE = True
+except ImportError:
+    SECOND_OPINION_AVAILABLE = False
+
+try:
+    from accuracy_benchmark import BenchmarkWorker as _BenchmarkWorker
+    BENCHMARK_AVAILABLE = True
+except ImportError:
+    BENCHMARK_AVAILABLE = False
+    _BenchmarkWorker = None
 
 from ast_extractor import extract_ast, extract_node_near_line, parse_ast_to_tree
 from security_analyzer import analyze as analyze_security, format_security_report
@@ -119,11 +133,101 @@ def _extract_cpp_call_graph(code):
     modules = sorted(set(includes))
     return names, sorted(edges), sorted(external_calls), modules
 
+def _extract_cpp_cfg(code):
+    function_re = re.compile(
+        r"(?:^|\n)\s*(?:[\w:<>,~*&\s]+\s+)+(?P<name>[A-Za-z_]\w*)\s*"
+        r"\([^;{}]*\)\s*(?:const\s*)?(?:noexcept\s*)?\{",
+        re.MULTILINE,
+    )
+    
+    results = []
+    for match in function_re.finditer(code):
+        name = match.group("name")
+        if name in {"if", "for", "while", "switch", "return"}:
+            continue
+        body_start = match.end()
+        depth = 1
+        i = body_start
+        while i < len(code) and depth:
+            if code[i] == "{": depth += 1
+            elif code[i] == "}": depth -= 1
+            i += 1
+            
+        body = code[body_start:i-1]
+        lines = [l.strip() for l in body.split("\n") if l.strip()]
+        
+        nodes = []
+        edges = []
+        
+        # Start node
+        nodes.append({"id": "start", "label": f"START: {name}", "type": "entry"})
+        
+        current_node_id = "start"
+        block_counter = 0
+        
+        pending_text = []
+        
+        for line in lines:
+            # Check for control flow
+            if any(kw in line for kw in ["if", "while", "for", "switch"]):
+                # Close current block
+                if pending_text:
+                    block_id = f"b{block_counter}"
+                    nodes.append({"id": block_id, "label": "\n".join(pending_text[:3]), "type": "stmt"})
+                    edges.append((current_node_id, block_id))
+                    current_node_id = block_id
+                    block_counter += 1
+                    pending_text = []
+                
+                # Create branch node
+                branch_id = f"c{block_counter}"
+                nodes.append({"id": branch_id, "label": line, "type": "branch"})
+                edges.append((current_node_id, branch_id))
+                current_node_id = branch_id
+                block_counter += 1
+            elif "return" in line:
+                if pending_text:
+                    block_id = f"b{block_counter}"
+                    nodes.append({"id": block_id, "label": "\n".join(pending_text[:3]), "type": "stmt"})
+                    edges.append((current_node_id, block_id))
+                    current_node_id = block_id
+                    block_counter += 1
+                    pending_text = []
+                
+                ret_id = f"r{block_counter}"
+                nodes.append({"id": ret_id, "label": line, "type": "exit"})
+                edges.append((current_node_id, ret_id))
+                current_node_id = ret_id # Technically current becomes terminal here
+                block_counter += 1
+            else:
+                pending_text.append(line)
+                if len(pending_text) > 4:
+                    block_id = f"b{block_counter}"
+                    nodes.append({"id": block_id, "label": "\n".join(pending_text), "type": "stmt"})
+                    edges.append((current_node_id, block_id))
+                    current_node_id = block_id
+                    block_counter += 1
+                    pending_text = []
+
+        if pending_text or current_node_id != "start":
+            if pending_text:
+                block_id = f"b{block_counter}"
+                nodes.append({"id": block_id, "label": "\n".join(pending_text), "type": "stmt"})
+                edges.append((current_node_id, block_id))
+                current_node_id = block_id
+            
+            nodes.append({"id": "end", "label": "END", "type": "exit"})
+            edges.append((current_node_id, "end"))
+            
+        results.append({"name": name, "nodes": nodes, "edges": edges})
+        
+    return results
+
 class SparklineGraph(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumHeight(20)
-        self.setMaximumHeight(20)
+        self.setMinimumHeight(15)
+        self.setMaximumHeight(40)
         self.values = [0] * 50
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_fluctuation)
@@ -260,31 +364,62 @@ class MetricsGraph(QWidget):
             painter.setPen(QPen(self.colors[name], 2))
             painter.drawPath(path)
 
-class CallGraphWidget(QWidget):
+class GraphNode(QGraphicsRectItem):
+    def __init__(self, label, x, y, w, h, border, fill):
+        super().__init__(-w/2, -h/2, w, h)
+        self.setPos(x + w/2, y + h/2)
+        self.setBrush(fill)
+        self.setPen(QPen(border, 1.8))
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
+        
+        self.text = QGraphicsTextItem(label, self)
+        self.text.setFont(QFont(FONT_FAMILY, 9, QFont.Weight.Bold))
+        self.text.setDefaultTextColor(QColor(TEXT_MAIN))
+        br = self.text.boundingRect()
+        self.text.setPos(-br.width() / 2, -br.height() / 2)
+        
+        self.edges_out = []
+        self.edges_in = []
+
+    def itemChange(self, change, value):
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
+            for edge in self.edges_out:
+                edge.updatePosition()
+            for edge in self.edges_in:
+                edge.updatePosition()
+        return super().itemChange(change, value)
+
+class GraphEdge(QGraphicsLineItem):
+    def __init__(self, source_node, dest_node, color, pen_width=1.5):
+        super().__init__()
+        self.source_node = source_node
+        self.dest_node = dest_node
+        self.setPen(QPen(color, pen_width))
+        self.setZValue(-1)
+        self.source_node.edges_out.append(self)
+        self.dest_node.edges_in.append(self)
+        self.updatePosition()
+
+    def updatePosition(self):
+        self.setLine(self.source_node.pos().x(), self.source_node.pos().y(), 
+                     self.dest_node.pos().x(), self.dest_node.pos().y())
+
+class CallGraphWidget(QGraphicsView):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumHeight(420)
-        self.functions = []
-        self.edges = []
-        self.external_calls = []
-        self.modules = []
+        self.scene = QGraphicsScene(self)
+        self.setScene(self.scene)
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.setBackgroundBrush(QColor(PANE_BG))
 
     def update_graph(self, functions, edges, external_calls, modules):
-        self.functions = functions
-        self.edges = edges
-        self.external_calls = external_calls
-        self.modules = modules
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), QColor(PANE_BG))
-
-        if not self.functions:
-            painter.setPen(QColor(TEXT_DIM))
-            painter.setFont(QFont(FONT_FAMILY, 12))
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No C++ function definitions found in the current source.")
+        self.scene.clear()
+        if not functions:
+            t = self.scene.addText("No C++ function definitions found in the current source.")
+            t.setDefaultTextColor(QColor(TEXT_DIM))
+            t.setFont(QFont(FONT_FAMILY, 12))
             return
 
         margin = 34
@@ -293,60 +428,53 @@ class CallGraphWidget(QWidget):
         external_y = 320
         node_w, node_h = 150, 42
 
+        view_w = max(self.width(), 800)
+
         def positions(items, y):
             count = max(1, len(items))
-            available = max(1, self.width() - 2 * margin - node_w)
+            available = max(1, view_w - 2 * margin - node_w)
             return {
                 item: (margin + (available * i / max(1, count - 1)), y)
                 for i, item in enumerate(items)
             }
 
-        function_pos = positions(self.functions, function_y)
-        module_labels = self.modules[:6] or ["current source"]
+        function_pos = positions(functions, function_y)
+        module_labels = modules[:6] or ["current source"]
         module_pos = positions(module_labels, module_y)
-        external_names = sorted({callee for _, callee in self.external_calls})[:8]
+        external_names = sorted({callee for _, callee in external_calls})[:8]
         external_pos = positions(external_names, external_y)
 
-        def center(pos):
-            return pos[0] + node_w / 2, pos[1] + node_h / 2
-
-        painter.setPen(QPen(QColor(BORDER_COLOR), 1.5))
-        for module in module_labels:
-            mx, my = center(module_pos[module])
-            for function in self.functions:
-                fx, fy = center(function_pos[function])
-                painter.drawLine(int(mx), int(my + node_h / 2), int(fx), int(fy - node_h / 2))
-
-        painter.setPen(QPen(QColor(PINK), 2))
-        for caller, callee in self.edges:
-            if caller in function_pos and callee in function_pos:
-                x1, y1 = center(function_pos[caller])
-                x2, y2 = center(function_pos[callee])
-                painter.drawLine(int(x1), int(y1), int(x2), int(y2))
-
-        painter.setPen(QPen(QColor(GREEN), 1.5))
-        for caller, callee in self.external_calls:
-            if caller in function_pos and callee in external_pos:
-                x1, y1 = center(function_pos[caller])
-                x2, y2 = center(external_pos[callee])
-                painter.drawLine(int(x1), int(y1 + node_h / 2), int(x2), int(y2 - node_h / 2))
-
-        def draw_node(label, pos, border, fill):
-            x, y = pos
-            rect = QRect(int(x), int(y), node_w, node_h)
-            painter.setPen(QPen(border, 1.8))
-            painter.setBrush(fill)
-            painter.drawRoundedRect(rect, 6, 6)
-            painter.setPen(QColor(TEXT_MAIN))
-            painter.setFont(QFont(FONT_FAMILY, 9, QFont.Weight.Bold))
-            painter.drawText(rect.adjusted(6, 0, -6, 0), Qt.AlignmentFlag.AlignCenter, label)
-
+        nodes = {}
         for module, pos in module_pos.items():
-            draw_node(module, pos, QColor(TEXT_DIM), QColor(HEADER_BG))
+            node = GraphNode(module, pos[0], pos[1], node_w, node_h, QColor(TEXT_DIM), QColor(HEADER_BG))
+            self.scene.addItem(node)
+            nodes[module] = node
+            
         for function, pos in function_pos.items():
-            draw_node(function, pos, QColor(PINK), QColor("#ffffff"))
+            node = GraphNode(function, pos[0], pos[1], node_w, node_h, QColor(PINK), QColor("#ffffff"))
+            self.scene.addItem(node)
+            nodes[function] = node
+            
         for external, pos in external_pos.items():
-            draw_node(external, pos, QColor(GREEN), QColor("#f8fffb"))
+            node = GraphNode(external, pos[0], pos[1], node_w, node_h, QColor(GREEN), QColor("#f8fffb"))
+            self.scene.addItem(node)
+            nodes[external] = node
+            
+        for module in module_labels:
+            for function in functions:
+                edge = GraphEdge(nodes[module], nodes[function], QColor(BORDER_COLOR), 1.5)
+                self.scene.addItem(edge)
+                
+        for caller, callee in edges:
+            if caller in nodes and callee in nodes:
+                edge = GraphEdge(nodes[caller], nodes[callee], QColor(PINK), 2.0)
+                self.scene.addItem(edge)
+        
+        for caller, callee in external_calls:
+            if caller in nodes and callee in nodes:
+                edge = GraphEdge(nodes[caller], nodes[callee], QColor(GREEN), 1.5)
+                self.scene.addItem(edge)
+
 
 class StyledButton(QPushButton):
     def __init__(self, text, style_type="outline_dim", parent=None):
@@ -447,6 +575,7 @@ class CodeEditor(QPlainTextEdit):
 
         self.error_line = None
         self.errors = []
+        self.fixed_lines = set() # Set of 1-based line numbers
 
         self.update_line_number_area_width(0)
         self.highlight_current_line()
@@ -461,6 +590,16 @@ class CodeEditor(QPlainTextEdit):
 
     def set_errors(self, errors):
         self.errors = errors
+        self.highlight_current_line()
+        self.viewport().update()
+
+    def set_fixed_lines(self, lines):
+        self.fixed_lines = set(lines)
+        self.highlight_current_line()
+        self.viewport().update()
+
+    def clear_fixed_lines(self):
+        self.fixed_lines.clear()
         self.highlight_current_line()
         self.viewport().update()
 
@@ -523,6 +662,21 @@ class CodeEditor(QPlainTextEdit):
             selection.cursor = self.textCursor()
             selection.cursor.clearSelection()
             extraSelections.append(selection)
+
+        # Draw green background for lines changed by the healer
+        for line in self.fixed_lines:
+            fixed_selection = QTextEdit.ExtraSelection()
+            # Very light green background for modern feel
+            fixed_selection.format.setBackground(QColor("#edfff2")) 
+            fixed_selection.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
+            
+            cursor = QTextCursor(self.document())
+            cursor.movePosition(QTextCursor.MoveOperation.Start)
+            if line > 1:
+                cursor.movePosition(QTextCursor.MoveOperation.Down, n=line - 1)
+            
+            fixed_selection.cursor = cursor
+            extraSelections.append(fixed_selection)
 
         # Draw red squigglies for errors
         for err in self.errors:
@@ -720,6 +874,63 @@ class RunnerWorker(QThread):
         except Exception as e:
             self.finished.emit("", str(e), -1)
 
+class SyntaxWorker(QThread):
+    finished = pyqtSignal(list)
+    
+    def __init__(self, code, file_path):
+        super().__init__()
+        self.code = code
+        self.file_path = file_path
+
+    def run(self):
+        try:
+            from compiler_runner import _sanitize_code
+            if not _sanitize_code(self.code):
+                self.finished.emit([{
+                    "line": 1,
+                    "column": 1,
+                    "error_type": "error",
+                    "message": "Security Error: Malicious command injection or forbidden system call detected."
+                }])
+                return
+            
+            import tempfile, os, subprocess, re
+            
+            dir_name = os.path.dirname(os.path.abspath(self.file_path)) if self.file_path else tempfile.gettempdir()
+            fd, temp_path = tempfile.mkstemp(suffix=".cpp", dir=dir_name)
+            
+            with os.fdopen(fd, 'w') as f:
+                f.write(self.code)
+                
+            res = subprocess.run(
+                ["g++", "-fsyntax-only", "-std=c++17", temp_path],
+                capture_output=True,
+                text=True
+            )
+            
+            errors = []
+            pattern = r"(.+):(\d+):(\d+):\s+(error|warning):\s+(.*)"
+            for line in res.stderr.splitlines():
+                match = re.match(pattern, line)
+                if match:
+                    if temp_path in match.group(1) or os.path.basename(temp_path) in match.group(1):
+                        errors.append({
+                            "line": int(match.group(2)),
+                            "column": int(match.group(3)),
+                            "error_type": match.group(4),
+                            "message": match.group(5)
+                        })
+            
+            os.remove(temp_path)
+            self.finished.emit(errors)
+        except Exception as e:
+            self.finished.emit([])
+            try:
+                if 'temp_path' in locals() and os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except:
+                pass
+
 
 class ASTViewerDialog(QDialog):
     def __init__(self, ast_tree, parent=None):
@@ -737,6 +948,7 @@ class ASTViewerDialog(QDialog):
         layout.addWidget(label)
 
         self.tree = QTreeWidget()
+        self.tree.setStyle(QStyleFactory.create("windows"))
         self.tree.setHeaderLabels(["NODE TYPE", "DETAILS / SOURCE"])
         self.tree.setColumnWidth(0, 300)
         self.tree.setAlternatingRowColors(True)
@@ -1021,8 +1233,9 @@ class Sidebar(QWidget):
         self.btn3 = StyledButton("⚡", "outline_dim")
         self.btn4 = StyledButton("↔", "outline_dim")
         self.btn5 = StyledButton("🛡", "outline_dim")
+        self.btn6 = StyledButton("🔀", "outline_dim")
         
-        for btn in [self.btn1, self.btn2, self.btn3, self.btn4, self.btn5]:
+        for btn in [self.btn1, self.btn2, self.btn3, self.btn4, self.btn5, self.btn6]:
             btn.setFixedWidth(40)
             btn.setFixedHeight(40)
             btn.setFont(QFont(FONT_FAMILY, 14))
@@ -1032,6 +1245,7 @@ class Sidebar(QWidget):
         self.layout.addWidget(self.btn3)
         self.layout.addWidget(self.btn4)
         self.layout.addWidget(self.btn5)
+        self.layout.addWidget(self.btn6)
         self.layout.addStretch()
         
         self.setStyleSheet(f"""
@@ -1049,6 +1263,7 @@ class ASTPage(CustomFrame):
         super().__init__("ABSTRACT SYNTAX TREE EXPLORER", left_padding=True)
         
         self.tree = QTreeWidget()
+        self.tree.setStyle(QStyleFactory.create("windows"))
         self.tree.setHeaderLabels(["NODE TYPE", "DETAILS / SOURCE"])
         self.tree.setColumnWidth(0, 300)
         self.tree.setAlternatingRowColors(True)
@@ -1149,7 +1364,61 @@ class EnergyPage(CustomFrame):
             }}
         """)
         self.content_layout.addWidget(self.notes)
+        
+        self.btn_download_csv = StyledButton(" 📥 DOWNLOAD CSV REPORT ", "outline_dim")
+        self.btn_download_csv.clicked.connect(self._download_csv)
+        self.content_layout.addWidget(self.btn_download_csv, 0, Qt.AlignmentFlag.AlignRight)
+
         self.update_metrics(0, 0, 0, "Unavailable", "CodeCarbon has not produced a sample yet.")
+        
+        self.csv_path = "emissions.csv"
+        self.poll_timer = QTimer(self)
+        self.poll_timer.setInterval(1000)
+        self.poll_timer.timeout.connect(self._poll_csv)
+        self.poll_timer.start()
+
+    def _download_csv(self):
+        if not os.path.exists(self.csv_path):
+            QMessageBox.information(self, "No Data", "CodeCarbon has not produced a report yet.")
+            return
+        
+        save_path, _ = QFileDialog.getSaveFileName(self, "Save CSV Report", "codecarbon_emissions.csv", "CSV Files (*.csv)")
+        if save_path:
+            import shutil
+            try:
+                shutil.copy2(self.csv_path, save_path)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to save CSV:\n{e}")
+
+    def _poll_csv(self):
+        if not os.path.exists(self.csv_path):
+            return
+        try:
+            import csv
+            with open(self.csv_path, "r", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+            if not rows:
+                return
+            latest = rows[-1]
+            
+            # Map correct CodeCarbon columns and adjust units
+            energy_kwh = float(latest.get("energy_consumed", 0))
+            power_mw = energy_kwh * 1_000_000  # kWh to mWh
+            
+            emissions_kg = float(latest.get("emissions", 0))
+            carbon_mg = emissions_kg * 1_000_000  # kg to mg
+            
+            duration = float(latest.get("duration", 0))
+            
+            intensity = carbon_mg / power_mw if power_mw > 0 else 0.0
+
+            # On macOS, RAPL might be missing so handle cpu_energy gracefully
+            cpu_energy = latest.get("cpu_energy", "")
+            rapl_text = f"{float(cpu_energy):.3f} kWh" if cpu_energy and float(cpu_energy) > 0 else "Unavailable"
+            
+            self.update_metrics(power_mw, intensity, duration, rapl_text, "Live polling from CodeCarbon CSV output.")
+        except Exception as e:
+            pass
 
     def _metric_label(self, title, value):
         label = QLabel(f"<span style='color:{TEXT_DIM};'>{title}</span><br><b style='color:{PINK}; font-size:18px;'>{value}</b>")
@@ -1176,10 +1445,8 @@ class EnergyPage(CustomFrame):
             <b style="color:{PINK};">Telemetry source</b><br>
             {note}<br><br>
             <b style="color:{TEXT_DIM};">RAPL</b>: Reads Linux powercap energy counters when available.
-            On macOS this is expected to show unavailable because Intel RAPL counters are not exposed at
             <code>/sys/class/powercap</code>.
         """)
-
 
 class CallGraphPage(CustomFrame):
     def __init__(self, parent=None):
@@ -1200,6 +1467,86 @@ class CallGraphPage(CustomFrame):
             f"Functions: {len(functions)} | Internal calls: {len(edges)} | "
             f"External calls: {len(external_calls)} | Modules/includes: {len(modules)}"
         )
+
+
+class CFGWidget(QGraphicsView):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(420)
+        self.scene = QGraphicsScene(self)
+        self.setScene(self.scene)
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.setBackgroundBrush(QColor(PANE_BG))
+
+    def update_graph(self, functions_data):
+        self.scene.clear()
+        if not functions_data:
+            t = self.scene.addText("No functions found for CFG analysis.")
+            t.setDefaultTextColor(QColor(TEXT_DIM))
+            t.setFont(QFont(FONT_FAMILY, 12))
+            return
+
+        # Simple vertical layout for demo
+        y_offset = 50
+        margin_x = 100
+        
+        for func in functions_data:
+            nodes_data = func["nodes"]
+            edges_data = func["edges"]
+            
+            node_map = {}
+            node_w, node_h = 180, 50
+            
+            # Label for function
+            f_lbl = self.scene.addText(f"FUNCTION: {func['name']}")
+            f_lbl.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.Bold))
+            f_lbl.setDefaultTextColor(QColor(PINK))
+            f_lbl.setPos(margin_x, y_offset - 30)
+            
+            # Simple linear vertical layout for nodes
+            for i, n in enumerate(nodes_data):
+                color = {
+                    "entry": QColor("#e1f5fe"),
+                    "exit": QColor("#fce4ec"),
+                    "branch": QColor("#fff9c4"),
+                    "stmt": QColor("#ffffff")
+                }.get(n["type"], QColor("#ffffff"))
+                
+                border = {
+                    "entry": QColor("#03a9f4"),
+                    "exit": QColor("#f06292"),
+                    "branch": QColor("#fbc02d"),
+                    "stmt": QColor(BORDER_COLOR)
+                }.get(n["type"], QColor(BORDER_COLOR))
+                
+                # if branch type, make it diamond-ish or just distinct
+                node = GraphNode(n["label"], margin_x, y_offset, node_w, node_h, border, color)
+                self.scene.addItem(node)
+                node_map[n["id"]] = node
+                y_offset += 80
+            
+            for start_id, end_id in edges_data:
+                if start_id in node_map and end_id in node_map:
+                    edge = GraphEdge(node_map[start_id], node_map[end_id], QColor(TEXT_DIM))
+                    self.scene.addItem(edge)
+            
+            y_offset += 50 # gap between functions
+
+class CFGPage(CustomFrame):
+    def __init__(self, parent=None):
+        super().__init__("CONTROL FLOW GRAPH :: EXECUTION PATHS", left_padding=True)
+        self.summary = QLabel("Visualizing the logical structure and execution paths of your C++ code.")
+        self.summary.setStyleSheet(f"color: {TEXT_DIM}; font-family: {FONT_FAMILY};")
+        self.content_layout.addWidget(self.summary)
+        
+        self.graph = CFGWidget()
+        self.graph.setStyleSheet(f"background-color: {PANE_BG}; border: 1px solid {BORDER_COLOR}; border-radius: 6px;")
+        self.content_layout.addWidget(self.graph, 1)
+
+    def update_from_code(self, code):
+        data = _extract_cpp_cfg(code)
+        self.graph.update_graph(data)
+        self.summary.setText(f"Functions Analyzed: {len(data)} | Total Nodes: {sum(len(f['nodes']) for f in data)}")
 
 
 class FilterTabButton(QPushButton):
@@ -1495,6 +1842,26 @@ class SecurityPage(CustomFrame):
         self.header_row.addWidget(self.risk_badge, 0, Qt.AlignmentFlag.AlignTop)
         self.content_layout.addLayout(self.header_row)
 
+        self.permissions_box = QFrame()
+        self.permissions_box.setStyleSheet("background-color: #F8F9FA; border-radius: 8px; border: 1px solid #E8DBFF;")
+        pbox_layout = QHBoxLayout(self.permissions_box)
+        pbox_layout.setContentsMargins(15, 10, 15, 10)
+        pbox_label = QLabel("Sanitizer Policy:")
+        pbox_label.setStyleSheet("font-weight: bold; color: #1F163A;")
+        pbox_layout.addWidget(pbox_label)
+        
+        self.perm_system_calls = StyledCheckBox("Allow System Calls")
+        self.perm_assembly = StyledCheckBox("Allow Inline Assembly")
+        self.perm_sys_includes = StyledCheckBox("Allow <sys/*>")
+        
+        for chk in [self.perm_system_calls, self.perm_assembly, self.perm_sys_includes]:
+            pbox_layout.addWidget(chk)
+            chk.stateChanged.connect(self._update_permissions)
+            
+        pbox_layout.addStretch()
+        self.content_layout.addWidget(self.permissions_box)
+        self._update_permissions()
+
         self.risk_bar = QProgressBar()
         self.risk_bar.setRange(0, 100)
         self.risk_bar.setTextVisible(False)
@@ -1654,16 +2021,30 @@ class SecurityPage(CustomFrame):
             for finding in group:
                 self.report_layout.addWidget(SecurityCard(finding, self._badge_color(severity)))
 
+    def _update_permissions(self):
+        import os
+        os.environ["ALLOW_SYSTEM_CALLS"] = "1" if self.perm_system_calls.isChecked() else "0"
+        os.environ["ALLOW_ASSEMBLY"] = "1" if self.perm_assembly.isChecked() else "0"
+        os.environ["ALLOW_SYS_INCLUDES"] = "1" if self.perm_sys_includes.isChecked() else "0"
+
+
+# ── Import new page classes (Feature 2 & 4) ───────────────────────────────────
+try:
+    from gui_new_pages import SecondOpinionPage, BenchmarkPage
+    NEW_PAGES_AVAILABLE = True
+except ImportError:
+    NEW_PAGES_AVAILABLE = False
+    SecondOpinionPage = None
+    BenchmarkPage = None
 
 
 class AppGUI(QMainWindow):
-
-
     def __init__(self):
         super().__init__()
         self.setWindowTitle("CppCheck Error Explainer")
         self.resize(1400, 850)
-        
+
+
         self.file_name = "file.cpp"
         self.file_path = os.path.join(os.getcwd(), self.file_name)
         self.errors_count = 0
@@ -1674,6 +2055,7 @@ class AppGUI(QMainWindow):
         self.rapl_start_j = _read_rapl_energy_joules()
         self.latest_security_findings = []
         self.latest_security_report = ""
+        self.cumulative_compilation_co2 = 0.0
         
         self.setStyleSheet(f"QMainWindow {{ background-color: {BG_COLOR}; }}")
 
@@ -1693,40 +2075,23 @@ class AppGUI(QMainWindow):
         if CODECARBON_AVAILABLE:
             header_layout.addSpacing(15)
             self.energy_container = QWidget()
-            energy_vbox = QVBoxLayout(self.energy_container)
-            energy_vbox.setContentsMargins(0, 0, 0, 0)
-            energy_vbox.setSpacing(2)
+            energy_hbox = QHBoxLayout(self.energy_container)
+            energy_hbox.setContentsMargins(5, 0, 5, 0)
+            energy_hbox.setSpacing(10)
             
-            self.energy_panel = QLabel()
-            self.energy_panel.setStyleSheet(f"""
-                QLabel {{
-                    background-color: {BG_COLOR};
-                    border: 1px solid {BORDER_COLOR};
-                    border-radius: 4px;
-                    padding: 4px 10px;
-                    color: {TEXT_MAIN};
-                }}
-            """)
-            self.energy_panel.setToolTip("ADVANCED ENERGY & CARBON DASHBOARD")
-            energy_vbox.addWidget(self.energy_panel)
+            cpu_label = QLabel("CpU utilization")
+            cpu_label.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.Bold))
+            cpu_label.setStyleSheet(f"color: {TEXT_DIM};")
+            energy_hbox.addWidget(cpu_label)
             
             self.sparkline = SparklineGraph()
-            energy_vbox.addWidget(self.sparkline)
+            self.sparkline.setFixedWidth(120)
+            self.sparkline.setFixedHeight(30)
+            energy_hbox.addWidget(self.sparkline)
             
             header_layout.addWidget(self.energy_container)
             
             try:
-                self.energy_panel.setMinimumWidth(320)
-                initial_html = f"""
-                <div style="line-height: 1.2; font-family: {FONT_FAMILY}; font-size: 10px;">
-                    <span style="color: {TEXT_DIM};"><b>CPU:</b></span> <span style="color: {PINK};">0.000 mWh</span> | 
-                    <span style="color: {TEXT_DIM};"><b>MEM:</b></span> <span style="color: {PINK};">0.000 mWh</span> | 
-                    <span style="color: {TEXT_DIM};"><b>EXE:</b></span> <span style="color: {PINK};">0.000 mWh</span><br>
-                    <span style="color: {TEXT_DIM};"><b>IMPACT:</b></span> <span style="color: {GREEN};">0.000 mg CO2e 🌍</span> | 
-                    <span style="color: {TEXT_DIM};"><b>HOTSPOT:</b></span> <span style="color: {YELLOW};">CALIBRATING 🔥</span>
-                </div>
-                """
-                self.energy_panel.setText(initial_html)
 
                 if platform.system() == "Darwin":
                     try:
@@ -1753,7 +2118,7 @@ class AppGUI(QMainWindow):
                 self.update_energy_dashboard()
             except Exception as e:
                 print(f"CodeCarbon Error: {e}")
-                self.energy_panel.setText("Energy Tracking Unavailable")
+                pass
         
         main_layout.addLayout(header_layout)
 
@@ -1835,12 +2200,61 @@ class AppGUI(QMainWindow):
         self.security_page = SecurityPage()
         self.stack.addWidget(self.security_page) # Index 4
 
+        self.cfg_page = CFGPage()
+        self.stack.addWidget(self.cfg_page) # Index 5
+
+        # ── Feature 2: Second Opinion page (Index 6) ─────────────────────────
+        if NEW_PAGES_AVAILABLE and SecondOpinionPage is not None:
+            self.second_opinion_page = SecondOpinionPage()
+        else:
+            self.second_opinion_page = QWidget()  # blank fallback
+        self.stack.addWidget(self.second_opinion_page)  # Index 6
+
+        # ── Feature 4: Benchmark page (Index 7) ──────────────────────────────
+        if NEW_PAGES_AVAILABLE and BenchmarkPage is not None:
+            self.benchmark_page = BenchmarkPage()
+        else:
+            self.benchmark_page = QWidget()  # blank fallback
+        self.stack.addWidget(self.benchmark_page)  # Index 7
+
         # Sidebar navigation connections
         self.sidebar.btn1.clicked.connect(lambda: self.stack.setCurrentIndex(0))
         self.sidebar.btn2.clicked.connect(self.switch_to_ast)
         self.sidebar.btn3.clicked.connect(lambda: self.stack.setCurrentIndex(2))
         self.sidebar.btn4.clicked.connect(self.switch_to_call_graph)
         self.sidebar.btn5.clicked.connect(self.switch_to_security)
+        self.sidebar.btn6.clicked.connect(self.switch_to_cfg)
+
+        # ── New sidebar buttons for Feature 2 & 4 ────────────────────────────
+        from PyQt6.QtWidgets import QPushButton as _QPB
+        self._btn_second_opinion = _QPB("🔍", self.sidebar)
+        self._btn_second_opinion.setFixedWidth(40)
+        self._btn_second_opinion.setFixedHeight(40)
+        self._btn_second_opinion.setFont(QFont(FONT_FAMILY, 14))
+        self._btn_second_opinion.setToolTip("Second Opinion — classifier comparison")
+        self._btn_second_opinion.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_second_opinion.setStyleSheet(f"""
+            QPushButton {{ border: 1px solid {BORDER_COLOR}; background-color: {PANE_BG};
+                           color: {TEXT_MAIN}; border-radius: 4px; padding: 4px; }}
+            QPushButton:hover {{ background-color: {HEADER_BG}; border: 1px solid {PINK}; }}
+        """)
+        self._btn_second_opinion.clicked.connect(lambda: self.stack.setCurrentIndex(6))
+        self.sidebar.layout.insertWidget(6, self._btn_second_opinion)
+
+        self._btn_benchmark = _QPB("📊", self.sidebar)
+        self._btn_benchmark.setFixedWidth(40)
+        self._btn_benchmark.setFixedHeight(40)
+        self._btn_benchmark.setFont(QFont(FONT_FAMILY, 14))
+        self._btn_benchmark.setToolTip("Accuracy Benchmark — three-method comparison")
+        self._btn_benchmark.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_benchmark.setStyleSheet(f"""
+            QPushButton {{ border: 1px solid {BORDER_COLOR}; background-color: {PANE_BG};
+                           color: {TEXT_MAIN}; border-radius: 4px; padding: 4px; }}
+            QPushButton:hover {{ background-color: {HEADER_BG}; border: 1px solid {PINK}; }}
+        """)
+        self._btn_benchmark.clicked.connect(lambda: self.stack.setCurrentIndex(7))
+        self.sidebar.layout.insertWidget(7, self._btn_benchmark)
+
 
         if not hasattr(self, "energy_timer"):
             self.energy_timer = QTimer(self)
@@ -1856,6 +2270,8 @@ class AppGUI(QMainWindow):
         # Editor layout within pane_left
         self.pane_left.content_layout.addWidget(self.editor)
         self.splitter.addWidget(self.pane_left)
+        
+        self.editor.textChanged.connect(self.on_code_changed)
 
         self.v_splitter = QSplitter(Qt.Orientation.Vertical)
         self.v_splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {BG_COLOR}; }}")
@@ -1947,6 +2363,10 @@ class AppGUI(QMainWindow):
         footer_layout.addWidget(t2)
         main_layout.addLayout(footer_layout)
 
+        self.syntax_timer = QTimer(self)
+        self.syntax_timer.setSingleShot(True)
+        self.syntax_timer.timeout.connect(self._run_syntax_check)
+
         init_code = """// Enter your C++ code here\n"""
         self.editor.setPlainText(init_code)
         self.editor.set_errors([])
@@ -2014,6 +2434,11 @@ class AppGUI(QMainWindow):
         self.security_page.update_report(findings)
         self.stack.setCurrentIndex(4)
 
+    def switch_to_cfg(self):
+        if hasattr(self, "cfg_page"):
+            self.cfg_page.update_from_code(self.editor.toPlainText())
+        self.stack.setCurrentIndex(5)
+
     def start_heal(self):
         """Launch the auto-heal loop in a background thread."""
         if not HEALER_AVAILABLE:
@@ -2032,6 +2457,8 @@ class AppGUI(QMainWindow):
             w = self.error_cards_layout.itemAt(i).widget()
             if w:
                 w.setParent(None)
+        
+        self.editor.clear_fixed_lines()
 
         header = QLabel("⚕ AUTO-HEAL IN PROGRESS…")
         header.setStyleSheet(f"color: {YELLOW}; font-size: 13px; font-family: {FONT_FAMILY}; font-weight: bold;")
@@ -2046,12 +2473,18 @@ class AppGUI(QMainWindow):
         self.heal_worker.compile_clean.connect(self._on_heal_success)
         self.heal_worker.give_up.connect(self._on_heal_give_up)
         self.heal_worker.error_signal.connect(self._on_heal_error)
+        self.heal_worker.lines_fixed.connect(self.editor.set_fixed_lines)
+        self.heal_worker.telemetry_ready.connect(self._on_telemetry_ready)
         self.heal_worker.start()
+
+    def _on_telemetry_ready(self, telemetry: list):
+        for entry in telemetry:
+            self.cumulative_compilation_co2 += entry.get("emissions", 0.0)
 
     def _on_heal_attempt(self, attempt_no: int, error: dict):
         msg = error.get("message", "?")
         cat = error.get("category", "?")
-        lbl = QLabel(f"<b>Attempt {attempt_no}/3</b> — [{cat.upper()}] {msg}")
+        lbl = QLabel(f"<b>Attempt {attempt_no}/15</b> — [{cat.upper()}] {msg}")
         lbl.setStyleSheet(f"color: {YELLOW}; font-size: 11px; font-family: {FONT_FAMILY};")
         lbl.setWordWrap(True)
         self.error_cards_layout.addWidget(lbl)
@@ -2079,9 +2512,12 @@ class AppGUI(QMainWindow):
 
         # Reload the editor with the patched file
         try:
+            self.editor.blockSignals(True)
             with open(self.file_path, "r", encoding="utf-8") as f:
                 self.editor.setPlainText(f.read())
+            self.editor.blockSignals(False)
         except Exception:
+            self.editor.blockSignals(False)
             pass
 
     def _on_heal_success(self):
@@ -2090,8 +2526,9 @@ class AppGUI(QMainWindow):
         lbl = QLabel("✅ Code healed successfully — no errors remaining!")
         lbl.setStyleSheet(f"color: {GREEN}; font-size: 13px; font-weight: bold; font-family: {FONT_FAMILY};")
         self.error_cards_layout.addWidget(lbl)
-        # Trigger a fresh compile to populate error cards with clean state
-        self.analyze()
+        # Note: We no longer auto-trigger self.analyze() here to allow the user 
+        # to review the heal history before manually recompiling.
+        # self.analyze()
 
     def _on_heal_error(self, msg: str):
         self.btn_heal.setEnabled(True)
@@ -2123,6 +2560,7 @@ class AppGUI(QMainWindow):
                 self.heal_worker.compile_clean.connect(self._on_heal_success)
                 self.heal_worker.give_up.connect(self._on_heal_give_up)
                 self.heal_worker.error_signal.connect(self._on_heal_error)
+                self.heal_worker.telemetry_ready.connect(self._on_telemetry_ready)
                 self.btn_heal.setEnabled(False)
                 self.heal_worker.start()
         # SKIP THIS ERROR — do nothing (fall through)
@@ -2284,17 +2722,11 @@ class AppGUI(QMainWindow):
             if not codecarbon_active:
                 note = "CodeCarbon is not installed or failed to start."
             
-            html = f"""
-            <div style="line-height: 1.2; font-family: {FONT_FAMILY}; font-size: 10px;">
-                <span style="color: {TEXT_DIM};"><b>CPU:</b></span> <span style="color: {PINK};">{cpu_mwh:.3f} mWh</span> | 
-                <span style="color: {TEXT_DIM};"><b>MEM:</b></span> <span style="color: {PINK};">{ram_mwh:.3f} mWh</span> | 
-                <span style="color: {TEXT_DIM};"><b>EXE:</b></span> <span style="color: {PINK};">{total_mwh:.3f} mWh</span><br>
-                <span style="color: {TEXT_DIM};"><b>CO2:</b></span> <span style="color: {GREEN};">{emissions_mg:.2f} mg CO2e</span> | 
-                <span style="color: {TEXT_DIM};"><b>HOTSPOT:</b></span> <span style="color: {YELLOW};">{hotspot}</span>
-            </div>
-            """
+            cumulative_co2_mg = self.cumulative_compilation_co2 * 1e6
+            
             if hasattr(self, "energy_panel"):
-                self.energy_panel.setText(html)
+                # Panel removed to focus on graph
+                pass
             if hasattr(self, 'energy_page'):
                 self.energy_page.update_metrics(power_mw, carbon_mg_per_wh, elapsed, rapl_text, note)
 
@@ -2323,6 +2755,7 @@ class AppGUI(QMainWindow):
              return
              
         self.terminal.clear()
+        self.editor.clear_fixed_lines()
         self._record_execution()
         self.is_loading = True
         self.loading_prefix = "STATUS: ● EXECUTING BINARY "
@@ -2438,6 +2871,7 @@ class AppGUI(QMainWindow):
             self.terminal.append_output(f"<div style='color:{PINK};'>ERROR: Could not save file before compiling.</div>", is_html=True)
             return
         self.terminal.clear()
+        self.editor.clear_fixed_lines()
         self._record_execution()
         
         # Reset error cards container for fresh run
@@ -2459,6 +2893,7 @@ class AppGUI(QMainWindow):
         self.compiler_thread.start()
 
     def on_code_changed(self):
+        self.editor.clear_fixed_lines()
         if self.errors_count > 0 or self.warnings_count > 0:
             self.editor.set_errors([])
             self.errors_count = 0
@@ -2467,6 +2902,17 @@ class AppGUI(QMainWindow):
             self._update_footer()
         self.latest_security_findings = []
         self.latest_security_report = ""
+        self.syntax_timer.start(2000)
+
+    def _run_syntax_check(self):
+        code = self.editor.toPlainText()
+        self.syntax_worker = SyntaxWorker(code, self.file_path)
+        self.syntax_worker.finished.connect(self._on_syntax_finished)
+        self.syntax_worker.start()
+
+    def _on_syntax_finished(self, errors):
+        if self.errors_count == 0 and self.warnings_count == 0:
+            self.editor.set_errors(errors)
 
     def _on_analysis_finished(self, stdout, stderr, returncode):
         self.loading_timer.stop()
@@ -2527,12 +2973,23 @@ class AppGUI(QMainWindow):
         self.latest_security_findings = findings
         self.latest_security_report = report_text
         self.security_page.update_report(findings)
-        
-        compiler_html = ""
-        first_err_line = None
 
-        
+        # ── Feature 2: pass first error to second opinion page ───────────────
+        if errors and NEW_PAGES_AVAILABLE and hasattr(self, "second_opinion_page"):
+            first_err = errors[0]
+            first_msg = first_err.get("message", "")
+            first_ast = first_err.get("ast_node", "")
+            try:
+                self.second_opinion_page.show_opinion(first_msg, first_ast)
+            except Exception:
+                pass
+        # ─────────────────────────────────────────────────────────────────────
+
+        first_err_line = None
+        compiler_html = ""
+
         for idx, e in enumerate(errors):
+
             etype = e.get("error_type", "error").lower()
             tag_color = RED if etype == "error" else YELLOW
             msg = e.get('message', 'Unknown Issue')

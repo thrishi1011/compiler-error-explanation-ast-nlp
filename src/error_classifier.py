@@ -16,6 +16,25 @@ _DEFAULT_DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
 _DEFAULT_TRAINING_DATA_FILE = os.path.join(_DEFAULT_DATA_DIR, "training_data.json")
 _DEFAULT_MODEL_FILE = os.path.join(_DEFAULT_DATA_DIR, "error_classifier.joblib")
 
+# ── Module-level singleton for cheap repeated access ─────────────────────────
+_default_clf_instance: Optional["ErrorClassifier"] = None
+
+def get_default_classifier() -> "ErrorClassifier":
+    """
+    Return a module-level singleton ErrorClassifier.
+    Loads the saved model on first call; trains if the model file is missing.
+    """
+    global _default_clf_instance
+    if _default_clf_instance is None:
+        _default_clf_instance = ErrorClassifier()
+        try:
+            _default_clf_instance.load()
+        except Exception:
+            # Model not trained yet — the instance still works via fallback
+            pass
+    return _default_clf_instance
+
+
 # ── Canonical category set ────────────────────────────────────────────────────
 # Covers both old labels and new codenet labels.
 # Aliases map legacy/variant spellings → canonical name.
@@ -181,6 +200,9 @@ class ErrorClassifier:
             return None, 0.0
 
         lowered = message.lower()
+        if "a function-definition is not allowed here" in lowered:
+            return "missing_closing_brace", 1.0
+            
         if any(phrase in lowered for phrase in (
             "used uninitialized",
             "may be used uninitialized",

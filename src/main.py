@@ -80,6 +80,13 @@ def print_error(error, verbose=False):
         if error.risk_reason:
             print(f"  {YELLOW}{error.risk_reason}{RESET}")
 
+    # Feature 2 — Second opinion
+    second_text = getattr(error, "second_opinion_text", "")
+    if second_text:
+        print(f"\n  {BLUE}{BOLD}Second Opinion:{RESET}")
+        for line in second_text.split("\n"):
+            print(f"  {BLUE}{line}{RESET}")
+
     if verbose and error.context and "lines" in error.context:
         print(f"\n  {BOLD}Code Context:{RESET}")
         start=error.context["start_line"]

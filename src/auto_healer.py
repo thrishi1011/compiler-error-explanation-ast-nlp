@@ -339,6 +339,17 @@ def fix_missing_closing_braces(source: str, _error: dict = None) -> Optional[str
     last_code_line_idx = None
 
     for line_idx, line in enumerate(lines):
+        # Scan for function definition inside another unclosed function
+        if stack:
+            stripped = line.strip()
+            # A sign is finding int main() or any return-type function signature at brace depth > 0
+            # We look for something that looks like 'type name(args) {'
+            is_func_sig = re.match(r'^(?:[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*\s+)+[A-Za-z_]\w*\s*\([^;{}]*\)\s*\{', stripped)
+            if is_func_sig and not re.match(r'^(if|for|while|switch|catch|return)\b', stripped):
+                # Insert a } on the line immediately before that function definition
+                lines.insert(line_idx, "}\n")
+                return _join(lines)
+
         i = 0
         code_prefix = []
         while i < len(line):
@@ -1127,13 +1138,20 @@ def attempt_fix(source: str, error: dict) -> Optional[str]:
     Returns patched source string, or None if no fix could be applied.
     """
     category = error.get("category", "other")
+    msg = error.get("message", "").lower()
+
+    # Rule: Treat "function definition not allowed here" as missing_closing_brace
+    if "not allowed here" in msg or category == "missing_closing_brace":
+        patched = fix_missing_closing_braces(source, error)
+        if patched is not None and patched != source:
+            return patched
+
     handler = _HANDLERS.get(category)
     if handler is not None:
         patched = handler(source, error)
         if patched is not None and patched != source:
             return patched
 
-    msg = error.get("message", "")
     if _is_stream_operator_error(msg):
         return fix_stream_operator(source, error)
     if _is_unused_variable_error(msg):

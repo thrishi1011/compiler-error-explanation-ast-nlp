@@ -4,6 +4,7 @@ from error_classifier import get_default_classifier
 from error_normalizer import normalize_error
 from common_errors import COMMON_ERRORS
 from security_analyzer import analyze
+from second_opinion import get_second_opinion, format_second_opinion
 
 EXPLANATIONS = {
     "syntax_error": {
@@ -239,3 +240,17 @@ def enrich_error(error: 'CompilerError') -> None:
             ]
         except Exception:
             error.security_findings = []
+
+    # ── Feature 2: Second opinion ────────────────────────────────────────────
+    # Run both the regex classifier and the ML classifier independently and
+    # compare their predictions.  The result is stored on the error object so
+    # the GUI and CLI can display it alongside the main explanation.
+    try:
+        ast_ctx = getattr(error, "ast_node", "") or ""
+        opinion = get_second_opinion(error.message, ast_node=ast_ctx)
+        error.second_opinion = opinion
+        error.second_opinion_text = format_second_opinion(opinion)
+    except Exception:
+        error.second_opinion = None
+        error.second_opinion_text = ""
+

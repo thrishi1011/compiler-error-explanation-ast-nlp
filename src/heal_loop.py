@@ -31,6 +31,12 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from auto_healer import attempt_fix, UNFIXABLE_CATEGORIES
 from diff_viewer import compute_diff, format_diff_html, has_changes
 from healing_suggester import suggest_failed_heal
+import time
+try:
+    from codecarbon import EmissionsTracker
+    HAS_CODECARBON = True
+except ImportError:
+    HAS_CODECARBON = False
 
 MAX_ATTEMPTS = 10
 
@@ -45,6 +51,19 @@ def _compile(file_path: str) -> tuple[list[dict], str]:
     Run g++ and return (error_list, raw_stderr).
     Each error dict has: file, line, column, type, message, raw.
     """
+    from compiler_runner import _sanitize_input
+    if not _sanitize_input(file_path):
+        return [{
+            "file": file_path,
+            "line": 1,
+            "column": 1,
+            "type": "error",
+            "message": "Security Error: Malicious command injection or forbidden system call detected.",
+            "raw": "error: Malicious command injection or forbidden system call detected.",
+            "category": "security_violation",
+            "confidence": 1.0
+        }], "error: Malicious code blocked"
+
     res = subprocess.run(
         ["g++", "-std=c++17", "-Wall", file_path],
         stdout=subprocess.PIPE,
@@ -180,6 +199,8 @@ class HealWorker(QThread):
     give_up         = pyqtSignal(list)                # history list
     error_signal    = pyqtSignal(str)                 # fatal/internal errors
     hint_required   = pyqtSignal(int, dict, list)     # (attempt_no, error, history)
+    lines_fixed     = pyqtSignal(list)                # [line_no, ...]
+    telemetry_ready = pyqtSignal(list)                # list[dict]
 
     def __init__(self, file_path: str, classifier, hint: Optional[str] = None):
         super().__init__()
@@ -188,108 +209,156 @@ class HealWorker(QThread):
         self.hint       = hint          # optional user guidance from previous round
 
     def run(self):
+        project_dir = os.path.dirname(os.path.abspath(self.file_path))
+        main_tracker = None
+        if HAS_CODECARBON:
+            try:
+                main_tracker = EmissionsTracker(
+                    project_name="self_healing_compiler",
+                    measure_power_secs=1,
+                    log_level="error",
+                    save_to_file=True,
+                    output_dir=project_dir,
+                    output_file="emissions.csv"
+                )
+                main_tracker.start()
+            except Exception:
+                main_tracker = None
+
         try:
-            self._heal()
+            telemetry = self._heal()
+            self.telemetry_ready.emit(telemetry)
         except Exception as exc:
             self.error_signal.emit(str(exc))
+        finally:
+            if main_tracker:
+                try:
+                    main_tracker.stop()
+                except:
+                    pass
 
     def _attach_failure_suggestion(self, history: list[dict], error: dict, source: str) -> None:
         if not error:
             return
         error["suggestion"] = suggest_failed_heal(error, source, history)
 
-    def _heal(self):
+    def _heal(self) -> list[dict]:
         history = []
+        telemetry = []
         seen_errors = set()
+        project_dir = os.path.dirname(os.path.abspath(self.file_path))
 
         # Read current source
         with open(self.file_path, "r", encoding="utf-8") as f:
             source = f.read()
 
-        # If user supplied a hint, prepend it as a comment so the healer
-        # can inspect it (future expansion).  For now we just record it.
         if self.hint:
             history.append({"type": "hint", "text": self.hint})
 
         for attempt in range(1, MAX_ATTEMPTS + 1):
+            attempt_start_time = time.time()
+            attempt_tracker = None
+            if HAS_CODECARBON:
+                try:
+                    attempt_tracker = EmissionsTracker(
+                        project_name="self_healing_compiler",
+                        measure_power_secs=1,
+                        log_level="error",
+                        save_to_file=True,
+                        output_dir=project_dir,
+                        output_file="emissions.csv"
+                    )
+                    attempt_tracker.start()
+                except:
+                    attempt_tracker = None
 
             # 1. Compile
             errors, raw_stderr = _compile(self.file_path)
             pre_errors = _pre_scan(source)
             all_errors = pre_errors + errors
 
-            # Clean!
             if not all_errors:
+                if attempt_tracker: attempt_tracker.stop()
                 self.compile_clean.emit()
-                return
+                return telemetry
 
             # 2. Classify
             _classify_errors(all_errors, self.classifier)
 
-            # 3. Pick first fixable issue, preferring hard errors.
+            # 3. Pick target
             target = _pick_fix_target(all_errors)
-
-            # Nothing actionable remains.
             if target is None:
+                if attempt_tracker: attempt_tracker.stop()
                 hard_errors = [e for e in all_errors if e["type"] == "error"]
                 if not hard_errors:
                     self.compile_clean.emit()
-                    return
+                    return telemetry
                 history.append({
-                    "attempt": attempt,
-                    "error": hard_errors[0],
-                    "patch": None,
-                    "reason": "unfixable_category",
+                    "attempt": attempt, "error": hard_errors[0], "patch": None, "reason": "unfixable_category"
                 })
                 self._attach_failure_suggestion(history, hard_errors[0], source)
                 self.give_up.emit(history)
-                return
+                return telemetry
 
             self.attempt_started.emit(attempt, target)
 
             error_key = target.get("message")
             if error_key in seen_errors:
+                if attempt_tracker: attempt_tracker.stop()
                 self._attach_failure_suggestion(history, target, source)
                 self.give_up.emit(history)
-                return
+                return telemetry
             seen_errors.add(error_key)
 
-            # 4. Attempt fix
+            # 4. Patch
             patched = attempt_fix(source, target)
-
             if patched is None or patched == source:
+                if attempt_tracker: attempt_tracker.stop()
                 history.append({
-                    "attempt": attempt,
-                    "error": target,
-                    "patch": None,
-                    "reason": "no_patch_available",
+                    "attempt": attempt, "error": target, "patch": None, "reason": "no_patch_available"
                 })
-                # No diff — try next attempt only if more attempts remain
                 if attempt == MAX_ATTEMPTS:
                     self._attach_failure_suggestion(history, target, source)
                     self.give_up.emit(history)
-                    return
+                    return telemetry
                 continue
 
-            # 5. Compute + emit diff
+            # 5. Diff & Notify
             diff = compute_diff(source, patched)
             diff_html = format_diff_html(diff) if has_changes(diff) else "<i>No visible changes.</i>"
             self.diff_ready.emit(attempt, diff_html)
 
-            # Record history
+            fixed_line_nos = [d.line_no_new for d in diff if d.kind == "+" and d.line_no_new is not None]
+            self.lines_fixed.emit(fixed_line_nos)
+
             history.append({
-                "attempt": attempt,
-                "error": target,
-                "patch": patched,
-                "diff_html": diff_html,
+                "attempt": attempt, "error": target, "patch": patched, "diff_html": diff_html
             })
 
-            # 6. Write patched file and loop
+            # 6. Save
             with open(self.file_path, "w", encoding="utf-8") as f:
                 f.write(patched)
             source = patched
 
-        # Exhausted all attempts
+            # Telemetry logic
+            attempt_duration = time.time() - attempt_start_time
+            attempt_emissions = 0.0
+            if attempt_tracker:
+                try:
+                    attempt_emissions = attempt_tracker.stop()
+                except:
+                    pass
+            
+            telemetry.append({
+                "attempt": attempt,
+                "category": target.get("category", "unknown"),
+                "success": True,
+                "duration": round(attempt_duration, 3),
+                "emissions": attempt_emissions
+            })
+
+        # Exhaust
         last_error = next((item.get("error") for item in reversed(history) if item.get("error")), None)
         self._attach_failure_suggestion(history, last_error, source)
         self.give_up.emit(history)
+        return telemetry
