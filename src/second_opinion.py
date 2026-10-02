@@ -237,7 +237,7 @@ def get_second_opinion(message: str, ast_node: str = "") -> SecondOpinionResult:
             result.final_confidence = result.candidates[0]["blended"]
 
             result.note = (
-                f"Methods disagree — regex says '{result.regex_top}', "
+                f"Methods disagree -- regex says '{result.regex_top}', "
                 f"ML says '{result.ml_top}'. Showing top options."
             )
     else:

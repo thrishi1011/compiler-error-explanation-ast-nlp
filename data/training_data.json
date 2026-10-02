@@ -55694,5 +55694,41 @@
     "explanation": "",
     "suggestion": "",
     "confidence": 1.0
+  },
+  {
+    "message": "expected comma or statement terminator before identifier",
+    "raw_message": "expected ',' or ';' before 'cout'",
+    "category": "syntax_error",
+    "ast_node": null,
+    "explanation": "What happened:\n The compiler expected a ',' (or ';' before 'cout').\n\nWhy it happened:\n C++ has strict syntax rules. A missing semicolon, bracket, or parenthesis causes the parser to lose track of where one statement ends and another begins.\n\nHow to fix it:\n Check the line reported and the line just before it. Look for a missing ';', unmatched '(' or '{', or a stray character.",
+    "suggestion": "Fix the syntax error near the reported location.",
+    "confidence": 0.8888953615734427
+  },
+  {
+    "message": "identifier was not declared in this scope",
+    "raw_message": "'y' was not declared in this scope",
+    "category": "name_resolution",
+    "ast_node": null,
+    "explanation": "What happened:\n 'y' was used but has not been declared in this scope.\n\nWhy it happened:\n In C++, every variable, function, or class must be declared before it is used. It may also be in a different scope or namespace.\n\nHow to fix it:\n Declare the variable before using it, check your spelling, or add the missing #include or 'using namespace std;'.",
+    "suggestion": "Declare the identifier before use or add the missing #include.",
+    "confidence": 0.9708281805009848
+  },
+  {
+    "message": "invalid conversion from type to 'char*' [-fpermissive]",
+    "raw_message": "invalid conversion from 'int' to 'char*' [-fpermissive]",
+    "category": "type_error",
+    "ast_node": null,
+    "explanation": "What happened:\n A value of type 'int' cannot be used where 'char*' is required.\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.",
+    "suggestion": "Ensure both operands are compatible types or add an explicit cast.",
+    "confidence": 0.9670991537892704
+  },
+  {
+    "message": "assignment of read-only variable identifier",
+    "raw_message": "assignment of read-only variable 'x'",
+    "category": "type_error",
+    "ast_node": null,
+    "explanation": "What happened:\n A variable declared as 'const' cannot be modified after initialization. Assigning to it violates its const guarantee.\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.",
+    "suggestion": "Remove the 'const' qualifier if the variable needs to change, or do not assign to it after initialization",
+    "confidence": 1.0
   }
 ]
