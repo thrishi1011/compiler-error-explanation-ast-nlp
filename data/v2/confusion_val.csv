@@ -1,0 +1,10 @@
+,syntax_error,name_resolution,missing_include,type_error,return_type_error,redefinition,access_error,linker_error,other
+syntax_error,155,0,0,0,0,0,0,0,0
+name_resolution,0,180,2,0,0,0,0,0,0
+missing_include,0,12,261,0,0,0,0,0,0
+type_error,0,0,0,817,0,1,0,0,0
+return_type_error,0,0,0,0,14,0,0,0,0
+redefinition,0,0,0,0,0,194,0,0,0
+access_error,0,0,0,0,0,0,17,0,0
+linker_error,0,0,0,0,0,0,0,11,0
+other,0,0,0,0,0,0,0,0,2

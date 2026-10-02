@@ -233,7 +233,30 @@ class ErrorClassifier:
 
         assert self._pipeline is not None
 
-        feature_str = f"{ast_node} {message}".strip()
+        from error_normalizer import normalize_for_classifier
+        feature_str = normalize_for_classifier(message)
+        try:
+            proba = self._pipeline.predict_proba([feature_str])
+            idx   = int(proba[0].argmax())
+            pred  = self._pipeline.classes_[idx]
+            conf  = float(proba[0].max())
+            return str(pred), conf
+        except Exception:
+            pred = self._pipeline.predict([feature_str])[0]
+            return str(pred), 0.5
+
+    def predict_ml_only(self, message: str, ast_node: str = "") -> Tuple[Optional[str], float]:
+        """
+        Pure ML prediction bypassing rule fast-paths (for honest ML evaluation).
+        """
+        if not message:
+            return None, 0.0
+        if not self.load():
+            return None, 0.0
+        assert self._pipeline is not None
+
+        from error_normalizer import normalize_for_classifier
+        feature_str = normalize_for_classifier(message)
         try:
             proba = self._pipeline.predict_proba([feature_str])
             idx   = int(proba[0].argmax())
