@@ -188,6 +188,29 @@ def _pick_fix_target(issues: list[dict]) -> Optional[dict]:
     return None
 
 
+def create_heal_backup(file_path: str) -> Optional[str]:
+    """
+    Save original file to data/heal_backups/<name>_<timestamp>.cpp before any patches are applied.
+    Returns the path to the backup file.
+    """
+    try:
+        if not os.path.exists(file_path):
+            return None
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        backup_dir = os.path.join(project_root, "data", "heal_backups")
+        os.makedirs(backup_dir, exist_ok=True)
+        base = os.path.splitext(os.path.basename(file_path))[0]
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        backup_path = os.path.join(backup_dir, f"{base}_{timestamp}.cpp")
+        with open(file_path, "r", encoding="utf-8") as sf:
+            content = sf.read()
+        with open(backup_path, "w", encoding="utf-8") as df:
+            df.write(content)
+        return backup_path
+    except Exception:
+        return None
+
+
 class HealWorker(QThread):
     """
     QThread that runs the full heal loop asynchronously.
@@ -201,12 +224,15 @@ class HealWorker(QThread):
     hint_required   = pyqtSignal(int, dict, list)     # (attempt_no, error, history)
     lines_fixed     = pyqtSignal(list)                # [line_no, ...]
     telemetry_ready = pyqtSignal(list)                # list[dict]
+    backup_created  = pyqtSignal(str)                 # backup_path
 
     def __init__(self, file_path: str, classifier, hint: Optional[str] = None):
         super().__init__()
         self.file_path  = file_path
         self.classifier = classifier
         self.hint       = hint          # optional user guidance from previous round
+        self.last_backup_path: Optional[str] = None
+
 
     def run(self):
         project_dir = os.path.dirname(os.path.abspath(self.file_path))
@@ -255,6 +281,8 @@ class HealWorker(QThread):
         if self.hint:
             history.append({"type": "hint", "text": self.hint})
 
+        backup_made = False
+
         for attempt in range(1, MAX_ATTEMPTS + 1):
             attempt_start_time = time.time()
             attempt_tracker = None
@@ -302,7 +330,10 @@ class HealWorker(QThread):
 
             self.attempt_started.emit(attempt, target)
 
-            error_key = target.get("message")
+            line_no = target.get("line")
+            lines = source.splitlines()
+            line_text = lines[line_no - 1].strip() if line_no and 1 <= line_no <= len(lines) else ""
+            error_key = (target.get("message"), line_no, line_text)
             if error_key in seen_errors:
                 if attempt_tracker: attempt_tracker.stop()
                 self._attach_failure_suggestion(history, target, source)
@@ -335,10 +366,17 @@ class HealWorker(QThread):
                 "attempt": attempt, "error": target, "patch": patched, "diff_html": diff_html
             })
 
-            # 6. Save
+            # 6. Save (create backup before first patch)
+            if not backup_made:
+                self.last_backup_path = create_heal_backup(self.file_path)
+                if self.last_backup_path:
+                    self.backup_created.emit(self.last_backup_path)
+                backup_made = True
+
             with open(self.file_path, "w", encoding="utf-8") as f:
                 f.write(patched)
             source = patched
+
 
             # Telemetry logic
             attempt_duration = time.time() - attempt_start_time

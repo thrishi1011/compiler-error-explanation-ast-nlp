@@ -128,13 +128,25 @@ def _fix_keyword_typo(line: str, target_token: Optional[str] = None) -> Optional
         return None
     if len(target_token) < 3:
         return None
+    # Never treat standard library symbols or identifiers as keyword typos
+    if (
+        target_token in _SYMBOL_TO_HEADER
+        or target_token in _STD_SYMBOLS
+        or target_token in ("cout", "cin", "cerr", "endl")
+    ):
+        return None
 
     for match in re.finditer(r"\b[A-Za-z_]\w*\b", line):
         token = match.group(0)
         if token != target_token:
             continue
-        # Real keywords are never candidates for healing.
-        if token in _VALID_KEYWORDS:
+        # Real keywords or std symbols are never candidates for healing.
+        if (
+            token in _VALID_KEYWORDS
+            or token in _SYMBOL_TO_HEADER
+            or token in _STD_SYMBOLS
+            or token in ("cout", "cin", "cerr", "endl")
+        ):
             continue
 
         canonical = _KEYWORD_VARIANTS.get(token)
@@ -164,18 +176,29 @@ def _fix_keyword_typo(line: str, target_token: Optional[str] = None) -> Optional
 
 def _append_missing_semicolon(line: str) -> Optional[str]:
     stripped = line.rstrip("\n\r")
-    content = stripped.strip()
+    comment_part = ""
+    comment_idx = stripped.find("//")
+    if comment_idx != -1:
+        code_part = stripped[:comment_idx].rstrip()
+        comment_part = stripped[comment_idx:]
+    else:
+        code_part = stripped
+
+    content = code_part.strip()
     if not content:
         return None
-    if re.search(r"[;{},:]\s*$", stripped):
+    if re.search(r"[;{},:]\s*$", code_part):
         return None
-    if content.startswith(("#", "//")):
+    if content.startswith(("#", "//", "/*")):
         return None
     if re.match(r"^(if|else|for|while|switch|case|do|class|struct|namespace|template|public|private|protected)\b", content):
         return None
-    if re.search(r"\)\s*$", stripped) and re.match(r"^(if|for|while|switch)\b", content):
+    if re.search(r"\)\s*$", code_part) and re.match(r"^(if|for|while|switch)\b", content):
         return None
-    return stripped + ";\n"
+    if comment_part:
+        return f"{code_part}; {comment_part}\n"
+    return f"{code_part};\n"
+
 
 
 def _has_include(source: str, header: str) -> bool:
@@ -566,9 +589,9 @@ def fix_missing_include(source: str, error: dict) -> Optional[str]:
         return None
     header = _SYMBOL_TO_HEADER.get(sym)
     if not header:
-        return None
+        return fix_name_resolution(source, error)
     if _has_include(source, header):
-        return None  # already present
+        return fix_name_resolution(source, error)
     return _insert_include(source, header)
 
 
@@ -597,10 +620,28 @@ def fix_syntax_error(source: str, error: dict) -> Optional[str]:
     if stream_fixed is not None and stream_fixed != source:
         return stream_fixed
 
-    typo_fixed = _fix_keyword_typo(line, target_token=target_token)
-    if typo_fixed and typo_fixed != line:
-        lines[idx] = _append_missing_semicolon(typo_fixed) or typo_fixed
-        return _join(lines)
+    # Fix: missing semicolon or initializer before token
+    is_semicolon_err = bool(
+        re.search(r"expected\s+['\"]?;['\"]?", msg)
+        or re.search(r"expected\s+initializer\s+before\b", msg)
+        or "expected ',' or ';'" in msg
+        or "expected ';' before" in msg
+    )
+    if is_semicolon_err:
+        semicolon_fixed = _append_missing_semicolon(line)
+        if semicolon_fixed and semicolon_fixed != line:
+            lines[idx] = semicolon_fixed
+            return _join(lines)
+        # Semicolon may be missing on the previous statement line
+        for prev_idx in range(idx - 1, -1, -1):
+            prev_line = lines[prev_idx].strip()
+            if not prev_line or prev_line.startswith("//") or prev_line.startswith("/*") or prev_line.startswith("*"):
+                continue
+            prev_fixed = _append_missing_semicolon(lines[prev_idx])
+            if prev_fixed and prev_fixed != lines[prev_idx]:
+                lines[prev_idx] = prev_fixed
+                return _join(lines)
+            break
 
     # Fix: missing closing brace at end of input
     if "expected '}' at end of input" in msg or "expected '}'" in msg:
@@ -619,11 +660,11 @@ def fix_syntax_error(source: str, error: dict) -> Optional[str]:
             lines[idx] = stripped + ")\n"
         return _join(lines)
 
-    # Fix: missing semicolon (skip lines ending with { } , or already ;)
-    if re.search(r"expected\s+['\"]?;['\"]?", msg):
-        semicolon_fixed = _append_missing_semicolon(line)
-        if semicolon_fixed:
-            lines[idx] = semicolon_fixed
+    # Fix: keyword typos (only if not a semicolon error)
+    if not is_semicolon_err:
+        typo_fixed = _fix_keyword_typo(line, target_token=target_token)
+        if typo_fixed and typo_fixed != line:
+            lines[idx] = _append_missing_semicolon(typo_fixed) or typo_fixed
             return _join(lines)
 
     # Fix: assignment in boolean condition
@@ -658,10 +699,43 @@ def fix_name_resolution(source: str, error: dict) -> Optional[str]:
     'using namespace std;' if multiple are missing.
     """
     msg = error.get("message", "")
-    if _is_undeclared_identifier_error(msg):
+    sym = _extract_symbol(msg)
+
+    # 1. If symbol is from a standard header, check if header needs to be included
+    if sym and sym in _SYMBOL_TO_HEADER:
+        header = _SYMBOL_TO_HEADER[sym]
+        if header and not _has_include(source, header):
+            return _insert_include(source, header)
+
+    # 2. Fix typo 'end1' or 'endI' -> 'endl'
+    if sym in ("end1", "endI"):
+        patched = re.sub(rf'\b{sym}\b', 'endl', source)
+        return patched
+
+    # 3. If symbol belongs to std (or _SYMBOL_TO_HEADER)
+    if sym and (sym in _STD_SYMBOLS or sym in _SYMBOL_TO_HEADER):
+        # If 'using namespace std;' is not in source:
+        if "using namespace std;" not in source:
+            lines = _lines(source)
+            last_inc = -1
+            for i, l in enumerate(lines):
+                if l.strip().startswith("#include"):
+                    last_inc = i
+            insert_pos = last_inc + 1 if last_inc >= 0 else 0
+            lines.insert(insert_pos, "using namespace std;\n")
+            return _join(lines)
+        else:
+            header = _SYMBOL_TO_HEADER.get(sym)
+            if header and not _has_include(source, header):
+                return _insert_include(source, header)
+            patched = re.sub(rf'(?<!:)\b{re.escape(sym)}\b', f"std::{sym}", source)
+            if patched != source:
+                return patched
+
+    # 4. Keyword typo (only if not a known std symbol)
+    if sym and sym not in _STD_SYMBOLS and sym not in _SYMBOL_TO_HEADER:
         line_no = error.get("line")
-        sym = _extract_symbol(msg)
-        if line_no and sym:
+        if line_no:
             lines = _lines(source)
             idx = int(line_no) - 1
             if 0 <= idx < len(lines):
@@ -669,67 +743,26 @@ def fix_name_resolution(source: str, error: dict) -> Optional[str]:
                 if typo_fixed and typo_fixed != lines[idx]:
                     lines[idx] = _append_missing_semicolon(typo_fixed) or typo_fixed
                     return _join(lines)
+
+    # 5. Undeclared variable
+    if _is_undeclared_identifier_error(msg):
         return fix_undeclared_variable(source, error)
 
-    sym = _extract_symbol(msg)
-    if not sym:
-        return None
-
-    line_no = error.get("line")
-    if line_no:
-        lines = _lines(source)
-        idx = int(line_no) - 1
-        if 0 <= idx < len(lines):
-            typo_fixed = _fix_keyword_typo(lines[idx], target_token=sym)
-            if typo_fixed and typo_fixed != lines[idx]:
-                lines[idx] = _append_missing_semicolon(typo_fixed) or typo_fixed
-                return _join(lines)
-
-    # Fix typo 'end1' or 'endI' -> 'endl'
-    if sym in ("end1", "endI"):
-        patched = re.sub(rf'\b{sym}\b', 'endl', source)
-        return patched
-
-    if sym not in _STD_SYMBOLS:
-        return None
-
-    # Count how many std symbols are bare (no prefix)
-    bare_count = sum(
-        1 for s in _STD_SYMBOLS
-        if re.search(rf'(?<!:)\b{re.escape(s)}\b', source)
-        and f"std::{s}" not in source
-    )
-
-    if bare_count >= 3 and "using namespace std;" not in source:
-        # Insert 'using namespace std;' after the last #include
-        lines = _lines(source)
-        last_inc = -1
-        for i, l in enumerate(lines):
-            if l.strip().startswith("#include"):
-                last_inc = i
-        insert_pos = last_inc + 1 if last_inc >= 0 else 0
-        lines.insert(insert_pos, "using namespace std;\n")
-        return _join(lines)
-
-    # Otherwise prefix just this symbol
-    patched = re.sub(rf'(?<!:)\b{re.escape(sym)}\b', f"std::{sym}", source)
-    if patched == source:
-        return None
-    return patched
+    return None
 
 
 def fix_undeclared_variable(source: str, error: dict) -> Optional[str]:
     """
     If a variable is used but never declared, insert a local auto declaration
     before the first reported use, reusing the current line's initializer
-    when that intent is clear.
+    when that intent is clear, or defaulting to 0.
     """
     msg = error.get("message", "")
     if not _is_undeclared_identifier_error(msg):
         return None
 
     var = _extract_symbol(msg)
-    if not var or var in _VALID_KEYWORDS:
+    if not var or var in _VALID_KEYWORDS or var in _STD_SYMBOLS or var in _SYMBOL_TO_HEADER:
         return None
 
     lines = _lines(source)
@@ -741,21 +774,34 @@ def fix_undeclared_variable(source: str, error: dict) -> Optional[str]:
     if idx < 0 or idx >= len(lines):
         return None
 
-    # Don't add a duplicate declaration if the symbol already exists earlier.
+    # Don't add a duplicate declaration if the symbol already exists earlier in real code (ignore comments)
     decl_pattern = re.compile(
         rf"\b(?:auto|bool|char|double|float|int|long|short|signed|unsigned|size_t|const|static|[\w:<>]+[*&\s]+)\b\s*\**\b{re.escape(var)}\b"
     )
     for existing in lines[:idx]:
-        if decl_pattern.search(existing):
+        code_part = existing.split("//")[0].strip()
+        if not code_part or code_part.startswith("/*") or code_part.startswith("*"):
+            continue
+        if decl_pattern.search(code_part):
             return None
 
     indent = re.match(r"^(\s*)", lines[idx]).group(1)
     initializer = _infer_undeclared_initializer(lines[idx], var)
-    if initializer is None:
-        return None
+    if initializer is not None:
+        direct_assign = re.match(
+            rf"^\s*{re.escape(var)}\s*=\s*(.+?)\s*;\s*$",
+            lines[idx],
+        )
+        if direct_assign:
+            lines[idx] = f"{indent}auto {var} = {initializer};\n"
+            return _join(lines)
+        else:
+            lines.insert(idx, f"{indent}auto {var} = {initializer};\n")
+            return _join(lines)
+    else:
+        lines.insert(idx, f"{indent}int {var} = 0;\n")
+        return _join(lines)
 
-    lines.insert(idx, f"{indent}auto {var} = {initializer};\n")
-    return _join(lines)
 
 
 def fix_integer_overflow(source: str, error: dict) -> Optional[str]:
@@ -975,6 +1021,12 @@ def fix_type_error(source: str, error: dict) -> Optional[str]:
         return None
     line = lines[idx]
 
+    # Fix: incompatible return statement in function
+    if "return" in line or "in return" in msg:
+        ret_fixed = fix_return_type_error(source, error)
+        if ret_fixed:
+            return ret_fixed
+
     # Fix: quote mismatch (char vs string)
     if "invalid conversion from 'const char*' to 'char'" in msg:
         # Used double quotes for a char: char c = "A"; -> 'A'
@@ -1034,6 +1086,12 @@ def fix_type_error(source: str, error: dict) -> Optional[str]:
             lines[idx] = fixed_line
             return _join(lines)
 
+        # Incompatible return expression: e.g. return "done"; in int function
+        if "in return" in msg or "return" in line:
+            ret_fixed = fix_return_type_error(source, error)
+            if ret_fixed:
+                return ret_fixed
+
     # Fix: taking address of variable for pointer param
     if "pointer" in msg or "address" in msg:
         m = re.search(r'\b([a-zA-Z_]\w*)\b\s*\)', line)
@@ -1042,18 +1100,20 @@ def fix_type_error(source: str, error: dict) -> Optional[str]:
             lines[idx] = line.replace(var + ")", f"&{var})", 1)
             return _join(lines)
 
+    if "in return" in msg or "return" in line:
+        ret_fixed = fix_return_type_error(source, error)
+        if ret_fixed:
+            return ret_fixed
+
     return None
 
 
 def fix_return_type_error(source: str, error: dict) -> Optional[str]:
     """
     Insert a default 'return 0;' before the closing brace of a non-void
-    function that is missing a return statement.
+    function that is missing a return statement, or replace incompatible return expression.
     """
     msg = error.get("message", "").lower()
-    if "no return" not in msg and "return" not in msg:
-        return None
-
     line_no = error.get("line")
     if not line_no:
         return None
@@ -1063,6 +1123,17 @@ def fix_return_type_error(source: str, error: dict) -> Optional[str]:
     if idx < 0 or idx >= len(lines):
         return None
 
+    if "no return" not in msg and "return" not in msg and "return" not in lines[idx]:
+        return None
+
+
+    # If the current line is a return statement with a wrong type (e.g. return "done";)
+    if "return" in lines[idx]:
+        fixed = re.sub(r'return\s+[^;]+;', 'return 0;', lines[idx])
+        if fixed != lines[idx]:
+            lines[idx] = fixed
+            return _join(lines)
+
     # Insert return 0; before the closing brace of the function
     for i in range(idx, -1, -1):
         if lines[i].strip() == "}":
@@ -1070,6 +1141,7 @@ def fix_return_type_error(source: str, error: dict) -> Optional[str]:
             return _join(lines)
 
     return None
+
 
 
 def fix_redefinition(source: str, error: dict) -> Optional[str]:

@@ -45,3 +45,4 @@ emissions.csv*
 *.swp
 *.swo
 *~
+data/heal_backups/

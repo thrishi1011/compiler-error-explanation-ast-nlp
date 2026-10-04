@@ -2139,9 +2139,16 @@ class AppGUI(QMainWindow):
 
         self.btn_heal = StyledButton("⚕ AUTO-HEAL", "outline_dim")
         self.btn_heal.clicked.connect(self.start_heal)
-        self.btn_heal.setToolTip("Auto-detect + fix errors (up to 3 attempts)")
+        self.btn_heal.setToolTip("Auto-detect + fix errors (up to 10 attempts)")
         toolbar_layout.addWidget(self.btn_heal)
 
+        self.btn_undo_heal = StyledButton("↺ UNDO HEAL", "outline_dim")
+        self.btn_undo_heal.setToolTip("Restore the file to its state before auto-heal")
+        self.btn_undo_heal.clicked.connect(self.undo_heal)
+        self.btn_undo_heal.setEnabled(False)
+        toolbar_layout.addWidget(self.btn_undo_heal)
+
+        self.last_heal_backup = None
 
         self.cb_output_toggle = StyledCheckBox("Compile Output")
         self.cb_output_toggle.setChecked(True)
@@ -2474,8 +2481,35 @@ class AppGUI(QMainWindow):
         self.heal_worker.give_up.connect(self._on_heal_give_up)
         self.heal_worker.error_signal.connect(self._on_heal_error)
         self.heal_worker.lines_fixed.connect(self.editor.set_fixed_lines)
+        self.heal_worker.backup_created.connect(self._on_heal_backup_created)
         self.heal_worker.telemetry_ready.connect(self._on_telemetry_ready)
         self.heal_worker.start()
+
+    def _on_heal_backup_created(self, backup_path: str):
+        self.last_heal_backup = backup_path
+        self.btn_undo_heal.setEnabled(True)
+
+    def undo_heal(self):
+        """Restore file from the latest heal backup."""
+        if not self.last_heal_backup or not os.path.exists(self.last_heal_backup):
+            QMessageBox.information(self, "Undo Heal", "No backup available to restore.")
+            return
+        try:
+            with open(self.last_heal_backup, "r", encoding="utf-8") as f:
+                content = f.read()
+            with open(self.file_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            self.editor.blockSignals(True)
+            self.editor.setPlainText(content)
+            self.editor.blockSignals(False)
+            self.editor.clear_fixed_lines()
+            self.btn_undo_heal.setEnabled(False)
+            self.status_label.setText("STATUS: ● RESTORED")
+            lbl = QLabel(f"↺ Restored original code from {os.path.basename(self.last_heal_backup)}")
+            lbl.setStyleSheet(f"color: {YELLOW}; font-size: 11px; font-family: {FONT_FAMILY};")
+            self.error_cards_layout.addWidget(lbl)
+        except Exception as e:
+            QMessageBox.critical(self, "Undo Heal Error", f"Failed to restore backup: {e}")
 
     def _on_telemetry_ready(self, telemetry: list):
         for entry in telemetry:
@@ -2484,7 +2518,7 @@ class AppGUI(QMainWindow):
     def _on_heal_attempt(self, attempt_no: int, error: dict):
         msg = error.get("message", "?")
         cat = error.get("category", "?")
-        lbl = QLabel(f"<b>Attempt {attempt_no}/15</b> — [{cat.upper()}] {msg}")
+        lbl = QLabel(f"<b>Attempt {attempt_no}/10</b> — [{cat.upper()}] {msg}")
         lbl.setStyleSheet(f"color: {YELLOW}; font-size: 11px; font-family: {FONT_FAMILY};")
         lbl.setWordWrap(True)
         self.error_cards_layout.addWidget(lbl)
@@ -2554,15 +2588,19 @@ class AppGUI(QMainWindow):
         elif result == UserGuidanceDialog.GIVE_HINT:
             hint = dlg.hint_text()
             if hint:
+                classifier = self.error_classifier or _KeywordClassifier()
                 self.heal_worker = HealWorker(self.file_path, classifier, hint=hint)
                 self.heal_worker.attempt_started.connect(self._on_heal_attempt)
                 self.heal_worker.diff_ready.connect(self._on_heal_diff)
                 self.heal_worker.compile_clean.connect(self._on_heal_success)
                 self.heal_worker.give_up.connect(self._on_heal_give_up)
                 self.heal_worker.error_signal.connect(self._on_heal_error)
+                self.heal_worker.lines_fixed.connect(self.editor.set_fixed_lines)
+                self.heal_worker.backup_created.connect(self._on_heal_backup_created)
                 self.heal_worker.telemetry_ready.connect(self._on_telemetry_ready)
                 self.btn_heal.setEnabled(False)
                 self.heal_worker.start()
+
         # SKIP THIS ERROR — do nothing (fall through)
 
     def _record_execution(self):
