@@ -2519,7 +2519,8 @@ class AppGUI(QMainWindow):
         self.btn_heal.setEnabled(False)
         self.status_label.setText("STATUS: ● HEALING…")
 
-        self.heal_worker = HealWorker(self.file_path, classifier)
+        enable_ai = self.is_ai_enabled()
+        self.heal_worker = HealWorker(self.file_path, classifier, enable_ai=enable_ai)
         self.heal_worker.attempt_started.connect(self._on_heal_attempt)
         self.heal_worker.diff_ready.connect(self._on_heal_diff)
         self.heal_worker.compile_clean.connect(self._on_heal_success)
@@ -2528,11 +2529,19 @@ class AppGUI(QMainWindow):
         self.heal_worker.lines_fixed.connect(self.editor.set_fixed_lines)
         self.heal_worker.backup_created.connect(self._on_heal_backup_created)
         self.heal_worker.telemetry_ready.connect(self._on_telemetry_ready)
+        self.heal_worker.status_update.connect(self.status_label.setText)
+        self.heal_worker.info_message.connect(self._on_heal_info)
         self.heal_worker.start()
 
     def _on_heal_backup_created(self, backup_path: str):
         self.last_heal_backup = backup_path
         self.btn_undo_heal.setEnabled(True)
+
+    def _on_heal_info(self, msg: str):
+        lbl = QLabel(f"ℹ️ {msg}")
+        lbl.setStyleSheet(f"color: {TEXT_DIM}; font-size: 11px; font-family: {FONT_FAMILY};")
+        lbl.setWordWrap(True)
+        self.error_cards_layout.addWidget(lbl)
 
     def undo_heal(self):
         """Restore file from the latest heal backup."""
@@ -2568,8 +2577,9 @@ class AppGUI(QMainWindow):
         lbl.setWordWrap(True)
         self.error_cards_layout.addWidget(lbl)
 
-    def _on_heal_diff(self, attempt_no: int, diff_html: str):
-        title = QLabel(f"<b>Diff — Attempt {attempt_no}</b>")
+    def _on_heal_diff(self, attempt_no: int, diff_html: str, label: str = ""):
+        title_text = f"<b>Diff — {label}</b>" if label else f"<b>Diff — Attempt {attempt_no}</b>"
+        title = QLabel(title_text)
         title.setStyleSheet(f"color: {TEXT_DIM}; font-size: 10px; font-family: {FONT_FAMILY};")
         self.error_cards_layout.addWidget(title)
 
@@ -2599,10 +2609,10 @@ class AppGUI(QMainWindow):
             self.editor.blockSignals(False)
             pass
 
-    def _on_heal_success(self):
+    def _on_heal_success(self, method: str = "Healed by offline rules"):
         self.btn_heal.setEnabled(True)
         self.status_label.setText("STATUS: ● HEALED ✅")
-        lbl = QLabel("✅ Code healed successfully — no errors remaining!")
+        lbl = QLabel(f"✅ {method} — Compiles OK - please review the changes.")
         lbl.setStyleSheet(f"color: {GREEN}; font-size: 13px; font-weight: bold; font-family: {FONT_FAMILY};")
         self.error_cards_layout.addWidget(lbl)
         # Note: We no longer auto-trigger self.analyze() here to allow the user 
@@ -2634,7 +2644,7 @@ class AppGUI(QMainWindow):
             hint = dlg.hint_text()
             if hint:
                 classifier = self.error_classifier or _KeywordClassifier()
-                self.heal_worker = HealWorker(self.file_path, classifier, hint=hint)
+                self.heal_worker = HealWorker(self.file_path, classifier, hint=hint, enable_ai=self.is_ai_enabled())
                 self.heal_worker.attempt_started.connect(self._on_heal_attempt)
                 self.heal_worker.diff_ready.connect(self._on_heal_diff)
                 self.heal_worker.compile_clean.connect(self._on_heal_success)
@@ -2643,6 +2653,8 @@ class AppGUI(QMainWindow):
                 self.heal_worker.lines_fixed.connect(self.editor.set_fixed_lines)
                 self.heal_worker.backup_created.connect(self._on_heal_backup_created)
                 self.heal_worker.telemetry_ready.connect(self._on_telemetry_ready)
+                self.heal_worker.status_update.connect(self.status_label.setText)
+                self.heal_worker.info_message.connect(self._on_heal_info)
                 self.btn_heal.setEnabled(False)
                 self.heal_worker.start()
 
