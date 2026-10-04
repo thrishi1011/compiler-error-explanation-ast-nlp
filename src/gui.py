@@ -2150,6 +2150,31 @@ class AppGUI(QMainWindow):
 
         self.last_heal_backup = None
 
+        try:
+            import llm_client
+            has_llm_keys = bool(llm_client.get_gemini_key() or llm_client.get_groq_key())
+            ai_status_text = llm_client.status()
+        except ImportError:
+            has_llm_keys = False
+            ai_status_text = "AI: offline"
+
+        toolbar_layout.addSpacing(15)
+        self.cb_ai_assist = StyledCheckBox("AI assist")
+        self.cb_ai_assist.setChecked(has_llm_keys)
+        self.cb_ai_assist.setEnabled(has_llm_keys)
+        self.cb_ai_assist.setToolTip("Sends your error messages and code to Gemini/Groq")
+        self.cb_ai_assist.stateChanged.connect(lambda: self.update_ai_status())
+        toolbar_layout.addWidget(self.cb_ai_assist)
+
+        self.lbl_ai_note = QLabel("(Sends error messages and code to Gemini/Groq)")
+        self.lbl_ai_note.setStyleSheet(f"color: {TEXT_DIM}; font-size: 9px; font-family: {FONT_FAMILY};")
+        toolbar_layout.addWidget(self.lbl_ai_note)
+
+        toolbar_layout.addSpacing(10)
+        self.ai_status_label = QLabel(ai_status_text)
+        self.ai_status_label.setStyleSheet(f"color: {PINK}; font-size: 10px; font-family: {FONT_FAMILY}; font-weight: bold;")
+        toolbar_layout.addWidget(self.ai_status_label)
+
         self.cb_output_toggle = StyledCheckBox("Compile Output")
         self.cb_output_toggle.setChecked(True)
         self.cb_output_toggle.stateChanged.connect(self.toggle_output_pane)
@@ -2445,6 +2470,26 @@ class AppGUI(QMainWindow):
         if hasattr(self, "cfg_page"):
             self.cfg_page.update_from_code(self.editor.toPlainText())
         self.stack.setCurrentIndex(5)
+
+    def update_ai_status(self):
+        try:
+            import llm_client
+            has_keys = bool(llm_client.get_gemini_key() or llm_client.get_groq_key())
+            self.cb_ai_assist.setEnabled(has_keys)
+            self.ai_status_label.setText(llm_client.status())
+        except Exception:
+            pass
+
+    def is_ai_enabled(self) -> bool:
+        if not hasattr(self, 'cb_ai_assist'):
+            return False
+        try:
+            import llm_client
+            has_keys = bool(llm_client.get_gemini_key() or llm_client.get_groq_key())
+            return has_keys and self.cb_ai_assist.isChecked()
+        except Exception:
+            return False
+
 
     def start_heal(self):
         """Launch the auto-heal loop in a background thread."""
