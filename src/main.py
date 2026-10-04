@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import sys
 import textwrap
 
@@ -36,6 +37,7 @@ def parse_arguments():
     parser.add_argument("-j","--json",action="store_true",help="print output in JSON format")
     parser.add_argument("-v","--verbose",action="store_true",help="show detailed context")
     parser.add_argument("-c","--context",type=int, default=2,help="number of context lines")
+    parser.add_argument("--ai",action="store_true",help="enable AI-powered error explanations")
 
     return parser.parse_args()
 
@@ -86,6 +88,26 @@ def print_error(error, verbose=False):
         print(f"\n  {BLUE}{BOLD}Second Opinion:{RESET}")
         for line in second_text.split("\n"):
             print(f"  {BLUE}{line}{RESET}")
+
+    # Feature 1 — AI explanation
+    ai = getattr(error, "ai_explanation", None)
+    if ai and isinstance(ai, dict):
+        provider_name = (ai.get("provider") or "AI").capitalize()
+        print(f"\n  {GREEN}{BOLD}AI Explanation ({provider_name}):{RESET}")
+        if ai.get("explanation"):
+            wrapped = textwrap.fill(ai["explanation"], width=80)
+            for line in wrapped.split("\n"):
+                print(f"  {GREEN}{line}{RESET}")
+        if ai.get("fix"):
+            print(f"\n  {GREEN}{BOLD}Suggested Fix:{RESET}")
+            for line in ai["fix"].split("\n"):
+                print(f"  {GREEN}  {line}{RESET}")
+        if ai.get("why"):
+            print(f"\n  {GREEN}{BOLD}Why:{RESET}")
+            wrapped = textwrap.fill(ai["why"], width=80)
+            for line in wrapped.split("\n"):
+                print(f"  {GREEN}{line}{RESET}")
+
 
     if verbose and error.context and "lines" in error.context:
         print(f"\n  {BOLD}Code Context:{RESET}")
@@ -142,7 +164,22 @@ def main():
     visible_error_count = sum(1 for e in visible_errors if e.error_type == "error")
     visible_warning_count = sum(1 for e in visible_errors if e.error_type == "warning")
 
+    # AI Explanation if enabled (--ai flag or ENABLE_LLM=1)
+    ai_enabled = getattr(args, "ai", False) or os.environ.get("ENABLE_LLM") == "1"
+    if ai_enabled and visible_errors:
+        try:
+            from ai_explainer import explain_errors_batch
+            with open(args.source_file, "r", encoding="utf-8", errors="replace") as sf:
+                src_code = sf.read()
+            ai_results, provider, _ = explain_errors_batch(visible_errors, src_code)
+            for idx, err in enumerate(visible_errors):
+                if idx in ai_results:
+                    err.ai_explanation = ai_results[idx]
+        except Exception:
+            pass
+
     #JSON mode
+
 
     if args.json:
         result={

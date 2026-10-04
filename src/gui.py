@@ -2725,7 +2725,45 @@ class AppGUI(QMainWindow):
             sugg_lbl.setStyleSheet(f"color: {GREEN}; font-size: 10px; font-family: {FONT_FAMILY};")
             sugg_lbl.setWordWrap(True)
             layout.addWidget(sugg_lbl)
-        
+
+        # AI Explanation section
+        def add_ai_explanation(ai_data: dict):
+            provider_name = (ai_data.get('provider') or 'AI').capitalize()
+            ai_box = QFrame()
+            ai_box.setStyleSheet(f"background-color: {BG_COLOR}; border: 1px solid {BORDER_COLOR}; border-radius: 4px; padding: 4px; margin-top: 4px;")
+            ai_layout = QVBoxLayout(ai_box)
+            ai_layout.setContentsMargins(4, 4, 4, 4)
+            ai_layout.setSpacing(2)
+
+            ai_title = QLabel(f"<b>AI explanation ({provider_name})</b>")
+            ai_title.setStyleSheet(f"color: {PINK}; font-size: 10px; font-family: {FONT_FAMILY}; font-weight: bold;")
+            ai_layout.addWidget(ai_title)
+
+            if ai_data.get("explanation"):
+                ai_expl_lbl = QLabel(ai_data["explanation"])
+                ai_expl_lbl.setStyleSheet(f"color: {TEXT_MAIN}; font-size: 10px; font-family: {FONT_FAMILY};")
+                ai_expl_lbl.setWordWrap(True)
+                ai_layout.addWidget(ai_expl_lbl)
+
+            if ai_data.get("fix"):
+                ai_fix_lbl = QLabel(f"<b>Suggested Fix:</b> <code>{html.escape(ai_data['fix'])}</code>")
+                ai_fix_lbl.setStyleSheet(f"color: {GREEN}; font-size: 10px; font-family: {FONT_FAMILY};")
+                ai_fix_lbl.setWordWrap(True)
+                ai_layout.addWidget(ai_fix_lbl)
+
+            if ai_data.get("why"):
+                ai_why_lbl = QLabel(f"<b>Why:</b> {ai_data['why']}")
+                ai_why_lbl.setStyleSheet(f"color: {TEXT_DIM}; font-size: 9px; font-family: {FONT_FAMILY};")
+                ai_why_lbl.setWordWrap(True)
+                ai_layout.addWidget(ai_why_lbl)
+
+            layout.addWidget(ai_box)
+
+        card.add_ai_explanation = add_ai_explanation
+        ai = error.get('ai_explanation')
+        if ai and isinstance(ai, dict):
+            add_ai_explanation(ai)
+
         # Pulse animation (opacity)
         effect = QGraphicsOpacityEffect(card)
         card.setGraphicsEffect(effect)
@@ -3070,6 +3108,7 @@ class AppGUI(QMainWindow):
 
         first_err_line = None
         compiler_html = ""
+        created_cards = []
 
         for idx, e in enumerate(errors):
 
@@ -3088,6 +3127,7 @@ class AppGUI(QMainWindow):
 
             # Create and add an error card for this issue
             card = self._create_error_card(e)
+            created_cards.append(card)
             self.error_cards_layout.addWidget(card)
 
             compiler_html += f"<span style='color:{tag_color};'>[{etype.upper()}]</span> {os.path.basename(file_name)}:{line}:{col}: <span style='color:{tag_color};'>{etype}:</span> {msg}<br>"
@@ -3106,6 +3146,32 @@ class AppGUI(QMainWindow):
                     else:
                         compiler_html += f"   {i:3} | <span style='color:{TEXT_DIM}'>{txt}</span><br>"
             compiler_html += "<br>"
+
+        # Asynchronously fetch AI explanations if AI assist is enabled
+        if self.is_ai_enabled() and errors:
+            try:
+                from ai_explainer import AIExplainWorker
+                self.ai_status_label.setText("AI: analyzing...")
+                src_code = self.editor.toPlainText()
+                self.ai_explain_worker = AIExplainWorker(errors[:5], src_code)
+                
+                def on_ai_batch_ready(results_by_idx: dict, provider: str):
+                    provider_disp = (provider or "AI").capitalize()
+                    self.ai_status_label.setText(f"AI: explained by {provider_disp}")
+                    for idx, ai_data in results_by_idx.items():
+                        if 0 <= idx < len(created_cards):
+                            created_cards[idx].add_ai_explanation(ai_data)
+
+                def on_ai_failed(reason: str):
+                    self.ai_status_label.setText(f"AI: {reason}")
+
+                self.ai_explain_worker.batch_ready.connect(on_ai_batch_ready)
+                self.ai_explain_worker.failed.connect(on_ai_failed)
+                self.ai_explain_worker.start()
+            except Exception as ex:
+                self.ai_status_label.setText(f"AI: {ex}")
+        else:
+            self.update_ai_status()
 
         compiler_html += f"<br>C++_ANALYZER_V2.0.1_READY > _"
         self.terminal.append_output(f"<div style='white-space:pre-wrap; font-family:{FONT_FAMILY};'>{compiler_html}</div>", is_html=True)
