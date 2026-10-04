@@ -225,6 +225,44 @@ class TestLLMClientFallback(unittest.TestCase):
             self.assertNotIn(gemini_secret, status_text)
             self.assertNotIn(groq_secret, status_text)
 
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "dummy_gemini_key", "GROQ_API_KEY": "dummy_groq_key"})
+    def test_gemini_model_cascade_3_8_to_3_7_to_3_5(self):
+        """Gemini cascades from 3.8 to 3.7 to 3.5 when earlier models return 404."""
+        called_models = []
+
+        def mock_cascade(url, headers, data, timeout):
+            for m in ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash"]:
+                if m in url:
+                    called_models.append(m)
+                    if m == "gemini-3.5-flash":
+                        resp = {"candidates": [{"content": {"parts": [{"text": "{\"ok\": true}"}]}}]}
+                        return (200, json.dumps(resp), {})
+                    else:
+                        return (404, f"Model {m} not found", {})
+            return (404, "Not found", {})
+
+        with patch("llm_client._http_post", side_effect=mock_cascade):
+            res = llm_client.ask(system="s", prompt="cascade test", kind="explain")
+            self.assertEqual(res.provider, "gemini")
+            self.assertEqual(called_models, ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash"])
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "", "GROQ_API_KEY": "dummy_groq_key"})
+    def test_groq_model_cascade_3_1_to_3_0(self):
+        """Groq cascades from llama-3.1 to llama3.0 (llama3-8b-8192) when 3.1 returns 404."""
+        called_models = []
+
+        def mock_groq_cascade(url, headers, data, timeout):
+            model = data.get("model", "")
+            called_models.append(model)
+            if model == "llama3-8b-8192":
+                return (200, json.dumps({"choices": [{"message": {"content": "{\"ok\": true}"}}]}), {})
+            return (404, f"Model {model} not found", {})
+
+        with patch("llm_client._http_post", side_effect=mock_groq_cascade):
+            res = llm_client.ask(system="s", prompt="groq cascade test", kind="explain")
+            self.assertEqual(res.provider, "groq")
+            self.assertEqual(called_models, ["llama-3.1-8b-instant", "llama3-8b-8192"])
+
 
 class TestHealValidation(unittest.TestCase):
     def test_sanitize_code_rejects_system_call(self):

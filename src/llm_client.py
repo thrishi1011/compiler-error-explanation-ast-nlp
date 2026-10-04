@@ -15,7 +15,7 @@ import re
 import json
 import time
 import hashlib
-from typing import Optional, NamedTuple, Tuple
+from typing import Optional, NamedTuple, Tuple, List
 
 # Try loading requests, fallback to urllib if unavailable
 try:
@@ -55,9 +55,20 @@ def load_env_file(filepath: Optional[str] = None):
 # Load .env once at import time
 load_env_file()
 
-# Default models
-DEFAULT_GEMINI_MODEL = "gemini-1.5-flash"
-DEFAULT_GROQ_MODEL = "llama-3.1-8b-instant"
+# Default model priority cascades
+DEFAULT_GEMINI_MODELS = [
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.5-flash",
+    "gemini-1.5-flash",
+]
+DEFAULT_GEMINI_MODEL = DEFAULT_GEMINI_MODELS[0]
+
+DEFAULT_GROQ_MODELS = [
+    "llama-3.1-8b-instant",
+    "llama3-8b-8192",
+]
+DEFAULT_GROQ_MODEL = DEFAULT_GROQ_MODELS[0]
 
 # Prompt injection safety system prefix
 SYSTEM_SAFETY_PREFIX = (
@@ -125,14 +136,28 @@ def get_groq_key() -> str:
     return os.environ.get("GROQ_API_KEY", "").strip()
 
 
-def get_gemini_model() -> str:
+def get_gemini_models() -> List[str]:
     load_env_file()
-    return os.environ.get("GEMINI_MODEL", "").strip() or DEFAULT_GEMINI_MODEL
+    custom = os.environ.get("GEMINI_MODEL", "").strip()
+    if custom:
+        return [custom]
+    return list(DEFAULT_GEMINI_MODELS)
+
+
+def get_groq_models() -> List[str]:
+    load_env_file()
+    custom = os.environ.get("GROQ_MODEL", "").strip()
+    if custom:
+        return [custom]
+    return list(DEFAULT_GROQ_MODELS)
+
+
+def get_gemini_model() -> str:
+    return get_gemini_models()[0]
 
 
 def get_groq_model() -> str:
-    load_env_file()
-    return os.environ.get("GROQ_MODEL", "").strip() or DEFAULT_GROQ_MODEL
+    return get_groq_models()[0]
 
 
 def redact_keys(text: Optional[str]) -> str:
@@ -257,6 +282,7 @@ def _parse_retry_after(headers: dict, response_text: str) -> float:
 def _call_gemini(system: str, prompt: str, kind: str, max_tokens: int) -> Tuple[Optional[str], Optional[str], bool, bool]:
     """
     Call Gemini generateContent API.
+    Cascades through models: gemini-3.8-flash -> gemini-3.7-flash -> gemini-3.5-flash -> gemini-1.5-flash.
     Returns (result_text, error_message, is_cooldown_error, is_auth_error).
     """
     key = get_gemini_key()
@@ -267,77 +293,92 @@ def _call_gemini(system: str, prompt: str, kind: str, max_tokens: int) -> Tuple[
     if not avail:
         return None, f"Gemini unavailable: {reason}", False, False
 
-    model = get_gemini_model()
-    # Official v1beta endpoint with key in header to avoid key in URL
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-    headers = {
-        "Content-Type": "application/json",
-        "x-goog-api-key": key,
-    }
-    payload = {
-        "system_instruction": {
-            "parts": [{"text": f"{SYSTEM_SAFETY_PREFIX}\n\n{system}".strip()}]
-        },
-        "contents": [
-            {
-                "parts": [{"text": prompt}]
-            }
-        ],
-        "generationConfig": {
-            "responseMimeType": "application/json",
-            "maxOutputTokens": max_tokens
-        }
-    }
-
+    models = get_gemini_models()
     read_timeout = 25.0 if kind == "heal" else 8.0
     timeout_tuple = (3.0, read_timeout)
 
-    # At most 1 retry for 5xx or timeout
-    max_tries = 2
-    for attempt in range(max_tries):
-        code, resp_text, resp_headers = _http_post(url, headers, payload, timeout_tuple)
+    last_err = ""
+    for model in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": key,
+        }
+        payload = {
+            "system_instruction": {
+                "parts": [{"text": f"{SYSTEM_SAFETY_PREFIX}\n\n{system}".strip()}]
+            },
+            "contents": [
+                {
+                    "parts": [{"text": prompt}]
+                }
+            ],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "maxOutputTokens": max_tokens
+            }
+        }
 
-        if code == 200:
-            try:
-                data = json.loads(resp_text)
-                candidates = data.get("candidates", [])
-                if not candidates:
-                    return None, "Empty candidates from Gemini", False, False
-                parts = candidates[0].get("content", {}).get("parts", [])
-                if not parts:
-                    return None, "No text parts in Gemini response", False, False
-                out_text = parts[0].get("text", "")
-                if not out_text:
-                    return None, "Empty text in Gemini response", False, False
-                return strip_markdown_fences(out_text), None, False, False
-            except Exception as e:
-                return None, f"Unparseable Gemini response: {e}", False, False
+        # At most 1 retry for 5xx or timeout
+        max_tries = 2
+        for attempt in range(max_tries):
+            code, resp_text, resp_headers = _http_post(url, headers, payload, timeout_tuple)
 
-        # 429 Quota / Rate Limit
-        if code == 429:
-            cooldown_sec = _parse_retry_after(resp_headers, resp_text)
-            _GEMINI_STATE.record_cooldown(cooldown_sec, resp_text)
-            return None, f"Gemini 429 quota/rate limit (cooldown {int(cooldown_sec)}s)", True, False
+            if code == 200:
+                try:
+                    data = json.loads(resp_text)
+                    candidates = data.get("candidates", [])
+                    if not candidates:
+                        last_err = "Empty candidates from Gemini"
+                        break
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if not parts:
+                        last_err = "No text parts in Gemini response"
+                        break
+                    out_text = parts[0].get("text", "")
+                    if not out_text:
+                        last_err = "Empty text in Gemini response"
+                        break
+                    return strip_markdown_fences(out_text), None, False, False
+                except Exception as e:
+                    last_err = f"Unparseable Gemini response: {e}"
+                    break
 
-        # 401 / 403 Authentication error
-        if code in (401, 403):
-            _GEMINI_STATE.record_auth_error(resp_text)
-            return None, f"Gemini auth error {code}", False, True
+            # 429 Quota / Rate Limit (account level)
+            if code == 429:
+                cooldown_sec = _parse_retry_after(resp_headers, resp_text)
+                _GEMINI_STATE.record_cooldown(cooldown_sec, resp_text)
+                return None, f"Gemini 429 quota/rate limit (cooldown {int(cooldown_sec)}s)", True, False
 
-        # Retryable: 5xx or timeout (408 or code==0)
-        is_retryable = (code >= 500 and code < 600) or code in (0, 408)
-        if is_retryable and attempt < max_tries - 1:
-            time.sleep(0.5)
-            continue
+            # 401 / 403 Authentication error (key level)
+            if code in (401, 403):
+                _GEMINI_STATE.record_auth_error(resp_text)
+                return None, f"Gemini auth error {code}", False, True
 
-        return None, f"Gemini HTTP {code}: {resp_text[:100]}", False, False
+            # 404 Model Not Found / 400 unsupported -> try next model in cascade
+            is_model_err = code in (404, 400) and any(kw in resp_text.lower() for kw in ["not found", "not supported", "models/", "unsupported", "invalid argument"])
+            if is_model_err:
+                last_err = f"Gemini model {model} not found/supported ({code})"
+                break
 
-    return None, "Gemini failed after retries", False, False
+            # Retryable: 5xx or timeout (408 or code==0)
+            is_retryable = (code >= 500 and code < 600) or code in (0, 408)
+            if is_retryable and attempt < max_tries - 1:
+                time.sleep(0.5)
+                continue
+
+            last_err = f"Gemini HTTP {code}: {resp_text[:100]}"
+            if is_retryable:
+                return None, last_err, False, False
+            break
+
+    return None, last_err or "Gemini failed after retries", False, False
 
 
 def _call_groq(system: str, prompt: str, kind: str, max_tokens: int) -> Tuple[Optional[str], Optional[str], bool, bool]:
     """
     Call Groq OpenAI-compatible chat completions API.
+    Cascades through models: llama-3.1-8b-instant -> llama3-8b-8192.
     Returns (result_text, error_message, is_cooldown_error, is_auth_error).
     """
     key = get_groq_key()
@@ -348,63 +389,78 @@ def _call_groq(system: str, prompt: str, kind: str, max_tokens: int) -> Tuple[Op
     if not avail:
         return None, f"Groq unavailable: {reason}", False, False
 
-    model = get_groq_model()
+    models = get_groq_models()
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {key}",
     }
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": f"{SYSTEM_SAFETY_PREFIX}\n\n{system}".strip()},
-            {"role": "user", "content": prompt},
-        ],
-        "response_format": {"type": "json_object"},
-        "max_tokens": max_tokens,
-    }
-
     read_timeout = 25.0 if kind == "heal" else 8.0
     timeout_tuple = (3.0, read_timeout)
 
-    # At most 1 retry for 5xx or timeout
-    max_tries = 2
-    for attempt in range(max_tries):
-        code, resp_text, resp_headers = _http_post(url, headers, payload, timeout_tuple)
+    last_err = ""
+    for model in models:
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": f"{SYSTEM_SAFETY_PREFIX}\n\n{system}".strip()},
+                {"role": "user", "content": prompt},
+            ],
+            "response_format": {"type": "json_object"},
+            "max_tokens": max_tokens,
+        }
 
-        if code == 200:
-            try:
-                data = json.loads(resp_text)
-                choices = data.get("choices", [])
-                if not choices:
-                    return None, "Empty choices from Groq", False, False
-                out_text = choices[0].get("message", {}).get("content", "")
-                if not out_text:
-                    return None, "Empty content in Groq response", False, False
-                return strip_markdown_fences(out_text), None, False, False
-            except Exception as e:
-                return None, f"Unparseable Groq response: {e}", False, False
+        # At most 1 retry for 5xx or timeout
+        max_tries = 2
+        for attempt in range(max_tries):
+            code, resp_text, resp_headers = _http_post(url, headers, payload, timeout_tuple)
 
-        # 429 Quota / Rate Limit
-        if code == 429:
-            cooldown_sec = _parse_retry_after(resp_headers, resp_text)
-            _GROQ_STATE.record_cooldown(cooldown_sec, resp_text)
-            return None, f"Groq 429 quota/rate limit (cooldown {int(cooldown_sec)}s)", True, False
+            if code == 200:
+                try:
+                    data = json.loads(resp_text)
+                    choices = data.get("choices", [])
+                    if not choices:
+                        last_err = "Empty choices from Groq"
+                        break
+                    msg = choices[0].get("message", {})
+                    out_text = msg.get("content", "")
+                    if not out_text:
+                        last_err = "Empty content in Groq response"
+                        break
+                    return strip_markdown_fences(out_text), None, False, False
+                except Exception as e:
+                    last_err = f"Unparseable Groq response: {e}"
+                    break
 
-        # 401 / 403 Authentication error
-        if code in (401, 403):
-            _GROQ_STATE.record_auth_error(resp_text)
-            return None, f"Groq auth error {code}", False, True
+            # 429 Quota / Rate Limit
+            if code == 429:
+                cooldown_sec = _parse_retry_after(resp_headers, resp_text)
+                _GROQ_STATE.record_cooldown(cooldown_sec, resp_text)
+                return None, f"Groq 429 quota/rate limit (cooldown {int(cooldown_sec)}s)", True, False
 
-        # Retryable: 5xx or timeout (408 or code==0)
-        is_retryable = (code >= 500 and code < 600) or code in (0, 408)
-        if is_retryable and attempt < max_tries - 1:
-            time.sleep(0.5)
-            continue
+            # 401 / 403 Authentication error
+            if code in (401, 403):
+                _GROQ_STATE.record_auth_error(resp_text)
+                return None, f"Groq auth error {code}", False, True
 
-        return None, f"Groq HTTP {code}: {resp_text[:100]}", False, False
+            # 404 Model Not Found / 400 decommissioned -> try next model in cascade
+            is_model_err = code in (404, 400) and any(kw in resp_text.lower() for kw in ["model", "not found", "decommissioned", "invalid_request_error"])
+            if is_model_err:
+                last_err = f"Groq model {model} not found ({code})"
+                break
 
-    return None, "Groq failed after retries", False, False
+            # Retryable: 5xx or timeout (408 or code==0)
+            is_retryable = (code >= 500 and code < 600) or code in (0, 408)
+            if is_retryable and attempt < max_tries - 1:
+                time.sleep(0.5)
+                continue
+
+            last_err = f"Groq HTTP {code}: {resp_text[:100]}"
+            if is_retryable:
+                return None, last_err, False, False
+            break
+
+    return None, last_err or "Groq failed after retries", False, False
 
 
 # ── Main API Entry Point ──────────────────────────────────────────────────────
