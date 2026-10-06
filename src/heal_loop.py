@@ -238,33 +238,11 @@ class HealWorker(QThread):
 
 
     def run(self):
-        project_dir = os.path.dirname(os.path.abspath(self.file_path))
-        main_tracker = None
-        if HAS_CODECARBON:
-            try:
-                main_tracker = EmissionsTracker(
-                    project_name="self_healing_compiler",
-                    measure_power_secs=1,
-                    log_level="error",
-                    save_to_file=True,
-                    output_dir=project_dir,
-                    output_file="emissions.csv"
-                )
-                main_tracker.start()
-            except Exception:
-                main_tracker = None
-
         try:
             telemetry = self._heal()
             self.telemetry_ready.emit(telemetry)
         except Exception as exc:
             self.error_signal.emit(str(exc))
-        finally:
-            if main_tracker:
-                try:
-                    main_tracker.stop()
-                except:
-                    pass
 
     def _attach_failure_suggestion(self, history: list[dict], error: dict, source: str) -> None:
         if not error:
@@ -272,183 +250,69 @@ class HealWorker(QThread):
         error["suggestion"] = suggest_failed_heal(error, source, history)
 
     def _heal(self) -> list[dict]:
-        history = []
-        telemetry = []
-        seen_errors = set()
-        project_dir = os.path.dirname(os.path.abspath(self.file_path))
-
-        # Read current source
-        with open(self.file_path, "r", encoding="utf-8") as f:
-            source = f.read()
-        original_source = source
-
-        if self.hint:
-            history.append({"type": "hint", "text": self.hint})
-
         # 1. Back up the original file before any modification
         self.last_backup_path = create_heal_backup(self.file_path)
         if self.last_backup_path:
             self.backup_created.emit(self.last_backup_path)
 
-        # 2. Check initial compilation
-        errors, raw_stderr = _compile(self.file_path)
-        pre_errors = _pre_scan(source)
-        all_errors = pre_errors + errors
+        # Read current source
+        with open(self.file_path, "r", encoding="utf-8") as f:
+            source = f.read()
 
-        if not all_errors:
-            self.compile_clean.emit("Already clean")
-            return telemetry
+        from heal_engine import heal_until_clean
 
-        # 3. AI heal attempt if enabled
-        if self.enable_ai:
-            lines = original_source.splitlines()
-            if len(lines) > 300:
-                self.info_message.emit(f"AI heal skipped: File too large ({len(lines)} lines > 300). Using offline fallback.")
-            else:
-                self.status_update.emit("STATUS: ● AI HEALING…")
-                try:
-                    from ai_healer import attempt_ai_heal
-                    ai_code, provider, changes, status_desc = attempt_ai_heal(original_source, all_errors)
-                    if ai_code:
-                        with open(self.file_path, "w", encoding="utf-8") as f:
-                            f.write(ai_code)
-                        # Verify final compile with g++ directly
-                        verify_errors, _ = _compile(self.file_path)
-                        if not verify_errors:
-                            provider_title = provider.capitalize() if provider else "AI"
-                            heal_label = f"Healed by AI ({provider_title})"
-                            diff = compute_diff(original_source, ai_code)
-                            diff_html = format_diff_html(diff) if has_changes(diff) else "<i>No visible changes.</i>"
-                            self.diff_ready.emit(1, diff_html, heal_label)
-                            fixed_line_nos = [d.line_no_new for d in diff if d.kind == "+" and d.line_no_new is not None]
-                            self.lines_fixed.emit(fixed_line_nos)
-                            self.compile_clean.emit(heal_label)
-                            return telemetry
-                        else:
-                            # Revert back to original source before offline fallback
-                            with open(self.file_path, "w", encoding="utf-8") as f:
-                                f.write(original_source)
-                            self.info_message.emit("AI heal produced non-compiling code. Falling back to offline rules.")
-                    else:
-                        self.info_message.emit(f"{status_desc}. Falling back to offline rules.")
-                except Exception as exc:
-                    with open(self.file_path, "w", encoding="utf-8") as f:
-                        f.write(original_source)
-                    self.info_message.emit(f"AI heal error: {exc}. Falling back to offline rules.")
+        def on_event(ev_type: str, data: dict):
+            if ev_type == "status_update":
+                self.status_update.emit(data.get("text", ""))
+            elif ev_type == "attempt_started":
+                self.attempt_started.emit(data.get("attempt", 1), data.get("target", {}))
+            elif ev_type == "diff_ready":
+                self.diff_ready.emit(data.get("attempt", 1), data.get("diff_html", ""), data.get("label", ""))
+            elif ev_type == "lines_fixed":
+                self.lines_fixed.emit(data.get("lines", []))
+            elif ev_type == "info_message":
+                self.info_message.emit(data.get("text", ""))
 
-        # 4. Offline fallback rule-based heal loop on ORIGINAL code
-        self.status_update.emit("STATUS: ● HEALING…")
-        source = original_source
+        result = heal_until_clean(
+            source=source,
+            classifier=self.classifier,
+            hint=self.hint or "",
+            use_ai=self.enable_ai,
+            on_event=on_event,
+        )
+
+        # Write final code back to file
         with open(self.file_path, "w", encoding="utf-8") as f:
-            f.write(source)
+            f.write(result.code)
 
-        for attempt in range(1, MAX_ATTEMPTS + 1):
-            attempt_start_time = time.time()
-            attempt_tracker = None
-            if HAS_CODECARBON:
-                try:
-                    attempt_tracker = EmissionsTracker(
-                        project_name="self_healing_compiler",
-                        measure_power_secs=1,
-                        log_level="error",
-                        save_to_file=True,
-                        output_dir=project_dir,
-                        output_file="emissions.csv"
-                    )
-                    attempt_tracker.start()
-                except:
-                    attempt_tracker = None
-
-            # 1. Compile
-            errors, raw_stderr = _compile(self.file_path)
-            pre_errors = _pre_scan(source)
-            all_errors = pre_errors + errors
-
-            if not all_errors:
-                if attempt_tracker: attempt_tracker.stop()
-                self.compile_clean.emit("Healed by offline rules")
-                return telemetry
-
-            # 2. Classify
-            _classify_errors(all_errors, self.classifier)
-
-            # 3. Pick target
-            target = _pick_fix_target(all_errors)
-            if target is None:
-                if attempt_tracker: attempt_tracker.stop()
-                hard_errors = [e for e in all_errors if e["type"] == "error"]
-                if not hard_errors:
-                    self.compile_clean.emit("Healed by offline rules")
-                    return telemetry
-                history.append({
-                    "attempt": attempt, "error": hard_errors[0], "patch": None, "reason": "unfixable_category"
-                })
-                self._attach_failure_suggestion(history, hard_errors[0], source)
-                self.give_up.emit(history)
-                return telemetry
-
-            self.attempt_started.emit(attempt, target)
-
-            line_no = target.get("line")
-            lines = source.splitlines()
-            line_text = lines[line_no - 1].strip() if line_no and 1 <= line_no <= len(lines) else ""
-            error_key = (target.get("message"), line_no, line_text)
-            if error_key in seen_errors:
-                if attempt_tracker: attempt_tracker.stop()
-                self._attach_failure_suggestion(history, target, source)
-                self.give_up.emit(history)
-                return telemetry
-            seen_errors.add(error_key)
-
-            # 4. Patch
-            patched = attempt_fix(source, target)
-            if patched is None or patched == source:
-                if attempt_tracker: attempt_tracker.stop()
-                history.append({
-                    "attempt": attempt, "error": target, "patch": None, "reason": "no_patch_available"
-                })
-                if attempt == MAX_ATTEMPTS:
-                    self._attach_failure_suggestion(history, target, source)
-                    self.give_up.emit(history)
-                    return telemetry
-                continue
-
-            # 5. Diff & Notify
-            diff = compute_diff(source, patched)
-            diff_html = format_diff_html(diff) if has_changes(diff) else "<i>No visible changes.</i>"
-            self.diff_ready.emit(attempt, diff_html, "Healed by offline rules")
-
-            fixed_line_nos = [d.line_no_new for d in diff if d.kind == "+" and d.line_no_new is not None]
-            self.lines_fixed.emit(fixed_line_nos)
-
-            history.append({
-                "attempt": attempt, "error": target, "patch": patched, "diff_html": diff_html
-            })
-
-            # 6. Save
-            with open(self.file_path, "w", encoding="utf-8") as f:
-                f.write(patched)
-            source = patched
-
-            # Telemetry logic
-            attempt_duration = time.time() - attempt_start_time
-            attempt_emissions = 0.0
-            if attempt_tracker:
-                try:
-                    attempt_emissions = attempt_tracker.stop()
-                except:
-                    pass
-            
+        telemetry = []
+        for rnd in result.rounds:
             telemetry.append({
-                "attempt": attempt,
-                "category": target.get("category", "unknown"),
-                "success": True,
-                "duration": round(attempt_duration, 3),
-                "emissions": attempt_emissions
+                "attempt": rnd.get("round_no", 1),
+                "method": rnd.get("method", ""),
+                "category": "auto_heal",
+                "duration": rnd.get("seconds", 0.0),
+                "emissions": 0.0,
+                "success": rnd.get("errors_after", 0) == 0,
             })
 
-        # Exhaust
-        last_error = next((item.get("error") for item in reversed(history) if item.get("error")), None)
-        self._attach_failure_suggestion(history, last_error, source)
-        self.give_up.emit(history)
+        if result.clean:
+            self.compile_clean.emit(result.message)
+        else:
+            history = []
+            if self.hint:
+                history.append({"type": "hint", "text": self.hint})
+            for att in result.attempts:
+                history.append(att)
+            last_err = None
+            for att in reversed(result.attempts):
+                if att.get("target_error"):
+                    last_err = att["target_error"]
+                    break
+                elif att.get("error"):
+                    last_err = att["error"]
+                    break
+            self._attach_failure_suggestion(history, last_err, result.code)
+            self.give_up.emit(history)
+
         return telemetry

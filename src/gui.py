@@ -2496,6 +2496,9 @@ class AppGUI(QMainWindow):
         if not HEALER_AVAILABLE:
             QMessageBox.warning(self, "Auto-Heal", "heal_loop.py not found.")
             return
+        if getattr(self, "heal_worker", None) is not None and self.heal_worker.isRunning():
+            QMessageBox.warning(self, "Auto-Heal", "Auto-heal is already in progress.")
+            return
         if not self.save_file():
             return
 
@@ -2521,6 +2524,7 @@ class AppGUI(QMainWindow):
 
         enable_ai = self.is_ai_enabled()
         self.heal_worker = HealWorker(self.file_path, classifier, enable_ai=enable_ai)
+        self.heal_worker.finished.connect(lambda: self.btn_heal.setEnabled(True))
         self.heal_worker.attempt_started.connect(self._on_heal_attempt)
         self.heal_worker.diff_ready.connect(self._on_heal_diff)
         self.heal_worker.compile_clean.connect(self._on_heal_success)
@@ -2643,8 +2647,14 @@ class AppGUI(QMainWindow):
         elif result == UserGuidanceDialog.GIVE_HINT:
             hint = dlg.hint_text()
             if hint:
-                classifier = self.error_classifier or _KeywordClassifier()
+                if not self.is_ai_enabled():
+                    QMessageBox.information(self, "AI Assist Required", "hints need AI assist")
+                    return
+                classifier = self.error_classifier
+                if classifier is None:
+                    classifier = _KeywordClassifier()
                 self.heal_worker = HealWorker(self.file_path, classifier, hint=hint, enable_ai=self.is_ai_enabled())
+                self.heal_worker.finished.connect(lambda: self.btn_heal.setEnabled(True))
                 self.heal_worker.attempt_started.connect(self._on_heal_attempt)
                 self.heal_worker.diff_ready.connect(self._on_heal_diff)
                 self.heal_worker.compile_clean.connect(self._on_heal_success)

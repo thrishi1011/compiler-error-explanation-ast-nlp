@@ -16,7 +16,7 @@ import tempfile
 import warnings
 import dataclasses
 import subprocess
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 # Suppress sklearn version mismatch warnings (model trained on older sklearn)
@@ -386,7 +386,8 @@ HTML_PAGE = """<!DOCTYPE html>
     <div class="toolbar">
       <button class="btn-secondary" onclick="loadSampleCode()">Reset Sample</button>
       <button class="btn-primary" onclick="compileCode()">Compile & Explain</button>
-      <button class="btn-success" onclick="autoHealCode()">Auto-Heal Code</button>
+      <button id="btn-auto-heal" class="btn-success" onclick="autoHealCode()">Auto-Heal Code</button>
+      <button id="btn-undo-heal" class="btn-secondary" onclick="undoHeal()" disabled style="opacity: 0.5;">↺ Undo</button>
       <button class="btn-secondary" onclick="runBinary()">Run Binary</button>
     </div>
   </header>
@@ -620,52 +621,109 @@ int main() {
       container.innerHTML = html;
     }
 
+    let preHealCode = '';
+
+    function undoHeal() {
+      if (!preHealCode) return;
+      document.getElementById('code-editor').value = preHealCode;
+      updateLineNumbers();
+      const undoBtn = document.getElementById('btn-undo-heal');
+      if (undoBtn) {
+        undoBtn.disabled = true;
+        undoBtn.style.opacity = '0.5';
+      }
+      document.getElementById('editor-status').textContent = 'Restored pre-heal source code';
+    }
+
     async function autoHealCode() {
       const code = document.getElementById('code-editor').value;
-      document.getElementById('editor-status').textContent = 'Auto-healing in progress...';
-      
+      const healBtn = document.getElementById('btn-auto-heal');
+      const undoBtn = document.getElementById('btn-undo-heal');
+      if (healBtn) healBtn.disabled = true;
+      document.getElementById('editor-status').textContent = 'Auto-healing in progress (up to 5 rounds)…';
+
+      preHealCode = code;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
+
       try {
         const res = await fetch('/api/heal', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code })
+          body: JSON.stringify({ code }),
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error('Server error (' + res.status + '): ' + errText);
+        }
         const data = await res.json();
-        
+
         // Update code editor with patched version
-        document.getElementById('code-editor').value = data.healed_code;
-        updateLineNumbers();
-        
+        if (data.healed_code) {
+          document.getElementById('code-editor').value = data.healed_code;
+          updateLineNumbers();
+        }
+
+        if (undoBtn) {
+          undoBtn.disabled = false;
+          undoBtn.style.opacity = '1.0';
+        }
+
         renderHealingHistory(data);
-        updateTelemetry(data.total_duration, data.total_emissions, data.attempts.length);
-        document.getElementById('editor-status').textContent = data.clean ? 'Auto-Healing Completed Successfully' : 'Heal Loop Finished';
+        const roundCount = (data.rounds || []).length || (data.attempts || []).length;
+        updateTelemetry(data.total_duration || 0, data.total_emissions || 0, roundCount);
+        document.getElementById('editor-status').textContent = data.clean ? 'Auto-Healing Completed Successfully ✅' : (data.message || 'Heal Loop Finished');
         switchTab('healing');
       } catch (err) {
-        alert('Heal request failed: ' + err);
-        document.getElementById('editor-status').textContent = 'Error';
+        clearTimeout(timeoutId);
+        const errMsg = err.name === 'AbortError' ? 'Auto-heal timed out after 120 seconds' : ('Heal request failed: ' + err.message);
+        alert(errMsg);
+        document.getElementById('editor-status').textContent = 'Error: ' + errMsg;
+      } finally {
+        if (healBtn) healBtn.disabled = false;
       }
     }
 
     function renderHealingHistory(data) {
       const container = document.getElementById('healing-view');
+      const rounds = data.rounds || [];
+      const attempts = data.attempts || [];
       let html = `
         <div class="card ${data.clean ? 'success-card' : 'warning-card'}">
-          <div class="card-title">${data.clean ? 'Auto-Healing Successful ✅' : 'Healing Loop Finished'}</div>
-          <div class="section-body">Executed <b>${data.attempts.length}</b> repair iterations. Patched code updated in editor.</div>
+          <div class="card-title">${data.clean ? 'Auto-Healing Successful ✅' : 'Healing Finished'}</div>
+          <div class="section-body">${escapeHtml(data.message || 'Healing finished.')}</div>
         </div>
       `;
 
-      data.attempts.forEach(att => {
-        html += `
-          <div class="card">
-            <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
-              <b>Attempt ${att.attempt_no}: ${escapeHtml(att.target_error ? att.target_error.message : 'Fix applied')}</b>
-              <span class="badge badge-category">${att.target_error ? att.target_error.category : ''}</span>
+      if (rounds.length > 0) {
+        html += `<div style="font-weight:600; margin:12px 0 6px 0; color:#94a3b8; font-size:12px;">HEAL ROUNDS (${rounds.length})</div>`;
+        rounds.forEach(r => {
+          html += `
+            <div class="card">
+              <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
+                <b>Round ${r.round_no}: ${escapeHtml(r.method || 'repair')}</b>
+                <span class="badge badge-category">${r.errors_before} → ${r.errors_after} errors (${r.seconds}s)</span>
+              </div>
+              ${r.diff_html ? `<div class="diff-container">${r.diff_html}</div>` : '<div class="section-body">No diff for this round.</div>'}
             </div>
-            ${att.diff_html ? `<div class="diff-container">${att.diff_html}</div>` : '<div class="section-body">No diff for this step.</div>'}
-          </div>
-        `;
-      });
+          `;
+        });
+      } else if (attempts.length > 0) {
+        attempts.forEach(att => {
+          html += `
+            <div class="card">
+              <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
+                <b>Attempt ${att.attempt_no}: ${escapeHtml(att.target_error ? att.target_error.message : 'Fix applied')}</b>
+                <span class="badge badge-category">${att.target_error ? att.target_error.category : ''}</span>
+              </div>
+              ${att.diff_html ? `<div class="diff-container">${att.diff_html}</div>` : '<div class="section-body">No diff for this step.</div>'}
+            </div>
+          `;
+        });
+      }
+
       container.innerHTML = html;
     }
 
@@ -765,16 +823,35 @@ class CompilerWebHandler(BaseHTTPRequestHandler):
         # Silence verbose request logging
         pass
 
+    def _is_valid_origin_or_host(self) -> bool:
+        port = getattr(self.server, "server_port", 8000)
+        valid_hosts = {"localhost", "127.0.0.1", f"localhost:{port}", f"127.0.0.1:{port}"}
+        host = self.headers.get("Host", "").strip().lower()
+        if host and host not in valid_hosts:
+            return False
+
+        origin = self.headers.get("Origin", "").strip()
+        if origin:
+            p = urlparse(origin)
+            if p.hostname not in {"localhost", "127.0.0.1"}:
+                return False
+            if p.port is not None and p.port != port:
+                return False
+
+        return True
+
     def _send_json(self, data, status=200):
         body = json.dumps(data).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self):
+        if not self._is_valid_origin_or_host():
+            self.send_error(403, "Forbidden: Invalid Host or Origin")
+            return
         parsed = urlparse(self.path)
         if parsed.path == "/" or parsed.path == "/index.html":
             body = HTML_PAGE.encode("utf-8")
@@ -787,10 +864,23 @@ class CompilerWebHandler(BaseHTTPRequestHandler):
             self.send_error(404, "Not Found")
 
     def do_POST(self):
+        if not self._is_valid_origin_or_host():
+            self.send_error(403, "Forbidden: Invalid Host or Origin")
+            return
+
+        content_type = self.headers.get("Content-Type", "")
+        if not content_type.startswith("application/json"):
+            self.send_error(415, "Unsupported Media Type: application/json required")
+            return
+
         parsed = urlparse(self.path)
         length = int(self.headers.get("Content-Length", 0))
         raw_body = self.rfile.read(length).decode("utf-8")
-        req_data = json.loads(raw_body) if raw_body else {}
+        try:
+            req_data = json.loads(raw_body) if raw_body else {}
+        except Exception:
+            self.send_error(400, "Bad Request: Malformed JSON")
+            return
         code = req_data.get("code", "")
 
         if parsed.path == "/api/compile":
@@ -862,80 +952,19 @@ class CompilerWebHandler(BaseHTTPRequestHandler):
 
 
     def handle_heal(self, code: str):
-        start_time = time.time()
-        with tempfile.NamedTemporaryFile("w", suffix=".cpp", delete=False, encoding="utf-8") as tmp:
-            tmp_path = tmp.name
-            tmp.write(code)
-
-        current_source = code
-        attempts = []
-        clean = False
-        max_attempts = 10
-        seen_errors = set()
-
-        try:
-            for attempt_no in range(1, max_attempts + 1):
-                # 1. Compile
-                raw_errors = run_cpp_compiler(tmp_path)
-                if not raw_errors:
-                    clean = True
-                    break
-
-                errors = parse_errors(raw_errors)
-                for e in errors:
-                    enrich_error(e)
-
-                # Pick fixable target
-                target = None
-                for issue in errors:
-                    if issue.category not in UNFIXABLE_CATEGORIES:
-                        target = issue
-                        break
-
-                if target is None:
-                    break
-
-                err_dict = target.to_dict()
-                err_key = target.message
-                if err_key in seen_errors:
-                    break
-                seen_errors.add(err_key)
-
-                # Patch
-                patched = attempt_fix(current_source, err_dict)
-                if patched is None or patched == current_source:
-                    continue
-
-                diff = compute_diff(current_source, patched)
-                diff_html = format_diff_html(diff) if has_changes(diff) else "No visible diff"
-
-                attempts.append({
-                    "attempt_no": attempt_no,
-                    "target_error": err_dict,
-                    "diff_html": diff_html
-                })
-
-                current_source = patched
-                with open(tmp_path, "w", encoding="utf-8") as f:
-                    f.write(patched)
-
-            # Final verify compile — run_cpp_compiler returns string or None
-            final_errors = run_cpp_compiler(tmp_path)
-            clean = not final_errors  # empty string or None = clean
-
-            total_duration = time.time() - start_time
-            self._send_json({
-                "clean": clean,
-                "healed_code": current_source,
-                "attempts": attempts,
-                "total_duration": total_duration,
-                "total_emissions": 0.000045 * len(attempts)
-            })
-        finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+        from heal_engine import heal_until_clean
+        result = heal_until_clean(
+            source=code,
+            classifier=classifier,
+            use_ai=True,
+        )
+        self._send_json(result.to_dict())
 
     def handle_run(self, code: str):
+        if not _sanitize_code(code):
+            self._send_json({"output": "Execution blocked: Security check failed (contains forbidden calls or system commands)."})
+            return
+
         with tempfile.NamedTemporaryFile("w", suffix=".cpp", delete=False, encoding="utf-8") as tmp:
             tmp_path = tmp.name
             tmp.write(code)
@@ -948,8 +977,8 @@ class CompilerWebHandler(BaseHTTPRequestHandler):
                 self._send_json({"output": "Compilation failed:\n" + build_res.stderr})
                 return
 
-            # Run
-            run_res = subprocess.run([exe_path], capture_output=True, text=True, timeout=5)
+            # Run with stdin=subprocess.DEVNULL
+            run_res = subprocess.run([exe_path], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=5)
             output = run_res.stdout
             if run_res.stderr:
                 output += "\n[stderr]:\n" + run_res.stderr
@@ -965,7 +994,7 @@ class CompilerWebHandler(BaseHTTPRequestHandler):
 
 def run_server(port=8000):
     server_address = ("127.0.0.1", port)
-    httpd = HTTPServer(server_address, CompilerWebHandler)
+    httpd = ThreadingHTTPServer(server_address, CompilerWebHandler)
     print(f"Server running at http://localhost:{port}/")
     try:
         httpd.serve_forever()

@@ -70,16 +70,16 @@ def validate_ai_code(original_source: str, fixed_code: str) -> Tuple[bool, str, 
     if orig_has_main and not fixed_has_main:
         return False, "AI code removed main() function", ""
 
-    # 5. Line change ratio <= 40%
+    # 5. Line change ratio: allow at least max(40% of lines, 10 lines) to change
     orig_lines = original_source.splitlines()
     fixed_lines = fixed_code.splitlines()
     diff = list(difflib.ndiff(orig_lines, fixed_lines))
     changes = sum(1 for d in diff if d.startswith('+ ') or d.startswith('- '))
-    change_ratio = changes / max(1, len(orig_lines))
-    if change_ratio > 0.40:
-        return False, f"Too many lines changed ({change_ratio:.1%} > 40%)", ""
+    max_allowed = max(int(len(orig_lines) * 0.40), 10)
+    if changes > max_allowed:
+        return False, f"Too many lines changed ({changes} > {max_allowed} max allowed)", ""
 
-    # 6. Compile validation with g++
+    # 6. Compile validation with g++: accept when 0 errors (warnings allowed)
     fd, tmp_path = tempfile.mkstemp(suffix=".cpp")
     try:
         with open(tmp_path, "w", encoding="utf-8") as f:
@@ -90,14 +90,9 @@ def validate_ai_code(original_source: str, fixed_code: str) -> Tuple[bool, str, 
             stderr=subprocess.PIPE,
             text=True,
         )
-        has_errors = any(": error:" in l or ": fatal error:" in l for l in res.stderr.splitlines())
-        if res.returncode != 0 or has_errors:
-            first_err = ""
-            for l in res.stderr.splitlines():
-                if ": error:" in l:
-                    first_err = l.strip()
-                    break
-            return False, f"Does not compile: {first_err}", res.stderr
+        errors = [l.strip() for l in res.stderr.splitlines() if ": error:" in l or ": fatal error:" in l]
+        if errors:
+            return False, f"Does not compile: {errors[0]}", res.stderr
     finally:
         if os.path.exists(tmp_path):
             try:
@@ -130,9 +125,13 @@ def extract_ai_heal_code(raw_text: str) -> Tuple[Optional[str], List[str]]:
     return None, []
 
 
+import hashlib
+
+
 def attempt_ai_heal(
     source: str,
     compiler_errors: list,
+    hint: str = "",
     max_tokens: int = 3000,
 ) -> Tuple[Optional[str], Optional[str], List[str], str]:
     """
@@ -144,6 +143,8 @@ def attempt_ai_heal(
     if len(lines) > 300:
         return None, None, [], f"File too large for AI heal ({len(lines)} lines > 300), using offline fallback"
 
+    code_hash = hashlib.sha256(source.encode("utf-8")).hexdigest()
+
     # Build initial prompt
     err_msgs = []
     for e in compiler_errors[:10]:
@@ -152,20 +153,25 @@ def attempt_ai_heal(
         err_msgs.append(f"Line {line}: {msg}")
     err_text = "\n".join(err_msgs) if err_msgs else "Compilation failed"
 
+    hint_section = f"USER GUIDANCE / HINT: {hint}\n\n" if hint else ""
+
     prompt = (
+        f"{hint_section}"
         "Please repair the compile errors in this C++ program with minimal edits.\n\n"
         f"COMPILER ERRORS:\n{err_text}\n\n"
         f"SOURCE CODE:\n{source}\n\n"
         "Return a JSON object with 'code' and 'changes'."
     )
 
-    # First attempt
+    # First attempt (uses cached validated heal if available, bypasses on retry)
     res = llm_client.ask(
         system=AI_HEAL_SYSTEM_PROMPT,
         prompt=prompt,
         kind="heal",
         max_tokens=max_tokens,
         code_to_check=source,
+        is_retry=False,
+        code_hash=code_hash,
     )
 
     if res.text is None:
@@ -175,10 +181,12 @@ def attempt_ai_heal(
     is_valid, reason, gpp_stderr = validate_ai_code(source, candidate_code) if candidate_code else (False, "Invalid JSON from AI", "")
 
     if is_valid and candidate_code:
+        llm_client.cache_validated_heal(code_hash, res)
         return candidate_code, res.provider, changes, f"Healed by AI ({res.provider.capitalize()})"
 
-    # Retry ONCE with compiler feedback if validation failed due to compile or parse
+    # Retry ONCE with compiler feedback if validation failed
     retry_prompt = (
+        f"{hint_section}"
         f"Your previous fix failed validation: {reason}.\n"
     )
     if gpp_stderr:
@@ -194,6 +202,8 @@ def attempt_ai_heal(
         kind="heal",
         max_tokens=max_tokens,
         code_to_check=source,
+        is_retry=True,
+        code_hash=code_hash,
     )
 
     if retry_res.text is not None:
@@ -201,6 +211,7 @@ def attempt_ai_heal(
         if retry_code:
             r_valid, r_reason, _ = validate_ai_code(source, retry_code)
             if r_valid:
+                llm_client.cache_validated_heal(code_hash, retry_res)
                 return retry_code, retry_res.provider, retry_changes, f"Healed by AI ({retry_res.provider.capitalize()})"
             reason = r_reason
 

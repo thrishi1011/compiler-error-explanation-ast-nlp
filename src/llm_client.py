@@ -113,17 +113,69 @@ class ProviderState:
         self.last_error = reason
 
 
+class TokenBucket:
+    def __init__(self, provider: str, default_rpm: int):
+        self.provider = provider
+        self.default_rpm = default_rpm
+        self.last_refill = time.time()
+        self.tokens = float(self._get_rpm())
+
+    def _get_rpm(self) -> int:
+        env_var = f"{self.provider.upper()}_RPM"
+        val = os.environ.get(env_var, str(self.default_rpm)).strip()
+        try:
+            return max(1, int(val))
+        except ValueError:
+            return self.default_rpm
+
+    def _refill(self):
+        now = time.time()
+        rpm = self._get_rpm()
+        elapsed = now - self.last_refill
+        self.last_refill = now
+        self.tokens = min(float(rpm), self.tokens + elapsed * (rpm / 60.0))
+
+    def consume(self, kind: str) -> Tuple[bool, str]:
+        self._refill()
+        rpm = self._get_rpm()
+        # Reserve capacity for heal: skip AI explanation when budget is low, never heal
+        reserved = min(2.0, rpm * 0.25)
+        if kind != "heal" and self.tokens <= reserved:
+            return False, f"budget low ({self.tokens:.1f} <= {reserved:.1f} tokens, reserved for heal)"
+        if self.tokens >= 1.0:
+            self.tokens -= 1.0
+            return True, "ok"
+        return False, f"exhausted ({self.tokens:.1f} tokens)"
+
+
 _GEMINI_STATE = ProviderState("Gemini")
 _GROQ_STATE = ProviderState("Groq")
+_GEMINI_BUCKET = TokenBucket("gemini", 8)
+_GROQ_BUCKET = TokenBucket("groq", 20)
 _RESPONSE_CACHE: dict[str, LLMResult] = {}
+_HEAL_CACHE: dict[str, LLMResult] = {}
 
 
 def reset_client_state():
-    """Reset provider states and caches (useful for testing)."""
-    global _GEMINI_STATE, _GROQ_STATE, _RESPONSE_CACHE
+    """Reset provider states, token buckets, and caches (useful for testing)."""
+    global _GEMINI_STATE, _GROQ_STATE, _RESPONSE_CACHE, _HEAL_CACHE, _GEMINI_BUCKET, _GROQ_BUCKET
     _GEMINI_STATE = ProviderState("Gemini")
     _GROQ_STATE = ProviderState("Groq")
+    _GEMINI_BUCKET = TokenBucket("gemini", 8)
+    _GROQ_BUCKET = TokenBucket("groq", 20)
     _RESPONSE_CACHE.clear()
+    _HEAL_CACHE.clear()
+
+
+def get_cached_heal(code_hash: str) -> Optional[LLMResult]:
+    """Retrieve validated heal result by source code hash."""
+    return _HEAL_CACHE.get(code_hash)
+
+
+def cache_validated_heal(code_hash: str, res: LLMResult) -> None:
+    """Only cache heal results after they pass rigorous validation."""
+    if code_hash and res and res.text:
+        _HEAL_CACHE[code_hash] = res
 
 
 def get_gemini_key() -> str:
@@ -263,17 +315,18 @@ def _http_post(url: str, headers: dict, data_json: dict, timeout_tuple: Tuple[fl
 
 
 def _parse_retry_after(headers: dict, response_text: str) -> float:
-    """Extract cooldown duration from Retry-After header or response text."""
+    """Extract cooldown duration from Retry-After header or response text. Max 60s for per-minute limits."""
+    lowered = response_text.lower()
+    # Check for daily quota exhaustion
+    is_daily = any(kw in lowered for kw in ["per day", "daily quota", "day quota", "quota exceeded for today"])
+    if is_daily:
+        return 3600.0  # 1 hour
     if "retry-after" in headers:
         val = headers["retry-after"]
         try:
-            return float(val)
+            return min(float(val), 60.0)
         except ValueError:
             pass
-    # Check for daily quota exhaustion
-    lowered = response_text.lower()
-    if "per day" in lowered or "daily" in lowered or "day" in lowered:
-        return 3600.0  # 1 hour
     return 60.0
 
 
@@ -292,6 +345,10 @@ def _call_gemini(system: str, prompt: str, kind: str, max_tokens: int) -> Tuple[
     avail, reason = _GEMINI_STATE.is_available()
     if not avail:
         return None, f"Gemini unavailable: {reason}", False, False
+
+    bucket_ok, bucket_reason = _GEMINI_BUCKET.consume(kind)
+    if not bucket_ok:
+        return None, f"Gemini rate limit budget: {bucket_reason}", False, False
 
     models = get_gemini_models()
     read_timeout = 25.0 if kind == "heal" else 8.0
@@ -398,6 +455,10 @@ def _call_groq(system: str, prompt: str, kind: str, max_tokens: int) -> Tuple[Op
     read_timeout = 25.0 if kind == "heal" else 8.0
     timeout_tuple = (3.0, read_timeout)
 
+    bucket_ok, bucket_reason = _GROQ_BUCKET.consume(kind)
+    if not bucket_ok:
+        return None, f"Groq rate limit budget: {bucket_reason}", False, False
+
     last_err = ""
     for model in models:
         payload = {
@@ -465,7 +526,15 @@ def _call_groq(system: str, prompt: str, kind: str, max_tokens: int) -> Tuple[Op
 
 # ── Main API Entry Point ──────────────────────────────────────────────────────
 
-def ask(system: str, prompt: str, kind: str = "explain", max_tokens: int = 1024, code_to_check: Optional[str] = None) -> LLMResult:
+def ask(
+    system: str,
+    prompt: str,
+    kind: str = "explain",
+    max_tokens: int = 1024,
+    code_to_check: Optional[str] = None,
+    is_retry: bool = False,
+    code_hash: Optional[str] = None,
+) -> LLMResult:
     """
     Main entry point for asking the LLM layer.
     Provider Order: Gemini -> Groq -> None.
@@ -480,10 +549,17 @@ def ask(system: str, prompt: str, kind: str = "explain", max_tokens: int = 1024,
         except Exception:
             pass
 
-    # 2. Check in-memory cache
-    cache_key = hashlib.sha256(f"{kind}:{prompt}".encode("utf-8")).hexdigest()
-    if cache_key in _RESPONSE_CACHE:
-        return _RESPONSE_CACHE[cache_key]
+    # 2. Check cache: heal responses only returned from cache if already validated by code_hash and not a retry
+    cache_key = None
+    if kind == "heal":
+        if not is_retry and code_hash:
+            cached = get_cached_heal(code_hash)
+            if cached is not None:
+                return cached
+    else:
+        cache_key = hashlib.sha256(f"{kind}:{prompt}".encode("utf-8")).hexdigest()
+        if cache_key in _RESPONSE_CACHE:
+            return _RESPONSE_CACHE[cache_key]
 
     errors_encountered = []
 
@@ -494,7 +570,8 @@ def ask(system: str, prompt: str, kind: str = "explain", max_tokens: int = 1024,
         text, err, _, _ = _call_gemini(system, prompt, kind, max_tokens)
         if text is not None:
             res = LLMResult(text, "gemini", None)
-            _RESPONSE_CACHE[cache_key] = res
+            if cache_key is not None:
+                _RESPONSE_CACHE[cache_key] = res
             return res
         if err:
             errors_encountered.append(redact_keys(f"Gemini: {err}"))
@@ -508,7 +585,8 @@ def ask(system: str, prompt: str, kind: str = "explain", max_tokens: int = 1024,
         text, err, _, _ = _call_groq(system, prompt, kind, max_tokens)
         if text is not None:
             res = LLMResult(text, "groq", None)
-            _RESPONSE_CACHE[cache_key] = res
+            if cache_key is not None:
+                _RESPONSE_CACHE[cache_key] = res
             return res
         if err:
             errors_encountered.append(redact_keys(f"Groq: {err}"))

@@ -628,11 +628,24 @@ def fix_syntax_error(source: str, error: dict) -> Optional[str]:
         or "expected ';' before" in msg
     )
     if is_semicolon_err:
+        # If compiler diagnostics indicate 'before' a token, the semicolon is on the preceding statement
+        if "before" in msg:
+            for prev_idx in range(idx - 1, -1, -1):
+                prev_line = lines[prev_idx].strip()
+                if not prev_line or prev_line.startswith("//") or prev_line.startswith("/*") or prev_line.startswith("*"):
+                    continue
+                prev_fixed = _append_missing_semicolon(lines[prev_idx])
+                if prev_fixed and prev_fixed != lines[prev_idx]:
+                    lines[prev_idx] = prev_fixed
+                    return _join(lines)
+                break
+
         semicolon_fixed = _append_missing_semicolon(line)
         if semicolon_fixed and semicolon_fixed != line:
             lines[idx] = semicolon_fixed
             return _join(lines)
-        # Semicolon may be missing on the previous statement line
+
+        # Semicolon may also be missing on the previous statement line
         for prev_idx in range(idx - 1, -1, -1):
             prev_line = lines[prev_idx].strip()
             if not prev_line or prev_line.startswith("//") or prev_line.startswith("/*") or prev_line.startswith("*"):
@@ -714,8 +727,8 @@ def fix_name_resolution(source: str, error: dict) -> Optional[str]:
 
     # 3. If symbol belongs to std (or _SYMBOL_TO_HEADER)
     if sym and (sym in _STD_SYMBOLS or sym in _SYMBOL_TO_HEADER):
-        # If 'using namespace std;' is not in source:
-        if "using namespace std;" not in source:
+        # If 'using namespace std;' is not in source (matching any whitespace format):
+        if not re.search(r'\busing\s+namespace\s+std\s*;', source):
             lines = _lines(source)
             last_inc = -1
             for i, l in enumerate(lines):
@@ -1238,3 +1251,38 @@ def attempt_fix(source: str, error: dict) -> Optional[str]:
         return fix_uninitialized_variable(source, error)
 
     return None
+
+
+def clean_duplicate_headers(source: str) -> str:
+    """
+    Remove exact duplicate #include lines and 'using namespace std;' lines,
+    preserving comments and relative line structure.
+    """
+    lines = source.splitlines(keepends=True)
+    seen_includes = set()
+    seen_using_std = False
+    cleaned = []
+
+    inc_pattern = re.compile(r'^\s*#include\s*[<"]([^>"]+)[>"]')
+    using_std_pattern = re.compile(r'^\s*using\s+namespace\s+std\s*;')
+
+    for line in lines:
+        inc_match = inc_pattern.match(line)
+        if inc_match:
+            header_name = inc_match.group(1).strip()
+            if header_name in seen_includes:
+                continue  # Skip exact duplicate include
+            seen_includes.add(header_name)
+            cleaned.append(line)
+            continue
+
+        if using_std_pattern.match(line):
+            if seen_using_std:
+                continue  # Skip duplicate using namespace std;
+            seen_using_std = True
+            cleaned.append(line)
+            continue
+
+        cleaned.append(line)
+
+    return "".join(cleaned)
