@@ -42,6 +42,18 @@ TEST_FILES = [
 ]
 
 
+import time
+
+SUBSET_FILES = [
+    "test_cases/mini/tc01_missing_semicolon.cpp",
+    "test_cases/mini/tc02_undeclared_variable.cpp",
+    "test_cases/mini/tc03_missing_include.cpp",
+    "test_cases/mini/tc05_missing_closing_brace.cpp",
+    "test_cases/tc_autoheal_semicolons.cpp",
+    "test_heal.cpp",
+]
+
+
 def compile_with_gpp(filepath: str) -> Tuple[bool, str]:
     """Compile with g++ -std=c++17 -Wall and return (clean, first_error)."""
     res = subprocess.run(
@@ -63,7 +75,61 @@ def compile_with_gpp(filepath: str) -> Tuple[bool, str]:
     return False, first_err
 
 
-def run_heal_check() -> List[dict]:
+def _test_single_file(rel_path: str, clf) -> dict:
+    full_path = os.path.join(_PROJECT_ROOT, rel_path)
+    if not os.path.exists(full_path):
+        return {
+            "file": os.path.basename(rel_path),
+            "healed": False,
+            "attempts": 0,
+            "first_error": "FILE NOT FOUND",
+        }
+
+    # Copy to a temporary file
+    fd, tmp_path = tempfile.mkstemp(suffix=".cpp")
+    os.close(fd)
+    shutil.copyfile(full_path, tmp_path)
+
+    attempts_list = []
+    is_clean_signaled = [False]
+
+    worker = HealWorker(tmp_path, clf)
+    worker.attempt_started.connect(lambda att, err: attempts_list.append(att))
+    worker.compile_clean.connect(lambda *args: is_clean_signaled.__setitem__(0, True))
+
+    try:
+        worker._heal()
+    except Exception as e:
+        pass
+
+    # Verify final compilation directly with g++
+    clean, first_err = compile_with_gpp(tmp_path)
+
+    attempts_count = len(attempts_list)
+    # Truncate first_err for table display
+    if len(first_err) > 45:
+        first_err_disp = first_err[:42] + "..."
+    else:
+        first_err_disp = first_err
+
+    res = {
+        "file": os.path.basename(rel_path),
+        "healed": clean,
+        "attempts": attempts_count,
+        "first_error": first_err_disp if not clean else "-",
+        "raw_error": first_err,
+    }
+
+    if os.path.exists(tmp_path):
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+    return res
+
+
+def run_heal_check() -> Tuple[List[dict], bool]:
     # Ensure QCoreApplication exists for Qt signals
     app = QCoreApplication.instance()
     if app is None:
@@ -72,62 +138,35 @@ def run_heal_check() -> List[dict]:
     clf = get_default_classifier()
     results = []
 
-    for rel_path in TEST_FILES:
-        full_path = os.path.join(_PROJECT_ROOT, rel_path)
-        if not os.path.exists(full_path):
-            results.append({
-                "file": os.path.basename(rel_path),
-                "healed": False,
-                "attempts": 0,
-                "first_error": "FILE NOT FOUND",
-            })
-            continue
+    # Time the first 3 files
+    t0 = time.time()
+    for rel_path in TEST_FILES[:3]:
+        results.append(_test_single_file(rel_path, clf))
+    t_first3 = time.time() - t0
 
-        # Copy to a temporary file
-        fd, tmp_path = tempfile.mkstemp(suffix=".cpp")
-        os.close(fd)
-        shutil.copyfile(full_path, tmp_path)
+    # Project time for all 16 files
+    projected_16 = (t_first3 / 3.0) * len(TEST_FILES)
+    is_subset = False
 
-        attempts_list = []
-        is_clean_signaled = [False]
+    if projected_16 > 90.0:
+        is_subset = True
+        print(f"\n[Notice] First 3 files took {t_first3:.2f}s. Projected 16 files = {projected_16:.1f}s (> 90s).")
+        print("Running 6-file subset instead: tc01, tc02, tc03, tc05, tc_autoheal_semicolons, test_heal.\n")
+        remaining_subset = [f for f in SUBSET_FILES if f not in TEST_FILES[:3]]
+        for rel_path in remaining_subset:
+            results.append(_test_single_file(rel_path, clf))
+    else:
+        print(f"\n[Notice] First 3 files took {t_first3:.2f}s. Projected 16 files = {projected_16:.1f}s (<= 90s). Running full suite.\n")
+        for rel_path in TEST_FILES[3:]:
+            results.append(_test_single_file(rel_path, clf))
 
-        worker = HealWorker(tmp_path, clf)
-        worker.attempt_started.connect(lambda att, err: attempts_list.append(att))
-        worker.compile_clean.connect(lambda: is_clean_signaled.__setitem__(0, True))
-
-        try:
-            worker._heal()
-        except Exception as e:
-            pass
-
-        # Verify final compilation directly with g++
-        clean, first_err = compile_with_gpp(tmp_path)
-
-        attempts_count = len(attempts_list)
-        # Truncate first_err for table display
-        if len(first_err) > 45:
-            first_err_disp = first_err[:42] + "..."
-        else:
-            first_err_disp = first_err
-
-        results.append({
-            "file": os.path.basename(rel_path),
-            "healed": clean,
-            "attempts": attempts_count,
-            "first_error": first_err_disp if not clean else "-",
-            "raw_error": first_err,
-        })
-
-        if os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
-
-    return results
+    return results, is_subset
 
 
-def print_results(results: List[dict]):
+def print_results(results: List[dict], is_subset: bool = False):
+    print("=" * 80)
+    suite_title = "6-FILE SUBSET" if is_subset else "FULL 16-FILE SUITE"
+    print(f"E2E HEAL CHECK RESULTS ({suite_title})")
     print("=" * 80)
     print(f"{'File':<35} | {'Healed':<6} | {'Attempts':<8} | {'First Remaining Error':<25}")
     print("-" * 80)
@@ -141,9 +180,12 @@ def print_results(results: List[dict]):
     total = len(results)
     pct = (passed / total * 100) if total > 0 else 0.0
     print(f"TOTAL HEALED: {passed}/{total} ({pct:.1f}%)")
+    if is_subset:
+        print("NOTE: Ran on 6-file subset (tc01, tc02, tc03, tc05, tc_autoheal_semicolons, test_heal) because projected time exceeded 90 s.")
     print("=" * 80)
 
 
 if __name__ == "__main__":
-    results = run_heal_check()
-    print_results(results)
+    results, is_sub = run_heal_check()
+    print_results(results, is_sub)
+

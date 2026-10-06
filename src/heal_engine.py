@@ -202,6 +202,13 @@ def heal_until_clean(
     Returns HealResult with status, rounds breakdown, and message.
     """
     start_time = time.time()
+    if classifier is None:
+        try:
+            from error_classifier import get_default_classifier
+            classifier = get_default_classifier()
+        except Exception:
+            classifier = None
+
     if max_rounds is None:
         try:
             max_rounds = int(os.environ.get("HEAL_MAX_ROUNDS", "5"))

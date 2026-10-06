@@ -1249,6 +1249,8 @@ def attempt_fix(source: str, error: dict) -> Optional[str]:
         return fix_name_resolution(source, error)
     if _UNINIT_MESSAGE_RE.search(msg):
         return fix_uninitialized_variable(source, error)
+    if "expected" in msg or "syntax" in msg or ";" in msg:
+        return fix_syntax_error(source, error)
 
     return None
 
