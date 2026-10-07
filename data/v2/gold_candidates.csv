@@ -1,0 +1,87 @@
+id,message_raw,source,proposed_label,final_label
+1,expected ')' before 'template',codenet_gcc,syntax_error,syntax_error
+2,expected primary-expression before 'continue',codenet_gcc,syntax_error,syntax_error
+3,"expected ',' or ')', found ""for""",codenet_gcc,syntax_error,syntax_error
+4,expected '>' before 'decltype',codenet_gcc,syntax_error,syntax_error
+5,expected unqualified-id before 'auto',codenet_gcc,syntax_error,syntax_error
+6,expected unqualified-id before '!' token,codenet_gcc,syntax_error,syntax_error
+7,"expected ',' or ';' befor",codenet_gcc,syntax_error,syntax_error
+8,expected primary-expression before 'case',codenet_gcc,syntax_error,syntax_error
+9,expected initializer before 'operator',codenet_gcc,syntax_error,syntax_error
+10,expected initializer before 'false',codenet_gcc,syntax_error,syntax_error
+11,expected primary-expression before '[' token,codenet_gcc,syntax_error,syntax_error
+12,expected ')' before 'namespace',codenet_gcc,syntax_error,syntax_error
+13,"'class std::priority_queue<int, std::pair<int, int>, std::greater<int> >' has no member named 'push'",codenet_gcc,name_resolution,name_resolution
+14,"'const __gnu_cxx::__alloc_traits<std::allocator<dset<char> >, dset<char> >::value_type' {aka 'const class dset<char>'} has no member named 'out'",codenet_gcc,name_resolution,name_resolution
+15,'maake_pair' was not declared in this scope,codenet_gcc,name_resolution,name_resolution
+16,'num_pairs' does not name a type,codenet_gcc,name_resolution,name_resolution
+17,"'class std::vector<int, int>' has no member named 'at'; did you mean 'data'?",codenet_gcc,name_resolution,name_resolution
+18,C:\Users\thris\AppData\Local\Temp\tmpi9jc154j.cpp:14:5: error: 'undeclared_custom_counter_xyz' was not declared in this scope,mutation,name_resolution,name_resolution
+19,'scanf_s' was not declared in this scope; did you mean 'scanf'?,codenet_gcc,name_resolution,name_resolution
+20,'deque' does not name a type,codenet_gcc,name_resolution,name_resolution
+21,'in' in namespace 'std' does not name a type; did you mean 'min'?,codenet_gcc,name_resolution,name_resolution
+22,'::memset' has not been declared,codenet_gcc,name_resolution,name_resolution
+23,'identity' is not a member of 'int',codenet_gcc,name_resolution,name_resolution
+24,"'class std::deque<std::pair<long long int, long long int> >' has no member named 'push'",codenet_gcc,name_resolution,name_resolution
+25,stack>: No such file or directory,codenet_gcc,missing_include,missing_include
+26,bais\stdc++.h: No such file or directory,codenet_gcc,missing_include,missing_include
+27,algo.h: No such file or directory,codenet_gcc,missing_include,missing_include
+28,/bits/stdc++.h: No such file or directory,codenet_gcc,missing_include,missing_include
+29,bits/stdc++.>: No such file or directory,codenet_gcc,missing_include,missing_include
+30,bit/stdctt.h: No such file or directory,codenet_gcc,missing_include,missing_include
+31,'reverse' was not declared in this scope; did you mean 'std::reverse'?,codenet_gcc,missing_include,missing_include
+32,boost/algorithm/minmax.hpp: No such file or directory,codenet_gcc,missing_include,missing_include
+33,bits/stdc=+.h: No such file or directory,codenet_gcc,missing_include,missing_include
+34,dits/stdc++.h: No such file or directory,codenet_gcc,missing_include,missing_include
+35,process.h: No such file or directory,codenet_gcc,missing_include,missing_include
+36,boost/shared_ptr.hpp: No such file or directory,codenet_gcc,missing_include,missing_include
+37,no matching function for call to 'reverse(std::vector<int>&)',codenet_gcc,type_error,type_error
+38,"no matching function for call to 'node::node(std::vector<int>, int&, int&, int&, int&, char&)'",codenet_gcc,type_error,type_error
+39,"no match for 'operator<' (operand types are 'std::pair<long long int, long long int>' and 'const std::pair<int, int>')",codenet_gcc,type_error,type_error
+40,invalid conversion from 'int*' to 'std::set<int>::value_type' {aka 'int'} [-fpermissive],codenet_gcc,type_error,type_error
+41,invalid operands of types 'bool' and 'double' to binary 'operator|',codenet_gcc,type_error,type_error
+42,"no matching function for call to 'find(__gnu_cxx::__normal_iterator<int*, std::vector<int> >, std::vector<int>::iterator, const int&)'",codenet_gcc,type_error,type_error
+43,no match for 'operator-' (operand types are 'std::_Rb_tree_const_iterator<long long int>' and 'int'),codenet_gcc,type_error,type_error
+44,no match for 'operator>=' (operand types are 'std::_Rb_tree_const_iterator<long long int>' and 'll' {aka 'long long int'}),codenet_gcc,type_error,type_error
+45,"could not convert 'S.std::queue<std::__cxx11::basic_string<char> >::front()' from '__gnu_cxx::__alloc_traits<std::allocator<std::__cxx11::basic_string<char> >, std::__cxx11::basic_string<char> >::value_type' {aka 'std::__cxx11::basic_string<char>'} to 'bool'",codenet_gcc,type_error,
+46,"no matching function for call to 'min(int&, const __gnu_cxx::__normal_iterator<int*, std::vector<int> >&)'",codenet_gcc,type_error,type_error
+47,cannot convert 'std::set<int>::empty' from type 'bool (std::set<int>::)() const noexcept' to type 'bool',codenet_gcc,type_error,type_error
+48,no match for 'operator+' (operand types are 'int' and 'std::__cxx11::basic_ostringstream<char>::__string_type' {aka 'std::__cxx11::basic_string<char>'}),codenet_gcc,type_error,type_error
+49,cannot convert 'std::basic_ostream<char>' to 'int' in return,codenet_gcc,return_type_error,return_type_error
+50,cannot convert 'std::vector<std::vector<long long int> >' to 'long long int' in return,codenet_gcc,return_type_error,return_type_error
+51,cannot convert 'std::basic_ostream<char>::__ostream_type' {aka 'std::basic_ostream<char>'} to 'int' in return,codenet_gcc,return_type_error,return_type_error
+52,cannot convert '<brace-enclosed initializer list>' to 'double' in return,codenet_gcc,return_type_error,return_type_error
+53,cannot convert '__complex__ int' to 'int' in return,codenet_gcc,return_type_error,return_type_error
+54,"redefinition of 'template<class Head, class ... Tail> void debug_out(std::vector<std::__cxx11::basic_string<char> >, int, int, Head, Tail ...)'",codenet_gcc,redefinition,redefinition
+55,redefinition of 'char min(std::string&)',codenet_gcc,redefinition,redefinition
+56,"redefinition of 'std::map<int, int> mask [20]'",codenet_gcc,redefinition,redefinition
+57,redefinition of 'std::string ok(std::string)',codenet_gcc,redefinition,redefinition
+58,conflicting declaration 'std::vector<short unsigned int> B',codenet_gcc,redefinition,redefinition
+59,redefinition of 'std::multiset<long long int> A',codenet_gcc,redefinition,redefinition
+60,"redefinition of 'template<class T, class U> std::ostream& operator<<(std::ostream&, const std",codenet_gcc,redefinition,redefinition
+61,conflicting declaration 'std::vector<std::vector<int> > m',codenet_gcc,redefinition,redefinition
+62,redefinition of 'void fast_scan(std::string&)',codenet_gcc,redefinition,redefinition
+63,"redefinition of 'template<class T, class ... Args> void err(std::istream_iterator<std::__cxx11::basic_string<char> >, T, Args ...)'",codenet_gcc,redefinition,redefinition
+64,conflicting declaration 'std::string T',codenet_gcc,redefinition,redefinition
+65,redefinition of 'template<class T> ll suma(const std::vector<_Tp>&)',codenet_gcc,redefinition,redefinition
+66,binding reference of type 'std::string&' {aka 'std::__cxx11::basic_string<char>&'} to 'const std::string' {aka 'const std::__cxx11::basic_string<char>'} discards qualifiers,codenet_gcc,access_error,access_error
+67,"'std::__hash_enum<_Tp, <anonymous> >::~__hash_enum() [with _Tp = std::array<int, 3>; bool <anonymous> = false]' is private within this context",codenet_gcc,access_error,access_error
+68,"assignment of read-only location 'std::max<int>(A, B)'",codenet_gcc,access_error,access_error
+69,"'std::__hash_enum<_Tp, <anonymous> >::~__hash_enum() [with _Tp = std::tuple<int, int>; bool <anonymous> = false]' is private within this context",codenet_gcc,access_error,access_error
+70,"assignment of read-only location 'std::max<int>(abs(a), abs(b))'",codenet_gcc,access_error,access_error
+71,assignment of read-only reference 'index',codenet_gcc,access_error,access_error
+72,"'std::__hash_enum<_Tp, <anonymous> >::~__hash_enum() [with _Tp = std::vector<unsigned char>; bool <anonymous> = false]' is private within this context",codenet_gcc,access_error,access_error
+73,assignment of read-only location 'std::left',codenet_gcc,access_error,access_error
+74,'std::vector<bool> Queen::possible_register_queen_in_minus_diagonal_line' is private within this context,codenet_gcc,access_error,access_error
+75,"assignment of read-only location '""MON""[mapi]'",codenet_gcc,access_error,access_error
+76,"assignment of read-only location '__result.__gnu_cxx::__normal_iterator<const char*, std::vector<char> >::operator*()'",codenet_gcc,access_error,access_error
+77,'int Baseball::count' is private within this context,codenet_gcc,access_error,access_error
+78,cannot find -l<ID>,curated,linker_error,linker_error
+79,"C:\Users\thris\AppData\Local\Temp\ccl7klk3.o:tmpfzdnzl72.cpp:(.text+0x45): undefined reference to `unlinked_fn_708(int, double)'",mutation,linker_error,linker_error
+80,undefined reference to 'sqrt',curated,linker_error,linker_error
+81,collect2.exe: error: ld returned 1 exit status,curated,linker_error,linker_error
+82,unused parameter 'x' [-Wunused-parameter],codenet_gcc,other,other
+83,C:\Users\thris\AppData\Local\Temp\tmpmie05mly.cpp:14:9: warning: variable 'set_not_used_var' set but not used [-Wunused-but-set-variable],mutation,other,other
+84,division by zero in #if,codenet_gcc,other,other
+85,using the result of an assignment as a condition without parentheses [-Wparentheses],codenet_gcc,other,other
+86,comparison of integers of different signs: 'unsigned int' and 'int' [-Wsign-compare],codenet_gcc,other,other

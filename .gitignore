@@ -1,0 +1,48 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C / C++ compiled binaries and objects
+*.o
+*.obj
+*.exe
+*.out
+*.app
+a.out
+a.exe
+src/a.out
+
+# Scratch and temporary directories
+scratch/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# CodeCarbon emission files
+emissions.csv*
+
+# Editor / IDE directories
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Backup files
+*.bak
+*.swp
+*.swo
+*~
+data/heal_backups/
