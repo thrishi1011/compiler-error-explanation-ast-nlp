@@ -51,18 +51,74 @@ except ImportError:
 from ast_extractor import extract_ast, extract_node_near_line, parse_ast_to_tree
 from security_analyzer import analyze as analyze_security, format_security_report
 
-BG_COLOR = "#f4f7f9"          
-PANE_BG = "#ffffff"           
-HEADER_BG = "#f4f7f9"         
-BORDER_COLOR = "#e6ebf1"      
-PINK = "#5469d4"  
-TEXT_MAIN = "#1a1f36"         
-TEXT_DIM = "#4f566b"          
-KEYWORD_COLOR = "#5469d4"     
-ERROR_LINE_COLOR = "#fefafb" 
-RED = "#d12441"
-YELLOW = "#ffcc00"
-GREEN = "#24b47e"
+LIGHT_THEME = {
+    "BG_COLOR": "#f4f7f9",
+    "PANE_BG": "#ffffff",
+    "HEADER_BG": "#f4f7f9",
+    "BORDER_COLOR": "#e6ebf1",
+    "PINK": "#5469d4",
+    "TEXT_MAIN": "#1a1f36",
+    "TEXT_DIM": "#4f566b",
+    "KEYWORD_COLOR": "#5469d4",
+    "ERROR_LINE_COLOR": "#fefafb",
+    "RED": "#d12441",
+    "YELLOW": "#ffcc00",
+    "GREEN": "#24b47e",
+    "ACTIVE_NAV_BG": "#e9ecf8",
+    "HOVER_NAV_BG": "#eef2f7",
+    "CODE_BG": "#ffffff",
+    "TERMINAL_BG": "#f8fafc",
+}
+
+DARK_THEME = {
+    "BG_COLOR": "#0f172a",          # Deep slate 900
+    "PANE_BG": "#1e293b",           # Card slate 800
+    "HEADER_BG": "#0f172a",         # Header dark
+    "BORDER_COLOR": "#334155",      # Slate 700 border
+    "PINK": "#818cf8",              # Indigo 400
+    "TEXT_MAIN": "#f8fafc",         # Slate 50
+    "TEXT_DIM": "#94a3b8",          # Slate 400
+    "KEYWORD_COLOR": "#a5b4fc",     # Light indigo 300
+    "ERROR_LINE_COLOR": "#371b26",  # Dark red highlight
+    "RED": "#f87171",               # Coral red
+    "YELLOW": "#fbbf24",            # Amber
+    "GREEN": "#34d399",             # Emerald
+    "ACTIVE_NAV_BG": "#312e81",     # Indigo 900
+    "HOVER_NAV_BG": "#334155",      # Slate 700
+    "CODE_BG": "#1e293b",
+    "TERMINAL_BG": "#0b1120",
+}
+
+CURRENT_THEME = dict(LIGHT_THEME)
+
+BG_COLOR = CURRENT_THEME["BG_COLOR"]
+PANE_BG = CURRENT_THEME["PANE_BG"]
+HEADER_BG = CURRENT_THEME["HEADER_BG"]
+BORDER_COLOR = CURRENT_THEME["BORDER_COLOR"]
+PINK = CURRENT_THEME["PINK"]
+TEXT_MAIN = CURRENT_THEME["TEXT_MAIN"]
+TEXT_DIM = CURRENT_THEME["TEXT_DIM"]
+KEYWORD_COLOR = CURRENT_THEME["KEYWORD_COLOR"]
+ERROR_LINE_COLOR = CURRENT_THEME["ERROR_LINE_COLOR"]
+RED = CURRENT_THEME["RED"]
+YELLOW = CURRENT_THEME["YELLOW"]
+GREEN = CURRENT_THEME["GREEN"]
+
+def set_global_theme(theme_dict):
+    global BG_COLOR, PANE_BG, HEADER_BG, BORDER_COLOR, PINK, TEXT_MAIN, TEXT_DIM, KEYWORD_COLOR, ERROR_LINE_COLOR, RED, YELLOW, GREEN, CURRENT_THEME
+    CURRENT_THEME.update(theme_dict)
+    BG_COLOR = theme_dict["BG_COLOR"]
+    PANE_BG = theme_dict["PANE_BG"]
+    HEADER_BG = theme_dict["HEADER_BG"]
+    BORDER_COLOR = theme_dict["BORDER_COLOR"]
+    PINK = theme_dict["PINK"]
+    TEXT_MAIN = theme_dict["TEXT_MAIN"]
+    TEXT_DIM = theme_dict["TEXT_DIM"]
+    KEYWORD_COLOR = theme_dict["KEYWORD_COLOR"]
+    ERROR_LINE_COLOR = theme_dict["ERROR_LINE_COLOR"]
+    RED = theme_dict["RED"]
+    YELLOW = theme_dict["YELLOW"]
+    GREEN = theme_dict["GREEN"]
 
 FONT_FAMILY = "Menlo" if platform.system() == "Darwin" else "Consolas"
 
@@ -768,35 +824,39 @@ class CodeEditor(QPlainTextEdit):
 class CppSyntaxHighlighter(QSyntaxHighlighter):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.apply_theme(CURRENT_THEME)
+
+    def apply_theme(self, theme):
         self.highlightingRules = []
 
         keywordFormat = QTextCharFormat()
-        keywordFormat.setForeground(QColor(KEYWORD_COLOR))
-        keywords = ["int", "return", "if", "else", "for", "while", "class", "public", "private", "protected", "void", "namespace", "using", "auto"]
+        keywordFormat.setForeground(QColor(theme.get("KEYWORD_COLOR", KEYWORD_COLOR)))
+        keywords = ["int", "return", "if", "else", "for", "while", "class", "public", "private", "protected", "void", "namespace", "using", "auto", "double", "float", "char", "bool", "string", "vector"]
         for word in keywords:
             pattern = r"\b" + word + r"\b"
             self.highlightingRules.append((pattern, keywordFormat))
 
         stdFormat = QTextCharFormat()
-        stdFormat.setForeground(QColor(TEXT_MAIN))
+        stdFormat.setForeground(QColor(theme.get("TEXT_MAIN", TEXT_MAIN)))
         self.highlightingRules.append((r"\bstd::\w+\b", stdFormat))
 
         stringFormat = QTextCharFormat()
-        stringFormat.setForeground(QColor(PINK))
+        stringFormat.setForeground(QColor(theme.get("PINK", PINK)))
         self.highlightingRules.append((r'".*"', stringFormat))
         self.highlightingRules.append((r"\b[0-9]+\b", stringFormat))
 
         commentFormat = QTextCharFormat()
-        commentFormat.setForeground(QColor(TEXT_DIM))
+        commentFormat.setForeground(QColor(theme.get("TEXT_DIM", TEXT_DIM)))
         self.highlightingRules.append((r"//[^\n]*", commentFormat))
 
         includeFormat = QTextCharFormat()
-        includeFormat.setForeground(QColor(TEXT_DIM))
+        includeFormat.setForeground(QColor(theme.get("TEXT_DIM", TEXT_DIM)))
         self.highlightingRules.append((r"#\w+", includeFormat))
 
         bracketFormat = QTextCharFormat()
-        bracketFormat.setForeground(QColor(TEXT_MAIN))
+        bracketFormat.setForeground(QColor(theme.get("TEXT_MAIN", TEXT_MAIN)))
         self.highlightingRules.append((r"[\{\}\(\)\[\]]", bracketFormat))
+        self.rehighlight()
 
     def highlightBlock(self, text):
         for pattern, format in self.highlightingRules:
@@ -827,14 +887,20 @@ class CustomFrame(QFrame):
     def set_title(self, title):
         self.header.setText(f" {title} ")
 
+    def apply_theme(self, theme):
+        self.setStyleSheet(f"QFrame {{ border: 1px solid {theme['BORDER_COLOR']}; background-color: {theme['PANE_BG']}; border-radius: 8px; }}")
+        self.header.setStyleSheet(f"QLabel {{ background-color: {theme['HEADER_BG']}; color: {theme['PINK']}; border: none; border-bottom: 1px solid {theme['BORDER_COLOR']}; padding: 8px 15px; border-top-left-radius: 7px; border-top-right-radius: 7px; }}")
+
+
 class ASTWorker(QThread):
     finished = pyqtSignal(list)
-    def __init__(self, file_path):
+    def __init__(self, file_path, code=""):
         super().__init__()
         self.file_path = file_path
+        self.code = code
     def run(self):
         try:
-            ast_raw = extract_ast(self.file_path)
+            ast_raw = extract_ast(self.file_path, code=self.code)
             if ast_raw:
                 ast_tree = parse_ast_to_tree(ast_raw, self.file_path)
                 self.finished.emit(ast_tree)
@@ -1233,13 +1299,15 @@ class SidebarButton(QPushButton):
         self._apply_style()
 
     def _apply_style(self):
+        active_bg = CURRENT_THEME.get("ACTIVE_NAV_BG", "#e9ecf8")
+        hover_bg = CURRENT_THEME.get("HOVER_NAV_BG", "#eef2f7")
         if self.is_active:
             self.setStyleSheet(f"""
                 QPushButton {{
                     text-align: left;
                     padding-left: 12px;
                     border: 1px solid {PINK};
-                    background-color: #e9ecf8;
+                    background-color: {active_bg};
                     color: {PINK};
                     font-weight: bold;
                     border-radius: 6px;
@@ -1256,12 +1324,12 @@ class SidebarButton(QPushButton):
                     border-radius: 6px;
                 }}
                 QPushButton:hover {{
-                    background-color: #eef2f7;
+                    background-color: {hover_bg};
                     border: 1px solid {BORDER_COLOR};
                     color: {PINK};
                 }}
                 QPushButton:pressed {{
-                    background-color: #e2e7f0;
+                    background-color: {BORDER_COLOR};
                 }}
             """)
 
@@ -1275,10 +1343,10 @@ class Sidebar(QWidget):
         self.layout.setContentsMargins(8, 12, 8, 12)
         self.layout.setSpacing(6)
         
-        title_lbl = QLabel("NAVIGATION")
-        title_lbl.setFont(QFont(FONT_FAMILY, 8, QFont.Weight.Bold))
-        title_lbl.setStyleSheet(f"color: {TEXT_DIM}; letter-spacing: 1px; padding: 2px 8px 6px 8px;")
-        self.layout.addWidget(title_lbl)
+        self.title_lbl = QLabel("NAVIGATION")
+        self.title_lbl.setFont(QFont(FONT_FAMILY, 8, QFont.Weight.Bold))
+        self.title_lbl.setStyleSheet(f"color: {TEXT_DIM}; letter-spacing: 1px; padding: 2px 8px 6px 8px;")
+        self.layout.addWidget(self.title_lbl)
 
         self.btn1 = SidebarButton("💻  Code Editor", "Main C++ editor, diagnostics, and I/O runner")
         self.btn2 = SidebarButton("🌳  AST Explorer", "Abstract Syntax Tree hierarchy viewer")
@@ -1317,23 +1385,69 @@ class Sidebar(QWidget):
         for idx, btn in enumerate(self.buttons):
             btn.set_active(idx == active_index)
 
+    def apply_theme(self, theme):
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {theme['HEADER_BG']};
+                border-right: 1px solid {theme['BORDER_COLOR']};
+                border-top-left-radius: 0px;
+                border-bottom-left-radius: 6px;
+            }}
+        """)
+        if hasattr(self, "title_lbl"):
+            self.title_lbl.setStyleSheet(f"color: {theme['TEXT_DIM']}; letter-spacing: 1px; padding: 2px 8px 6px 8px;")
+        for btn in self.buttons:
+            btn._apply_style()
+
 
 class ASTPage(CustomFrame):
     def __init__(self, parent=None):
         super().__init__("ABSTRACT SYNTAX TREE EXPLORER", left_padding=True)
         
+        # Action bar with Reload, Expand All, Collapse All
+        action_bar = QHBoxLayout()
+        action_bar.setContentsMargins(0, 0, 0, 8)
+        action_bar.setSpacing(8)
+
+        self.info_lbl = QLabel("Parsed Abstract Syntax Tree representing your C++ declarations, statements, and expressions.")
+        self.info_lbl.setFont(QFont(FONT_FAMILY, 9))
+        self.info_lbl.setStyleSheet(f"color: {TEXT_DIM};")
+        self.info_lbl.setWordWrap(True)
+        action_bar.addWidget(self.info_lbl, 1)
+
+        self.btn_reload = StyledButton("🔄 RELOAD AST", "outline_dim")
+        self.btn_reload.setFixedHeight(30)
+        self.btn_reload.setFont(QFont(FONT_FAMILY, 9, QFont.Weight.Bold))
+        self.btn_reload.setToolTip("Parse current editor code into AST tree")
+        action_bar.addWidget(self.btn_reload)
+
+        self.btn_expand = StyledButton("➕ EXPAND ALL", "outline_dim")
+        self.btn_expand.setFixedHeight(30)
+        self.btn_expand.setFont(QFont(FONT_FAMILY, 9, QFont.Weight.Bold))
+        self.btn_expand.setToolTip("Expand all tree branches")
+        action_bar.addWidget(self.btn_expand)
+
+        self.btn_collapse = StyledButton("➖ COLLAPSE ALL", "outline_dim")
+        self.btn_collapse.setFixedHeight(30)
+        self.btn_collapse.setFont(QFont(FONT_FAMILY, 9, QFont.Weight.Bold))
+        self.btn_collapse.setToolTip("Collapse all tree branches")
+        action_bar.addWidget(self.btn_collapse)
+
+        self.content_layout.addLayout(action_bar)
+
         self.tree = QTreeWidget()
         self.tree.setStyle(QStyleFactory.create("windows"))
         self.tree.setHeaderLabels(["NODE TYPE", "DETAILS / SOURCE"])
-        self.tree.setColumnWidth(0, 300)
+        self.tree.setColumnWidth(0, 320)
         self.tree.setAlternatingRowColors(True)
         self.tree.setStyleSheet(f"""
             QTreeWidget {{
                 background-color: {PANE_BG};
                 color: {TEXT_MAIN};
-                border: none;
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 6px;
                 font-family: {FONT_FAMILY};
-                font-size: 13px;
+                font-size: 12px;
                 alternate-background-color: {BG_COLOR};
             }}
             QHeaderView::section {{
@@ -1345,39 +1459,85 @@ class ASTPage(CustomFrame):
                 font-weight: bold;
             }}
             QTreeWidget::item {{
-                padding: 8px;
+                padding: 6px;
             }}
             QTreeWidget::item:selected {{
-                background-color: {BG_COLOR};
+                background-color: {BORDER_COLOR};
                 color: {PINK};
             }}
         """)
-        self.content_layout.addWidget(self.tree)
+        self.content_layout.addWidget(self.tree, 1)
+
+        self.btn_expand.clicked.connect(self.tree.expandAll)
+        self.btn_collapse.clicked.connect(self.tree.collapseAll)
 
     def update_tree(self, ast_tree):
         self.tree.clear()
+        if not ast_tree:
+            empty_item = QTreeWidgetItem(self.tree.invisibleRootItem())
+            empty_item.setText(0, "No AST Nodes")
+            empty_item.setText(1, "Click 'COMPILE' or 'RELOAD AST' to parse your C++ code into an AST tree.")
+            empty_item.setForeground(0, QColor(CURRENT_THEME["TEXT_DIM"]))
+            empty_item.setForeground(1, QColor(CURRENT_THEME["TEXT_DIM"]))
+            return
         self._populate(ast_tree, self.tree.invisibleRootItem())
         self.tree.expandAll()
 
     def _populate(self, nodes, parent_item):
         for n in nodes:
             item = QTreeWidgetItem(parent_item)
-            item.setText(0, n["type"])
-            item.setText(1, n["details"])
+            item.setText(0, n.get("type", ""))
+            item.setText(1, n.get("details", ""))
             
-            if "Decl" in n["type"]:
-                item.setForeground(0, QColor(PINK))
-            elif "Stmt" in n["type"]:
-                item.setForeground(0, QColor(KEYWORD_COLOR))
-            elif "Expr" in n["type"]:
-                item.setForeground(0, QColor(TEXT_MAIN))
+            t = n.get("type", "")
+            if "Decl" in t:
+                item.setForeground(0, QColor(CURRENT_THEME["PINK"]))
+            elif "Stmt" in t:
+                item.setForeground(0, QColor(CURRENT_THEME["KEYWORD_COLOR"]))
+            elif "Expr" in t:
+                item.setForeground(0, QColor(CURRENT_THEME["TEXT_MAIN"]))
             else:
-                item.setForeground(0, QColor(TEXT_DIM))
-            
-            item.setForeground(1, QColor(TEXT_DIM))
+                item.setForeground(0, QColor(CURRENT_THEME["TEXT_DIM"]))
+                
+            item.setForeground(1, QColor(CURRENT_THEME["TEXT_DIM"]))
             
             if "children" in n and n["children"]:
                 self._populate(n["children"], item)
+
+    def apply_theme(self, theme):
+        super().apply_theme(theme)
+        self.tree.setStyleSheet(f"""
+            QTreeWidget {{
+                background-color: {theme['PANE_BG']};
+                color: {theme['TEXT_MAIN']};
+                border: 1px solid {theme['BORDER_COLOR']};
+                border-radius: 6px;
+                font-family: {FONT_FAMILY};
+                font-size: 12px;
+                alternate-background-color: {theme['BG_COLOR']};
+            }}
+            QHeaderView::section {{
+                background-color: {theme['HEADER_BG']};
+                color: {theme['PINK']};
+                border: none;
+                border-bottom: 1px solid {theme['BORDER_COLOR']};
+                padding: 10px;
+                font-weight: bold;
+            }}
+            QTreeWidget::item {{
+                padding: 6px;
+            }}
+            QTreeWidget::item:selected {{
+                background-color: {theme['BORDER_COLOR']};
+                color: {theme['PINK']};
+            }}
+        """)
+        if hasattr(self, "info_lbl"):
+            self.info_lbl.setStyleSheet(f"color: {theme['TEXT_DIM']};")
+        if hasattr(self, "btn_reload"):
+            self.btn_reload._update_style(0)
+            self.btn_expand._update_style(0)
+            self.btn_collapse._update_style(0)
 
 
 class EnergyPage(CustomFrame):
@@ -1508,6 +1668,45 @@ class EnergyPage(CustomFrame):
             <code>/sys/class/powercap</code>.
         """)
 
+    def apply_theme(self, theme):
+        super().apply_theme(theme)
+        if hasattr(self, "desc"):
+            self.desc.setStyleSheet(f"color: {theme['PINK']}; font-weight: bold; font-size: 14px;")
+        for lbl in [getattr(self, "power_value", None), getattr(self, "carbon_value", None), getattr(self, "time_value", None), getattr(self, "rapl_value", None)]:
+            if lbl:
+                lbl.setStyleSheet(f"""
+                    QLabel {{
+                        background-color: {theme['BG_COLOR']};
+                        border: 1px solid {theme['BORDER_COLOR']};
+                        border-radius: 6px;
+                        padding: 10px;
+                        font-family: {FONT_FAMILY};
+                    }}
+                """)
+        if hasattr(self, "graph"):
+            self.graph.setStyleSheet(f"""
+                MetricsGraph {{
+                    background-color: {theme['BG_COLOR']};
+                    border: 1px solid {theme['BORDER_COLOR']};
+                    border-radius: 6px;
+                }}
+            """)
+        if hasattr(self, "notes"):
+            self.notes.setStyleSheet(f"""
+                QTextBrowser {{
+                    background-color: {theme['BG_COLOR']};
+                    border: 1px solid {theme['BORDER_COLOR']};
+                    border-radius: 6px;
+                    color: {theme['TEXT_MAIN']};
+                    font-family: {FONT_FAMILY};
+                    font-size: 12px;
+                    padding: 10px;
+                }}
+            """)
+        if hasattr(self, "btn_download_csv"):
+            self.btn_download_csv._update_style(0)
+
+
 class CallGraphPage(CustomFrame):
     def __init__(self, parent=None):
         super().__init__("FUNCTION CALL GRAPH :: MODULE RELATIONSHIPS", left_padding=True)
@@ -1527,6 +1726,14 @@ class CallGraphPage(CustomFrame):
             f"Functions: {len(functions)} | Internal calls: {len(edges)} | "
             f"External calls: {len(external_calls)} | Modules/includes: {len(modules)}"
         )
+
+    def apply_theme(self, theme):
+        super().apply_theme(theme)
+        if hasattr(self, "summary"):
+            self.summary.setStyleSheet(f"color: {theme['TEXT_DIM']}; font-family: {FONT_FAMILY};")
+        if hasattr(self, "graph"):
+            self.graph.setStyleSheet(f"background-color: {theme['PANE_BG']}; border: 1px solid {theme['BORDER_COLOR']}; border-radius: 6px;")
+            self.graph.scene.setBackgroundBrush(QColor(theme['PANE_BG']))
 
 
 class CFGWidget(QGraphicsView):
@@ -1592,6 +1799,7 @@ class CFGWidget(QGraphicsView):
             
             y_offset += 50 # gap between functions
 
+
 class CFGPage(CustomFrame):
     def __init__(self, parent=None):
         super().__init__("CONTROL FLOW GRAPH :: EXECUTION PATHS", left_padding=True)
@@ -1607,6 +1815,14 @@ class CFGPage(CustomFrame):
         data = _extract_cpp_cfg(code)
         self.graph.update_graph(data)
         self.summary.setText(f"Functions Analyzed: {len(data)} | Total Nodes: {sum(len(f['nodes']) for f in data)}")
+
+    def apply_theme(self, theme):
+        super().apply_theme(theme)
+        if hasattr(self, "summary"):
+            self.summary.setStyleSheet(f"color: {theme['TEXT_DIM']}; font-family: {FONT_FAMILY};")
+        if hasattr(self, "graph"):
+            self.graph.setStyleSheet(f"background-color: {theme['PANE_BG']}; border: 1px solid {theme['BORDER_COLOR']}; border-radius: 6px;")
+            self.graph.setBackgroundBrush(QColor(theme['PANE_BG']))
 
 
 class FilterTabButton(QPushButton):
@@ -2087,6 +2303,26 @@ class SecurityPage(CustomFrame):
         os.environ["ALLOW_ASSEMBLY"] = "1" if self.perm_assembly.isChecked() else "0"
         os.environ["ALLOW_SYS_INCLUDES"] = "1" if self.perm_sys_includes.isChecked() else "0"
 
+    def apply_theme(self, theme):
+        super().apply_theme(theme)
+        card_bg = theme["PANE_BG"]
+        text_color = theme["TEXT_MAIN"]
+        dim_color = theme["TEXT_DIM"]
+        self.setStyleSheet(f"""
+            QFrame {{
+                background-color: {card_bg};
+                border: 1px solid {theme['BORDER_COLOR']};
+                border-radius: 16px;
+            }}
+        """)
+        self.content_widget.setStyleSheet(f"QWidget {{ background-color: {card_bg}; }}")
+        if hasattr(self, "summary"):
+            self.summary.setStyleSheet(f"color: {text_color}; font-size: 18px; font-weight: 800;")
+        if hasattr(self, "subsummary"):
+            self.subsummary.setStyleSheet(f"color: {dim_color}; font-size: 12px;")
+        if hasattr(self, "permissions_box"):
+            self.permissions_box.setStyleSheet(f"background-color: {theme['BG_COLOR']}; border-radius: 8px; border: 1px solid {theme['BORDER_COLOR']};")
+
 
 # ── Import new page classes (Feature 2 & 4) ───────────────────────────────────
 try:
@@ -2208,6 +2444,12 @@ class AppGUI(QMainWindow):
         self.btn_undo_heal.setEnabled(False)
         toolbar_layout.addWidget(self.btn_undo_heal)
 
+        self.btn_theme_toggle = StyledButton("🌙 DARK MODE", "outline_dim")
+        self.btn_theme_toggle.setToolTip("Toggle between Light and Dark mode")
+        self.btn_theme_toggle.clicked.connect(self.toggle_dark_mode)
+        toolbar_layout.addWidget(self.btn_theme_toggle)
+
+        self.is_dark_mode = False
         self.last_heal_backup = None
 
         try:
@@ -2226,12 +2468,9 @@ class AppGUI(QMainWindow):
         self.cb_ai_assist.stateChanged.connect(lambda: self.update_ai_status())
         toolbar_layout.addWidget(self.cb_ai_assist)
 
-        self.lbl_ai_note = QLabel("(Sends error messages and code to Gemini/Groq)")
-        self.lbl_ai_note.setStyleSheet(f"color: {TEXT_DIM}; font-size: 9px; font-family: {FONT_FAMILY};")
-        toolbar_layout.addWidget(self.lbl_ai_note)
-
-        toolbar_layout.addSpacing(10)
-        self.ai_status_label = QLabel(ai_status_text)
+        toolbar_layout.addSpacing(8)
+        self.ai_status_label = QLabel(self._format_ai_status(ai_status_text))
+        self.ai_status_label.setToolTip(ai_status_text)
         self.ai_status_label.setStyleSheet(f"color: {PINK}; font-size: 10px; font-family: {FONT_FAMILY}; font-weight: bold;")
         toolbar_layout.addWidget(self.ai_status_label)
 
@@ -2281,6 +2520,8 @@ class AppGUI(QMainWindow):
         self.stack.addWidget(self.splitter) # Index 0
 
         self.ast_page = ASTPage()
+        if hasattr(self.ast_page, "btn_reload"):
+            self.ast_page.btn_reload.clicked.connect(self.switch_to_ast)
         self.stack.addWidget(self.ast_page) # Index 1
 
         self.energy_page = EnergyPage()
@@ -2485,13 +2726,92 @@ class AppGUI(QMainWindow):
     # ── Auto-Heal ─────────────────────────────────────────────────────────────
 
 
+    def _format_ai_status(self, text: str) -> str:
+        if not text:
+            return "AI: offline"
+        if len(text) > 30:
+            return text[:27] + "..."
+        return text
+
+    def toggle_dark_mode(self):
+        self.is_dark_mode = not getattr(self, "is_dark_mode", False)
+        if hasattr(self, "btn_theme_toggle"):
+            self.btn_theme_toggle.setText("☀️ LIGHT MODE" if self.is_dark_mode else "🌙 DARK MODE")
+        self.apply_theme(self.is_dark_mode)
+
+    def apply_theme(self, is_dark: bool):
+        theme = DARK_THEME if is_dark else LIGHT_THEME
+        set_global_theme(theme)
+        
+        # Main window & splitters
+        self.setStyleSheet(f"QMainWindow {{ background-color: {theme['BG_COLOR']}; }}")
+        if hasattr(self, "splitter"):
+            self.splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {theme['BG_COLOR']}; }}")
+        if hasattr(self, "v_splitter"):
+            self.v_splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {theme['BG_COLOR']}; }}")
+        if hasattr(self, "runner_splitter"):
+            self.runner_splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {theme['BG_COLOR']}; height: 4px; }}")
+
+        # Labels
+        if hasattr(self, "status_label"):
+            self.status_label.setStyleSheet(f"color: {theme['PINK']};")
+        if hasattr(self, "ai_status_label"):
+            self.ai_status_label.setStyleSheet(f"color: {theme['PINK']}; font-size: 10px; font-family: {FONT_FAMILY}; font-weight: bold;")
+        if hasattr(self, "status_bar_left"):
+            self.status_bar_left.setStyleSheet(f"color: {theme['TEXT_DIM']};")
+
+        # Editor
+        if hasattr(self, "editor"):
+            self.editor.setStyleSheet(f"QPlainTextEdit {{ background-color: {theme['CODE_BG']}; color: {theme['TEXT_MAIN']}; border: none; }}")
+            self.editor.line_number_area.update()
+        if hasattr(self, "highlighter"):
+            self.highlighter.apply_theme(theme)
+
+        # Terminal & Input
+        if hasattr(self, "terminal"):
+            self.terminal.setStyleSheet(f"QTextEdit {{ background-color: {theme['TERMINAL_BG']}; border: 1px solid {theme['BORDER_COLOR']}; border-radius: 4px; color: {theme['TEXT_MAIN']}; line-height: 1.5; }}")
+        if hasattr(self, "input_area"):
+            self.input_area.setStyleSheet(f"QTextEdit {{ background-color: {theme['BG_COLOR']}; border: 1px solid {theme['BORDER_COLOR']}; color: {theme['GREEN']}; border-radius: 4px; }}")
+
+        # Sidebar
+        if hasattr(self, "sidebar"):
+            self.sidebar.apply_theme(theme)
+
+        # Frames
+        if hasattr(self, "pane_left"):
+            self.pane_left.apply_theme(theme)
+        if hasattr(self, "pane_right_top"):
+            self.pane_right_top.apply_theme(theme)
+        if hasattr(self, "pane_right_bottom"):
+            self.pane_right_bottom.apply_theme(theme)
+
+        # Pages
+        if hasattr(self, "ast_page") and hasattr(self.ast_page, "apply_theme"):
+            self.ast_page.apply_theme(theme)
+        if hasattr(self, "energy_page") and hasattr(self.energy_page, "apply_theme"):
+            self.energy_page.apply_theme(theme)
+        if hasattr(self, "call_graph_page") and hasattr(self.call_graph_page, "apply_theme"):
+            self.call_graph_page.apply_theme(theme)
+        if hasattr(self, "security_page") and hasattr(self.security_page, "apply_theme"):
+            self.security_page.apply_theme(theme)
+        if hasattr(self, "cfg_page") and hasattr(self.cfg_page, "apply_theme"):
+            self.cfg_page.apply_theme(theme)
+        if hasattr(self, "second_opinion_page") and hasattr(self.second_opinion_page, "apply_theme"):
+            self.second_opinion_page.apply_theme(theme)
+        if hasattr(self, "benchmark_page") and hasattr(self.benchmark_page, "apply_theme"):
+            self.benchmark_page.apply_theme(theme)
+
+        # Buttons
+        for btn in [getattr(self, "btn_heal", None), getattr(self, "btn_undo_heal", None), getattr(self, "btn_theme_toggle", None), getattr(self, "btn_send_input", None)]:
+            if btn and hasattr(btn, "_update_style"):
+                btn._update_style(0)
+
     def switch_to_ast(self):
-        # Starts empty; content reflects file state
-        if self.file_path and os.path.exists(self.file_path):
-            self.status_label.setText("STATUS: ● LOADING AST... 🕒")
-            self.ast_worker = ASTWorker(self.file_path)
-            self.ast_worker.finished.connect(self._on_ast_ready)
-            self.ast_worker.start()
+        code = self.editor.toPlainText() if hasattr(self, "editor") else ""
+        self.status_label.setText("STATUS: ● LOADING AST... 🕒")
+        self.ast_worker = ASTWorker(self.file_path, code=code)
+        self.ast_worker.finished.connect(self._on_ast_ready)
+        self.ast_worker.start()
         
         self.stack.setCurrentIndex(1)
 
@@ -2524,7 +2844,9 @@ class AppGUI(QMainWindow):
             import llm_client
             has_keys = bool(llm_client.get_gemini_key() or llm_client.get_groq_key())
             self.cb_ai_assist.setEnabled(has_keys)
-            self.ai_status_label.setText(llm_client.status())
+            raw = llm_client.status()
+            self.ai_status_label.setText(self._format_ai_status(raw))
+            self.ai_status_label.setToolTip(raw)
         except Exception:
             pass
 
@@ -2767,20 +3089,21 @@ class AppGUI(QMainWindow):
         
         # Stats row (Horizontal)
         stats_widget = QWidget()
+        stats_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         stats_layout = QHBoxLayout(stats_widget)
         stats_layout.setContentsMargins(0, 0, 0, 0)
-        stats_layout.setSpacing(5)
+        stats_layout.setSpacing(4)
         
         def create_stat(emoji, text, color):
             lbl = QLabel(f"<b>{emoji} {text}</b>")
-            lbl.setStyleSheet(f"color: {color}; font-size: 9px; font-family: {FONT_FAMILY}; padding: 1px 3px; border: 1px solid {BORDER_COLOR}; border-radius: 3px; background-color: {BG_COLOR};")
+            lbl.setStyleSheet(f"color: {color}; font-size: 9px; font-family: {FONT_FAMILY}; padding: 1px 4px; border: 1px solid {BORDER_COLOR}; border-radius: 3px; background-color: {BG_COLOR};")
             return lbl
 
-        stats_layout.addWidget(create_stat('⚡', f"CPU: {cpu} mWh", PINK))
-        stats_layout.addWidget(create_stat('🧠', f"MEM: {mem}", PINK))
-        stats_layout.addWidget(create_stat('🔥', f"HOTSPOT: {hotspot}", YELLOW))
-        stats_layout.addWidget(create_stat('🌍', f"CO₂: {co2} mg", GREEN))
-        stats_layout.addWidget(create_stat('🛡️', f"RISK: {risk.upper()}", RED if risk.upper() == 'HIGH' else YELLOW))
+        stats_layout.addWidget(create_stat('⚡', f"{cpu} mWh", PINK))
+        stats_layout.addWidget(create_stat('🧠', f"{mem}", PINK))
+        stats_layout.addWidget(create_stat('🔥', f"{hotspot}", YELLOW))
+        stats_layout.addWidget(create_stat('🌍', f"{co2} mg", GREEN))
+        stats_layout.addWidget(create_stat('🛡️', f"{risk.upper()}", RED if risk.upper() == 'HIGH' else YELLOW))
         stats_layout.addStretch()
         layout.addWidget(stats_widget)
         
@@ -3170,11 +3493,11 @@ class AppGUI(QMainWindow):
                 self.call_graph_page.update_from_code(self.editor.toPlainText())
             
             # Auto-generate the AST for the just-compiled source without changing pages.
-            if self.file_path and os.path.exists(self.file_path):
-                self.status_label.setText("STATUS: ● BUILDING AST...")
-                self.ast_worker = ASTWorker(self.file_path)
-                self.ast_worker.finished.connect(self._on_compile_ast_ready)
-                self.ast_worker.start()
+            code = self.editor.toPlainText() if hasattr(self, "editor") else ""
+            self.status_label.setText("STATUS: ● BUILDING AST...")
+            self.ast_worker = ASTWorker(self.file_path, code=code)
+            self.ast_worker.finished.connect(self._on_compile_ast_ready)
+            self.ast_worker.start()
                 
         except json.JSONDecodeError:
             err_block = f"<span style='color:{PINK};'>COMPILE ERRORS OR JSON DECODE ERROR:</span><br>{stdout}<br>{stderr}"
