@@ -43,8 +43,14 @@ def run_cpp_compiler(file_path, permissions=None):
             "raw": "error: Malicious command injection or forbidden system call detected."
         }]
     try:
+        exe_target = "a.exe" if (os.name == "nt" or sys.platform == "win32") else "a.out"
+        if os.path.exists(exe_target):
+            try:
+                os.remove(exe_target)
+            except OSError:
+                pass
         res=subprocess.run(
-            ["g++","-std=c++17",file_path],
+            ["g++","-std=c++17",file_path, "-o", exe_target],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

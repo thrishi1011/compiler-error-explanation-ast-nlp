@@ -6,7 +6,7 @@ import re
 import html
 import time
 import math
-import random
+from typing import Optional, List, Dict, Tuple
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QSplitter, QPlainTextEdit, QTextEdit,
                              QPushButton, QFileDialog, QMessageBox, QLabel, QFrame,
@@ -1218,36 +1218,91 @@ class UserGuidanceDialog(QDialog):
         return self._hint
 
 
+class SidebarButton(QPushButton):
+    def __init__(self, text: str, tooltip: str = "", parent=None):
+        super().__init__(text, parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedHeight(38)
+        self.setFont(QFont(FONT_FAMILY, 10))
+        self.setToolTip(tooltip)
+        self.is_active = False
+        self._apply_style()
+
+    def set_active(self, active: bool):
+        self.is_active = active
+        self._apply_style()
+
+    def _apply_style(self):
+        if self.is_active:
+            self.setStyleSheet(f"""
+                QPushButton {{
+                    text-align: left;
+                    padding-left: 12px;
+                    border: 1px solid {PINK};
+                    background-color: #e9ecf8;
+                    color: {PINK};
+                    font-weight: bold;
+                    border-radius: 6px;
+                }}
+            """)
+        else:
+            self.setStyleSheet(f"""
+                QPushButton {{
+                    text-align: left;
+                    padding-left: 12px;
+                    border: 1px solid transparent;
+                    background-color: transparent;
+                    color: {TEXT_MAIN};
+                    border-radius: 6px;
+                }}
+                QPushButton:hover {{
+                    background-color: #eef2f7;
+                    border: 1px solid {BORDER_COLOR};
+                    color: {PINK};
+                }}
+                QPushButton:pressed {{
+                    background-color: #e2e7f0;
+                }}
+            """)
+
+
 class Sidebar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(50)
+        self.setFixedWidth(185)
         
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(5, 10, 5, 10)
-        self.layout.setSpacing(10)
+        self.layout.setContentsMargins(8, 12, 8, 12)
+        self.layout.setSpacing(6)
         
-        # Side buttons - Emoji Only
-        self.btn1 = StyledButton("📁", "outline_dim")
-        self.btn2 = StyledButton("🕒", "outline_dim")
-        self.btn3 = StyledButton("⚡", "outline_dim")
-        self.btn4 = StyledButton("↔", "outline_dim")
-        self.btn5 = StyledButton("🛡", "outline_dim")
-        self.btn6 = StyledButton("🔀", "outline_dim")
-        
-        for btn in [self.btn1, self.btn2, self.btn3, self.btn4, self.btn5, self.btn6]:
-            btn.setFixedWidth(40)
-            btn.setFixedHeight(40)
-            btn.setFont(QFont(FONT_FAMILY, 14))
-        
-        self.layout.addWidget(self.btn1)
-        self.layout.addWidget(self.btn2)
-        self.layout.addWidget(self.btn3)
-        self.layout.addWidget(self.btn4)
-        self.layout.addWidget(self.btn5)
-        self.layout.addWidget(self.btn6)
+        title_lbl = QLabel("NAVIGATION")
+        title_lbl.setFont(QFont(FONT_FAMILY, 8, QFont.Weight.Bold))
+        title_lbl.setStyleSheet(f"color: {TEXT_DIM}; letter-spacing: 1px; padding: 2px 8px 6px 8px;")
+        self.layout.addWidget(title_lbl)
+
+        self.btn1 = SidebarButton("💻  Code Editor", "Main C++ editor, diagnostics, and I/O runner")
+        self.btn2 = SidebarButton("🌳  AST Explorer", "Abstract Syntax Tree hierarchy viewer")
+        self.btn3 = SidebarButton("⚡  Energy Metrics", "Real-time energy consumption and carbon emissions")
+        self.btn4 = SidebarButton("🔄  Call Graph", "Function call relationship diagram")
+        self.btn5 = SidebarButton("🛡️  Security Scan", "Static security vulnerability inspection")
+        self.btn6 = SidebarButton("🔀  Control Flow", "Control flow graph (CFG) visualizer")
+        self.btn7 = SidebarButton("🧠  Second Opinion", "ML Classifier vs Regex error categorization")
+        self.btn8 = SidebarButton("📊  Benchmark", "Measured accuracy benchmark comparison")
+
+        self.buttons = [
+            self.btn1, self.btn2, self.btn3, self.btn4,
+            self.btn5, self.btn6, self.btn7, self.btn8
+        ]
+
+        # Compatibility aliases
+        self._btn_second_opinion = self.btn7
+        self._btn_benchmark = self.btn8
+
+        for btn in self.buttons:
+            self.layout.addWidget(btn)
+
         self.layout.addStretch()
-        
+
         self.setStyleSheet(f"""
             QWidget {{
                 background-color: {HEADER_BG};
@@ -1256,6 +1311,11 @@ class Sidebar(QWidget):
                 border-bottom-left-radius: 6px;
             }}
         """)
+        self.set_active(0)
+
+    def set_active(self, active_index: int):
+        for idx, btn in enumerate(self.buttons):
+            btn.set_active(idx == active_index)
 
 
 class ASTPage(CustomFrame):
@@ -2256,36 +2316,13 @@ class AppGUI(QMainWindow):
         self.sidebar.btn4.clicked.connect(self.switch_to_call_graph)
         self.sidebar.btn5.clicked.connect(self.switch_to_security)
         self.sidebar.btn6.clicked.connect(self.switch_to_cfg)
+        self.sidebar.btn7.clicked.connect(lambda: self.stack.setCurrentIndex(6))
+        self.sidebar.btn8.clicked.connect(lambda: self.stack.setCurrentIndex(7))
 
-        # ── New sidebar buttons for Feature 2 & 4 ────────────────────────────
-        from PyQt6.QtWidgets import QPushButton as _QPB
-        self._btn_second_opinion = _QPB("🔍", self.sidebar)
-        self._btn_second_opinion.setFixedWidth(40)
-        self._btn_second_opinion.setFixedHeight(40)
-        self._btn_second_opinion.setFont(QFont(FONT_FAMILY, 14))
-        self._btn_second_opinion.setToolTip("Second Opinion — classifier comparison")
-        self._btn_second_opinion.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._btn_second_opinion.setStyleSheet(f"""
-            QPushButton {{ border: 1px solid {BORDER_COLOR}; background-color: {PANE_BG};
-                           color: {TEXT_MAIN}; border-radius: 4px; padding: 4px; }}
-            QPushButton:hover {{ background-color: {HEADER_BG}; border: 1px solid {PINK}; }}
-        """)
-        self._btn_second_opinion.clicked.connect(lambda: self.stack.setCurrentIndex(6))
-        self.sidebar.layout.insertWidget(6, self._btn_second_opinion)
+        self._btn_second_opinion = self.sidebar.btn7
+        self._btn_benchmark = self.sidebar.btn8
 
-        self._btn_benchmark = _QPB("📊", self.sidebar)
-        self._btn_benchmark.setFixedWidth(40)
-        self._btn_benchmark.setFixedHeight(40)
-        self._btn_benchmark.setFont(QFont(FONT_FAMILY, 14))
-        self._btn_benchmark.setToolTip("Accuracy Benchmark — three-method comparison")
-        self._btn_benchmark.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._btn_benchmark.setStyleSheet(f"""
-            QPushButton {{ border: 1px solid {BORDER_COLOR}; background-color: {PANE_BG};
-                           color: {TEXT_MAIN}; border-radius: 4px; padding: 4px; }}
-            QPushButton:hover {{ background-color: {HEADER_BG}; border: 1px solid {PINK}; }}
-        """)
-        self._btn_benchmark.clicked.connect(lambda: self.stack.setCurrentIndex(7))
-        self.sidebar.layout.insertWidget(7, self._btn_benchmark)
+        self.stack.currentChanged.connect(self.sidebar.set_active)
 
 
         if not hasattr(self, "energy_timer"):
@@ -2339,10 +2376,21 @@ class AppGUI(QMainWindow):
         input_layout = QVBoxLayout(input_container)
         input_layout.setContentsMargins(0, 0, 0, 10)
         
+        input_header_layout = QHBoxLayout()
         input_label = QLabel("INPUT SCREEN (stdin)")
         input_label.setFont(QFont(FONT_FAMILY, 8, QFont.Weight.Bold))
         input_label.setStyleSheet(f"color: {TEXT_DIM}; margin-bottom: 4px;")
-        input_layout.addWidget(input_label)
+        input_header_layout.addWidget(input_label)
+        input_header_layout.addStretch()
+
+        self.btn_send_input = StyledButton("SEND TO STDIN", "outline_dim")
+        self.btn_send_input.setFixedHeight(24)
+        self.btn_send_input.setFont(QFont(FONT_FAMILY, 8, QFont.Weight.Bold))
+        self.btn_send_input.setToolTip("Send text to running program stdin")
+        self.btn_send_input.clicked.connect(self.send_stdin_input)
+        input_header_layout.addWidget(self.btn_send_input)
+
+        input_layout.addLayout(input_header_layout)
         
         self.input_area = QTextEdit()
         self.input_area.setPlaceholderText("Paste your test cases here...")
@@ -2892,14 +2940,59 @@ class AppGUI(QMainWindow):
         should_show = (state == Qt.CheckState.Checked.value)
         self.pane_right_bottom.setVisible(should_show)
 
+    def _find_executable(self) -> Optional[str]:
+        names = ["a.exe", "a.out"] if (os.name == "nt" or sys.platform == "win32") else ["a.out", "a.exe"]
+        for name in names:
+            for candidate in [name, os.path.join(".", name), os.path.join(os.getcwd(), name)]:
+                if os.path.exists(candidate) and os.path.isfile(candidate):
+                    return os.path.abspath(candidate)
+        return None
+
+    def send_stdin_input(self):
+        text = self.input_area.toPlainText()
+        if hasattr(self, 'process') and self.process.state() == QProcess.ProcessState.Running:
+            if text:
+                if not text.endswith('\n'):
+                    text += '\n'
+                self.process.write(text.encode('utf-8'))
+                self.terminal.append_output(f"<span style='color:{TEXT_DIM}'><i>[sent to stdin]: {text.strip()}</i></span><br>", is_html=True)
+        else:
+            self.run_code()
+
     def run_code(self):
-        if not os.path.exists("./a.out"):
-             self.terminal.append_output(f"<span style='color:{PINK}'>File 'a.out' not found. Please compile first.</span>", is_html=True)
-             return
-             
         self.terminal.clear()
         self.editor.clear_fixed_lines()
         self._record_execution()
+
+        # Find or compile executable
+        target_exe = self._find_executable()
+        needs_compile = False
+        if not target_exe:
+            needs_compile = True
+        elif os.path.exists(self.file_path):
+            try:
+                if os.path.getmtime(self.file_path) > os.path.getmtime(target_exe):
+                    needs_compile = True
+            except OSError:
+                pass
+
+        if needs_compile:
+            if not self.save_file():
+                self.terminal.append_output(f"<div style='color:{PINK};'>ERROR: Could not save file before compiling.</div>", is_html=True)
+                return
+            exe_target = "a.exe" if (os.name == "nt" or sys.platform == "win32") else "a.out"
+            res = subprocess.run(["g++", "-std=c++17", self.file_path, "-o", exe_target], capture_output=True, text=True)
+            if res.returncode != 0:
+                self.terminal.append_output(f"<div style='color:{PINK}; white-space:pre-wrap;'><b>Compilation failed:</b>\n{res.stderr}</div>", is_html=True)
+                self.status_label.setText("STATUS: ● COMPILE FAILED")
+                return
+            target_exe = os.path.abspath(exe_target)
+
+        if not target_exe or not os.path.exists(target_exe):
+            exe_name = "a.exe" if (os.name == "nt" or sys.platform == "win32") else "a.out"
+            self.terminal.append_output(f"<span style='color:{PINK}'>File '{exe_name}' not found. Please compile first.</span>", is_html=True)
+            return
+
         self.is_loading = True
         self.loading_prefix = "STATUS: ● EXECUTING BINARY "
         self.loading_timer.start(300)
@@ -2909,7 +3002,7 @@ class AppGUI(QMainWindow):
 
         if hasattr(self, 'process') and self.process.state() == QProcess.ProcessState.Running:
             self.process.kill()
-            self.process.waitForFinished()
+            self.process.waitForFinished(1000)
 
         self.process = QProcess(self)
         self.terminal.process = self.process # Link process to terminal for input
@@ -2919,19 +3012,26 @@ class AppGUI(QMainWindow):
         self.process.errorOccurred.connect(self._on_process_error)
         
         # Start the process
-        self.process.start("./a.out")
+        self.process.start(target_exe)
         
-        # Automatically send batch input if available
-        input_text = self.input_area.toPlainText()
-        if input_text:
-            if not input_text.endswith('\n'):
-                input_text += '\n'
-            self.process.write(input_text.encode())
+        # Wait for started and feed input from input_area if available
+        if self.process.waitForStarted(1500):
+            input_text = self.input_area.toPlainText()
+            if input_text:
+                if not input_text.endswith('\n'):
+                    input_text += '\n'
+                self.process.write(input_text.encode('utf-8'))
+        else:
+            self.loading_timer.stop()
+            self.is_loading = False
+            self.status_label.setText("STATUS: ● PROCESS START FAILED")
+            self.terminal.append_output(f"<span style='color:{PINK}'>Failed to start '{os.path.basename(target_exe)}'.</span>", is_html=True)
 
     def _read_process_output(self):
-        data = self.process.readAllStandardOutput().data().decode()
-        # Append to terminal
-        self.terminal.append_output(data)
+        raw = self.process.readAllStandardOutput().data()
+        data = raw.decode('utf-8', errors='replace')
+        if data:
+            self.terminal.append_output(data)
 
     def _on_process_finished(self, exit_code, exit_status):
         self.loading_timer.stop()
@@ -2943,6 +3043,8 @@ class AppGUI(QMainWindow):
             
         self.status_label.setText(status_msg)
         self.terminal.setReadOnly(True)
+        if not self.terminal.toPlainText().strip():
+            self.terminal.append_output(f"<span style='color:{TEXT_DIM}'><i>(Program finished with exit code {exit_code} - no output)</i></span>", is_html=True)
 
     def _on_process_error(self, error):
         self.loading_timer.stop()
@@ -3096,7 +3198,7 @@ class AppGUI(QMainWindow):
             lbl = QLabel("NO ISSUES DETECTED.")
             lbl.setStyleSheet(f"color: {PINK}; font-weight: bold; font-family: {FONT_FAMILY}; font-size: 14px;")
             self.error_cards_layout.addWidget(lbl)
-            self.terminal.append_output(f"<span style='color:{TEXT_MAIN};'>Compilation finished successfully.</span>", is_html=True)
+            self.terminal.append_output(f"<span style='color:{TEXT_MAIN};'>Compilation finished successfully. Click 'RUN CODE' to execute.</span><br>", is_html=True)
             self.editor.set_errors([])
             self.errors_count = 0
             self.warnings_count = 0
