@@ -9,6 +9,6 @@ int main() {
     cout << *p << endl;
     delete p;                  // p is freed here
     cout << *p << endl;        // ERROR: use after free — undefined behavior
-    p = nullptr;               // Should come BEFORE the second cout
+    p = nullptr;           // Should come BEFORE the second cout
     return 0;
 }
