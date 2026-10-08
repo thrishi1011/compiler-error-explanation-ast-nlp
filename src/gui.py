@@ -279,6 +279,27 @@ def _extract_cpp_cfg(code):
         
     return results
 
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
+
+
+def get_gcc_version() -> str:
+    """Read actual installed g++ version once at startup."""
+    try:
+        res = subprocess.run(["g++", "--version"], capture_output=True, text=True, timeout=3)
+        if res.returncode == 0 and res.stdout:
+            first_line = res.stdout.splitlines()[0]
+            m = re.search(r"(\d+\.\d+(?:\.\d+)?)", first_line)
+            if m:
+                return f"GCC {m.group(1)}"
+    except Exception:
+        pass
+    return "GCC 11.4"
+
+
 class SparklineGraph(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -291,7 +312,14 @@ class SparklineGraph(QWidget):
         self.peak = 0
 
     def update_fluctuation(self):
-        # Base noise
+        if HAS_PSUTIL:
+            try:
+                val = psutil.cpu_percent()
+                self.add_value(val)
+                return
+            except Exception:
+                pass
+        # Base noise fallback
         import random
         noise = random.uniform(0, 2)
         self.add_value(noise)
@@ -2343,6 +2371,7 @@ class AppGUI(QMainWindow):
 
         self.file_name = "file.cpp"
         self.file_path = os.path.join(os.getcwd(), self.file_name)
+        self.gcc_version = get_gcc_version()
         self.errors_count = 0
         self.warnings_count = 0
         self.execution_count = 0
@@ -2375,7 +2404,8 @@ class AppGUI(QMainWindow):
             energy_hbox.setContentsMargins(5, 0, 5, 0)
             energy_hbox.setSpacing(10)
             
-            cpu_label = QLabel("CpU utilization")
+            cpu_text = "CPU utilization" if HAS_PSUTIL else "CPU utilization (simulated)"
+            cpu_label = QLabel(cpu_text)
             cpu_label.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.Bold))
             cpu_label.setStyleSheet(f"color: {TEXT_DIM};")
             energy_hbox.addWidget(cpu_label)
@@ -2456,9 +2486,11 @@ class AppGUI(QMainWindow):
             import llm_client
             has_llm_keys = bool(llm_client.get_gemini_key() or llm_client.get_groq_key())
             ai_status_text = llm_client.status()
+            trail_tooltip = llm_client.get_status_trail() if hasattr(llm_client, "get_status_trail") else ai_status_text
         except ImportError:
             has_llm_keys = False
             ai_status_text = "AI: offline"
+            trail_tooltip = "AI: offline"
 
         toolbar_layout.addSpacing(15)
         self.cb_ai_assist = StyledCheckBox("AI assist")
@@ -2470,7 +2502,8 @@ class AppGUI(QMainWindow):
 
         toolbar_layout.addSpacing(8)
         self.ai_status_label = QLabel(self._format_ai_status(ai_status_text))
-        self.ai_status_label.setToolTip(ai_status_text)
+        self.ai_status_label.setToolTip(trail_tooltip)
+        self.ai_status_label.setMaximumWidth(280)
         self.ai_status_label.setStyleSheet(f"color: {PINK}; font-size: 10px; font-family: {FONT_FAMILY}; font-weight: bold;")
         toolbar_layout.addWidget(self.ai_status_label)
 
@@ -2671,7 +2704,8 @@ class AppGUI(QMainWindow):
         self.v_splitter.setSizes([500, 250])
 
         footer_layout = QHBoxLayout()
-        self.status_bar_left = QLabel("Compiler: GCC 11.4 | Language: C++17 | Errors: 1 | Warnings: 0 | File Name: file.cpp")
+        gcc_ver = getattr(self, "gcc_version", "GCC 11.4")
+        self.status_bar_left = QLabel(f"Compiler: {gcc_ver} | Language: C++17 | Errors: 1 | Warnings: 0 | File Name: file.cpp")
         self.status_bar_left.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.Bold))
         self.status_bar_left.setStyleSheet(f"color: {TEXT_DIM};")
         footer_layout.addWidget(self.status_bar_left)
@@ -2877,7 +2911,9 @@ class AppGUI(QMainWindow):
         if classifier is None:
             classifier = _KeywordClassifier()
 
-        # Clear the cards pane and show a status message
+        # Clear the cards pane and show initial errors with offline explanation
+        current_errors = list(getattr(self.editor, "errors", []))
+
         for i in reversed(range(self.error_cards_layout.count())):
             w = self.error_cards_layout.itemAt(i).widget()
             if w:
@@ -2885,9 +2921,16 @@ class AppGUI(QMainWindow):
         
         self.editor.clear_fixed_lines()
 
-        header = QLabel("⚕ AUTO-HEAL IN PROGRESS…")
-        header.setStyleSheet(f"color: {YELLOW}; font-size: 13px; font-family: {FONT_FAMILY}; font-weight: bold;")
-        self.error_cards_layout.addWidget(header)
+        self.heal_header = QLabel("⚕ AUTO-HEAL IN PROGRESS…")
+        self.heal_header.setStyleSheet(f"color: {YELLOW}; font-size: 13px; font-family: {FONT_FAMILY}; font-weight: bold;")
+        self.error_cards_layout.addWidget(self.heal_header)
+
+        if current_errors:
+            lbl_init = QLabel("INITIAL COMPILER ERRORS (before healing):")
+            lbl_init.setStyleSheet(f"color: {PINK}; font-size: 11px; font-weight: bold; font-family: {FONT_FAMILY}; margin-top: 4px;")
+            self.error_cards_layout.addWidget(lbl_init)
+            for err in current_errors:
+                self.error_cards_layout.addWidget(self._create_error_card(err))
 
         self.btn_heal.setEnabled(False)
         self.status_label.setText("STATUS: ● HEALING…")
@@ -2898,6 +2941,7 @@ class AppGUI(QMainWindow):
         self.heal_worker.attempt_started.connect(self._on_heal_attempt)
         self.heal_worker.diff_ready.connect(self._on_heal_diff)
         self.heal_worker.compile_clean.connect(self._on_heal_success)
+        self.heal_worker.heal_summary.connect(self._on_heal_summary)
         self.heal_worker.give_up.connect(self._on_heal_give_up)
         self.heal_worker.error_signal.connect(self._on_heal_error)
         self.heal_worker.lines_fixed.connect(self.editor.set_fixed_lines)
@@ -2926,7 +2970,7 @@ class AppGUI(QMainWindow):
             with open(self.last_heal_backup, "r", encoding="utf-8") as f:
                 content = f.read()
             with open(self.file_path, "w", encoding="utf-8") as f:
-                f.write(content)
+                content = f.write(content)
             self.editor.blockSignals(True)
             self.editor.setPlainText(content)
             self.editor.blockSignals(False)
@@ -2983,12 +3027,122 @@ class AppGUI(QMainWindow):
             self.editor.blockSignals(False)
             pass
 
+    def _on_heal_summary(self, summary: dict):
+        clean = summary.get("clean", False)
+        rounds = summary.get("rounds", [])
+        total_sec = summary.get("total_duration", 0.0)
+        status_msg = summary.get("message", "Compiles OK")
+
+        # Replace heal progress header
+        if hasattr(self, "heal_header") and self.heal_header:
+            if clean:
+                self.heal_header.setText("✅ AUTO-HEAL: COMPILES OK")
+                self.heal_header.setStyleSheet(f"color: {GREEN}; font-size: 14px; font-family: {FONT_FAMILY}; font-weight: bold;")
+            else:
+                self.heal_header.setText(f"⚠️ AUTO-HEAL: {summary.get('status', 'finished').upper()}")
+                self.heal_header.setStyleSheet(f"color: {YELLOW}; font-size: 14px; font-family: {FONT_FAMILY}; font-weight: bold;")
+
+        # Summary Card
+        card = QFrame()
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {PANEL_BG};
+                border: 1px solid {GREEN if clean else YELLOW};
+                border-radius: 6px;
+                padding: 10px;
+                margin-top: 6px;
+            }}
+        """)
+        c_layout = QVBoxLayout(card)
+
+        hdr_text = f"<b>HEAL SUMMARY:</b> {len(rounds)} round(s) in {total_sec:.2f}s — {'Compiles OK' if clean else status_msg}"
+        lbl_h = QLabel(hdr_text)
+        lbl_h.setStyleSheet(f"color: {GREEN if clean else YELLOW}; font-size: 12px; font-family: {FONT_FAMILY};")
+        c_layout.addWidget(lbl_h)
+
+        # Method per round breakdown
+        for r in rounds:
+            r_no = r.get("round_no", 1)
+            r_method = r.get("method", "offline rules")
+            r_sec = r.get("seconds", 0.0)
+            r_lbl = QLabel(f"• Round {r_no}: {r_method} ({r_sec:.2f}s)")
+            r_lbl.setStyleSheet(f"color: {TEXT_MAIN}; font-size: 11px; font-family: {FONT_FAMILY};")
+            c_layout.addWidget(r_lbl)
+
+        # Diff of changed lines if available
+        last_diff = None
+        for r in reversed(rounds):
+            if r.get("diff_html"):
+                last_diff = r.get("diff_html")
+                break
+        if last_diff:
+            diff_lbl = QLabel("<b>Changed Lines:</b>")
+            diff_lbl.setStyleSheet(f"color: {TEXT_DIM}; font-size: 10px; font-family: {FONT_FAMILY}; margin-top: 4px;")
+            c_layout.addWidget(diff_lbl)
+            diff_box = QTextBrowser()
+            diff_box.setOpenLinks(False)
+            diff_box.setHtml(last_diff)
+            diff_box.setStyleSheet(f"""
+                QTextBrowser {{
+                    background-color: {BG_COLOR};
+                    border: 1px solid {BORDER_COLOR};
+                    border-radius: 4px;
+                    padding: 4px;
+                    font-family: {FONT_FAMILY};
+                }}
+            """)
+            diff_box.setMaximumHeight(140)
+            c_layout.addWidget(diff_box)
+
+        # Silent re-analysis for footer agreement and remaining security check
+        self._silent_reanalysis_after_heal(summary, c_layout)
+
+        self.error_cards_layout.addWidget(card)
+
+    def _silent_reanalysis_after_heal(self, summary: dict, card_layout=None):
+        """Silently re-analyzes code to ensure footer, error counts, and security findings agree."""
+        try:
+            # 1. Reload file in editor
+            with open(self.file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            self.editor.blockSignals(True)
+            self.editor.setPlainText(content)
+            self.editor.blockSignals(False)
+
+            # 2. Check compiler status silently
+            from heal_engine import compile_source
+            errors, warnings, _ = compile_source(content, syntax_only=False)
+            self.errors_count = len(errors)
+            self.warnings_count = len(warnings)
+            self.editor.set_errors(errors)
+            self._update_footer()
+
+            # 3. Check security findings
+            from security_analyzer import analyze as analyze_security, format_security_report
+            findings = analyze_security(self.file_path, errors)
+            self.latest_security_findings = findings
+            self.latest_security_report = format_security_report(findings)
+            self.security_page.update_report(findings)
+
+            if findings and card_layout:
+                sec_lbl = QLabel(f"⚠️ <b>Security Notice:</b> {len(findings)} security finding(s) detected in healed code (see Security tab)")
+                sec_lbl.setStyleSheet(f"color: {YELLOW}; font-size: 11px; font-family: {FONT_FAMILY}; margin-top: 4px;")
+                sec_lbl.setWordWrap(True)
+                card_layout.addWidget(sec_lbl)
+            elif warnings and card_layout:
+                warn_lbl = QLabel(f"ℹ️ Code compiles with {len(warnings)} warning(s).")
+                warn_lbl.setStyleSheet(f"color: {TEXT_DIM}; font-size: 11px; font-family: {FONT_FAMILY};")
+                card_layout.addWidget(warn_lbl)
+        except Exception:
+            pass
+
     def _on_heal_success(self, method: str = "Healed by offline rules"):
         self.btn_heal.setEnabled(True)
         self.status_label.setText("STATUS: ● HEALED ✅")
         lbl = QLabel(f"✅ {method} — Compiles OK - please review the changes.")
         lbl.setStyleSheet(f"color: {GREEN}; font-size: 13px; font-weight: bold; font-family: {FONT_FAMILY};")
         self.error_cards_layout.addWidget(lbl)
+
         # Note: We no longer auto-trigger self.analyze() here to allow the user 
         # to review the heal history before manually recompiling.
         # self.analyze()
@@ -3249,7 +3403,8 @@ class AppGUI(QMainWindow):
             pass
 
     def _update_footer(self):
-        text = f"Compiler: GCC 11.4 | Language: C++17 | Errors: {self.errors_count} | Warnings: {self.warnings_count} | File Name: {self.file_name}"
+        gcc_ver = getattr(self, "gcc_version", "GCC 11.4")
+        text = f"Compiler: {gcc_ver} | Language: C++17 | Errors: {self.errors_count} | Warnings: {self.warnings_count} | File Name: {self.file_name}"
         self.status_bar_left.setText(text)
 
     def _animate_loading(self):
@@ -3518,9 +3673,38 @@ class AppGUI(QMainWindow):
         report_text = data.get("security_report", "")
         if status == "success":
             self.status_label.setText("STATUS: ● SUCCESSFUL")
-            lbl = QLabel("NO ISSUES DETECTED.")
-            lbl.setStyleSheet(f"color: {PINK}; font-weight: bold; font-family: {FONT_FAMILY}; font-size: 14px;")
-            self.error_cards_layout.addWidget(lbl)
+            if findings:
+                card = QFrame()
+                card.setStyleSheet(f"""
+                    QFrame {{
+                        background-color: {PANEL_BG};
+                        border: 1px solid {YELLOW};
+                        border-radius: 6px;
+                        padding: 10px;
+                        margin-bottom: 8px;
+                    }}
+                """)
+                c_layout = QVBoxLayout(card)
+                title = QLabel(f"COMPILES OK — {len(findings)} security finding(s)")
+                title.setStyleSheet(f"color: {YELLOW}; font-weight: bold; font-family: {FONT_FAMILY}; font-size: 13px;")
+                c_layout.addWidget(title)
+
+                for f in findings[:3]:
+                    sev = f.get("severity", "MEDIUM").upper() if isinstance(f, dict) else getattr(f, "severity", "MEDIUM").upper()
+                    ftype = f.get("type", "Security Finding") if isinstance(f, dict) else getattr(f, "type", "Security Finding")
+                    fline = f.get("line", "?") if isinstance(f, dict) else getattr(f, "line", "?")
+                    fdesc = f.get("description", "") if isinstance(f, dict) else getattr(f, "description", "")
+                    lbl_f = QLabel(f"• <b>[{sev}] {ftype}</b> (line {fline}): {fdesc}")
+                    lbl_f.setStyleSheet(f"color: {TEXT_MAIN}; font-size: 11px; font-family: {FONT_FAMILY};")
+                    lbl_f.setWordWrap(True)
+                    c_layout.addWidget(lbl_f)
+
+                self.error_cards_layout.addWidget(card)
+            else:
+                lbl = QLabel("NO ISSUES DETECTED.")
+                lbl.setStyleSheet(f"color: {PINK}; font-weight: bold; font-family: {FONT_FAMILY}; font-size: 14px;")
+                self.error_cards_layout.addWidget(lbl)
+
             self.terminal.append_output(f"<span style='color:{TEXT_MAIN};'>Compilation finished successfully. Click 'RUN CODE' to execute.</span><br>", is_html=True)
             self.editor.set_errors([])
             self.errors_count = 0
@@ -3530,6 +3714,7 @@ class AppGUI(QMainWindow):
             self.latest_security_report = report_text
             self.security_page.update_report(findings)
             return
+
             
         self.errors_count = data.get('error_count', 0)
         self.warnings_count = data.get('warning_count', 0)
