@@ -136,17 +136,17 @@ class TestLLMClientFallback(unittest.TestCase):
             self.assertIn("offline", status_str)
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "dummy_gemini_key", "GROQ_API_KEY": "dummy_groq_key"})
-    def test_timeout_retry_and_fallback(self):
-        """Timeout triggers at most 1 retry per provider, then moves to next provider."""
+    def test_timeout_moves_directly_to_next_provider_no_retry(self):
+        """A timeout does NOT retry and moves directly to the other provider without cascading models."""
         call_urls = []
 
-        def mock_post_timeout(url, headers, data, timeout):
+        def mock_post_timeout(url, headers, data, timeout, provider="gemini"):
             call_urls.append(url)
             if "generativelanguage" in url:
-                return (408, "Read timeout", {})
+                return (408, "Read timeout", {}, "ReadTimeout")
             else:
                 groq_resp = {"choices": [{"message": {"content": "ok from groq"}}]}
-                return (200, json.dumps(groq_resp), {})
+                return (200, json.dumps(groq_resp), {}, None)
 
         with patch("llm_client._http_post", side_effect=mock_post_timeout) as mock_post:
             res = llm_client.ask(
@@ -154,25 +154,75 @@ class TestLLMClientFallback(unittest.TestCase):
                 prompt="test prompt timeout",
                 kind="explain"
             )
-            # Gemini had initial call + 1 retry (total 2 calls), then fell back to Groq (1 call)
+            # Gemini had exactly 1 call (no timeout retry), then immediately moved to Groq (1 call)
             gemini_calls = sum(1 for u in call_urls if "generativelanguage" in u)
             groq_calls = sum(1 for u in call_urls if "groq" in u)
-            self.assertEqual(gemini_calls, 2)
+            self.assertEqual(gemini_calls, 1)
             self.assertEqual(groq_calls, 1)
             self.assertEqual(res.provider, "groq")
             self.assertEqual(res.text, "ok from groq")
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "dummy_gemini_key", "GROQ_API_KEY": "dummy_groq_key"})
+    def test_connection_error_retries_once_then_moves_to_groq(self):
+        """A ConnectionError retries once with fresh connection, then moves to Groq if still failing."""
+        post_calls = []
+
+        # Mock Session.post to raise ConnectionError
+        mock_resp_groq = MagicMock()
+        mock_resp_groq.status_code = 200
+        mock_resp_groq.text = json.dumps({"choices": [{"message": {"content": "ok groq"}}]})
+        mock_resp_groq.headers = {}
+
+        def mock_session_post(url, headers, json, timeout):
+            post_calls.append(url)
+            if "generativelanguage" in url:
+                import requests
+                raise requests.exceptions.ConnectionError("Connection reset by peer")
+            return mock_resp_groq
+
+        with patch("requests.Session.post", side_effect=mock_session_post):
+            res = llm_client.ask(system="s", prompt="p", kind="explain")
+            gemini_posts = sum(1 for u in post_calls if "generativelanguage" in u)
+            self.assertEqual(gemini_posts, 2)  # initial + 1 fresh connection retry
+            self.assertEqual(res.provider, "groq")
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "dummy_gemini_key", "GROQ_API_KEY": "dummy_groq_key"})
+    def test_two_consecutive_timeouts_marks_provider_degraded_120s(self):
+        """Two consecutive timeouts or connection errors mark provider degraded for 120s and it is skipped instantly."""
+        def mock_post_gemini_fail(url, headers, data, timeout, provider="gemini"):
+            if "generativelanguage" in url:
+                return (408, "Read timeout", {}, "ReadTimeout")
+            return (200, json.dumps({"choices": [{"message": {"content": "groq rescued"}}]}), {}, None)
+
+        with patch("llm_client._http_post", side_effect=mock_post_gemini_fail):
+            # First failure
+            res1 = llm_client.ask(system="s", prompt="p1", kind="explain")
+            self.assertEqual(res1.provider, "groq")
+            self.assertEqual(llm_client._GEMINI_STATE.consecutive_network_failures, 1)
+            self.assertTrue(llm_client._GEMINI_STATE.degraded_until == 0.0)
+
+            # Second failure -> marks degraded for 120s
+            res2 = llm_client.ask(system="s", prompt="p2", kind="explain")
+            self.assertEqual(res2.provider, "groq")
+            self.assertEqual(llm_client._GEMINI_STATE.consecutive_network_failures, 2)
+            self.assertGreater(llm_client._GEMINI_STATE.degraded_until, 0.0)
+
+            # Third call: Gemini is now degraded, so is_available() returns False and Gemini is skipped instantly!
+            avail, reason = llm_client._GEMINI_STATE.is_available()
+            self.assertFalse(avail)
+            self.assertIn("degraded", reason)
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "dummy_gemini_key", "GROQ_API_KEY": "dummy_groq_key"})
     def test_401_disables_provider_for_session(self):
         """HTTP 401 disables the provider for the session so it is never called again."""
         call_urls = []
 
-        def mock_post_401(url, headers, data, timeout):
+        def mock_post_401(url, headers, data, timeout, provider="gemini"):
             call_urls.append(url)
             if "generativelanguage" in url:
-                return (401, "API_KEY_INVALID", {})
+                return (401, "API_KEY_INVALID", {}, "AuthError")
             else:
-                return (200, json.dumps({"choices": [{"message": {"content": "groq success"}}]},), {})
+                return (200, json.dumps({"choices": [{"message": {"content": "groq success"}}]},), {}, None)
 
         with patch("llm_client._http_post", side_effect=mock_post_401) as mock_post:
             res1 = llm_client.ask(system="s", prompt="p1", kind="explain")
@@ -192,11 +242,11 @@ class TestLLMClientFallback(unittest.TestCase):
     @patch.dict(os.environ, {"GEMINI_API_KEY": "dummy_gemini_key", "GROQ_API_KEY": "dummy_groq_key"})
     def test_malformed_json_moves_to_next_provider(self):
         """When Gemini returns malformed/unparseable response, Groq is called."""
-        def mock_post_malformed(url, headers, data, timeout):
+        def mock_post_malformed(url, headers, data, timeout, provider="gemini"):
             if "generativelanguage" in url:
-                return (200, "THIS IS NOT VALID JSON AT ALL {{{{", {})
+                return (200, "THIS IS NOT VALID JSON AT ALL {{{{", {}, None)
             else:
-                return (200, json.dumps({"choices": [{"message": {"content": "groq rescued"}}]}), {})
+                return (200, json.dumps({"choices": [{"message": {"content": "groq rescued"}}]}), {}, None)
 
         with patch("llm_client._http_post", side_effect=mock_post_malformed):
             res = llm_client.ask(system="s", prompt="p", kind="explain")
@@ -212,10 +262,10 @@ class TestLLMClientFallback(unittest.TestCase):
         gemini_secret = os.environ["GEMINI_API_KEY"]
         groq_secret = os.environ["GROQ_API_KEY"]
 
-        def mock_post_leak_keys(url, headers, data, timeout):
+        def mock_post_leak_keys(url, headers, data, timeout, provider="gemini"):
             # Simulate an error response containing the raw keys
             leak_msg = f"Error for key {gemini_secret} and groq key {groq_secret}"
-            return (500, leak_msg, {})
+            return (500, leak_msg, {}, "InternalError")
 
         with patch("llm_client._http_post", side_effect=mock_post_leak_keys):
             res = llm_client.ask(system="s", prompt="leak_test", kind="explain")
@@ -226,42 +276,43 @@ class TestLLMClientFallback(unittest.TestCase):
             self.assertNotIn(groq_secret, status_text)
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "dummy_gemini_key", "GROQ_API_KEY": "dummy_groq_key"})
-    def test_gemini_model_cascade_3_8_to_3_7_to_3_5(self):
-        """Gemini cascades from 3.8 to 3.7 to 3.5 when earlier models return 404."""
+    def test_gemini_model_cascade_on_404(self):
+        """Gemini cascades to next model only when earlier models return 404/400."""
         called_models = []
 
-        def mock_cascade(url, headers, data, timeout):
-            for m in ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash"]:
+        def mock_cascade(url, headers, data, timeout, provider="gemini"):
+            for m in ["gemini-3.5-flash-lite", "gemini-3.8-flash"]:
                 if m in url:
                     called_models.append(m)
-                    if m == "gemini-3.5-flash":
+                    if m == "gemini-3.8-flash":
                         resp = {"candidates": [{"content": {"parts": [{"text": "{\"ok\": true}"}]}}]}
-                        return (200, json.dumps(resp), {})
+                        return (200, json.dumps(resp), {}, None)
                     else:
-                        return (404, f"Model {m} not found", {})
-            return (404, "Not found", {})
+                        return (404, f"Model {m} not found", {}, "ModelNotFound")
+            return (404, "Not found", {}, "ModelNotFound")
 
         with patch("llm_client._http_post", side_effect=mock_cascade):
             res = llm_client.ask(system="s", prompt="cascade test", kind="explain")
             self.assertEqual(res.provider, "gemini")
-            self.assertEqual(called_models, ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash"])
+            self.assertEqual(called_models, ["gemini-3.5-flash-lite", "gemini-3.8-flash"])
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "", "GROQ_API_KEY": "dummy_groq_key"})
-    def test_groq_model_cascade_3_1_to_3_0(self):
-        """Groq cascades from llama-3.1 to llama3.0 (llama3-8b-8192) when 3.1 returns 404."""
+    def test_groq_model_cascade_on_404(self):
+        """Groq cascades to next model when 404 is returned."""
         called_models = []
 
-        def mock_groq_cascade(url, headers, data, timeout):
+        def mock_groq_cascade(url, headers, data, timeout, provider="groq"):
             model = data.get("model", "")
             called_models.append(model)
-            if model == "llama3-8b-8192":
-                return (200, json.dumps({"choices": [{"message": {"content": "{\"ok\": true}"}}]}), {})
-            return (404, f"Model {model} not found", {})
+            if model == "llama-3.1-8b-instant":
+                return (200, json.dumps({"choices": [{"message": {"content": "{\"ok\": true}"}}]}), {}, None)
+            return (404, f"Model {model} not found", {}, "ModelNotFound")
 
         with patch("llm_client._http_post", side_effect=mock_groq_cascade):
             res = llm_client.ask(system="s", prompt="groq cascade test", kind="explain")
             self.assertEqual(res.provider, "groq")
-            self.assertEqual(called_models, ["llama-3.1-8b-instant", "llama3-8b-8192"])
+            self.assertEqual(called_models, ["openai/gpt-oss-20b", "llama-3.1-8b-instant"])
+
 
 
 class TestHealValidation(unittest.TestCase):
