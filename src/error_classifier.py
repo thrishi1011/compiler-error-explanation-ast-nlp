@@ -91,22 +91,22 @@ def _load_training_examples(training_data_file: str) -> Tuple[List[str], List[st
 
 
 def _check_imbalance(labels: List[str]) -> dict:
-    """Return a dict of category → count and print a warning for severe imbalance."""
+    """Return a dict of category -> count and print a warning for severe imbalance."""
     counts = Counter(labels)
     total  = len(labels)
     print(f"\n[Classifier] Class distribution ({total} samples):")
     for cat in sorted(counts, key=lambda c: -counts[c]):
         pct = 100 * counts[cat] / total
-        bar = "█" * int(pct / 2)
+        bar = "#" * int(pct / 2)
         print(f"  {cat:<25} {counts[cat]:>5}  ({pct:5.1f}%) {bar}")
 
     majority = max(counts.values())
     minority = min(counts.values())
     ratio    = majority / minority if minority else float("inf")
     if ratio > 10:
-        print(f"\n  ⚠️  Imbalance ratio {ratio:.1f}x — class_weight='balanced' will be applied.")
+        print(f"\n  [WARN] Imbalance ratio {ratio:.1f}x - class_weight='balanced' will be applied.")
     else:
-        print(f"\n  ✓  Imbalance ratio {ratio:.1f}x — acceptable.")
+        print(f"\n  [OK] Imbalance ratio {ratio:.1f}x - acceptable.")
     return dict(counts)
 
 
@@ -165,7 +165,6 @@ class ErrorClassifier:
                         max_iter=2000,
                         class_weight="balanced",  # handles imbalance automatically
                         solver="lbfgs",
-                        multi_class="multinomial",
                         C=1.0,
                     ),
                 ),
@@ -181,7 +180,7 @@ class ErrorClassifier:
             raise ValueError("No trained model in memory to save.")
         os.makedirs(os.path.dirname(self.model_file), exist_ok=True)
         joblib.dump(self._pipeline, self.model_file)
-        print(f"[Classifier] Model saved → {self.model_file}")
+        print(f"[Classifier] Model saved -> {self.model_file}")
 
     def load(self) -> bool:
         if self._pipeline is not None:
@@ -234,7 +233,30 @@ class ErrorClassifier:
 
         assert self._pipeline is not None
 
-        feature_str = f"{ast_node} {message}".strip()
+        from error_normalizer import normalize_for_classifier
+        feature_str = normalize_for_classifier(message)
+        try:
+            proba = self._pipeline.predict_proba([feature_str])
+            idx   = int(proba[0].argmax())
+            pred  = self._pipeline.classes_[idx]
+            conf  = float(proba[0].max())
+            return str(pred), conf
+        except Exception:
+            pred = self._pipeline.predict([feature_str])[0]
+            return str(pred), 0.5
+
+    def predict_ml_only(self, message: str, ast_node: str = "") -> Tuple[Optional[str], float]:
+        """
+        Pure ML prediction bypassing rule fast-paths (for honest ML evaluation).
+        """
+        if not message:
+            return None, 0.0
+        if not self.load():
+            return None, 0.0
+        assert self._pipeline is not None
+
+        from error_normalizer import normalize_for_classifier
+        feature_str = normalize_for_classifier(message)
         try:
             proba = self._pipeline.predict_proba([feature_str])
             idx   = int(proba[0].argmax())
@@ -291,18 +313,18 @@ class ErrorClassifier:
                 results[expected_cat] = {"correct": 0, "total": 0}
             results[expected_cat]["total"]   += 1
             results[expected_cat]["correct"] += int(correct)
-            detail.append((fname, expected_cat, predicted, "✓" if correct else "✗"))
+            detail.append((fname, expected_cat, predicted, "OK" if correct else "XX"))
 
         # Print report
-        print("\n" + "═" * 62)
-        print("  CLASSIFIER ACCURACY REPORT — per category")
-        print("═" * 62)
+        print("\n" + "=" * 62)
+        print("  CLASSIFIER ACCURACY REPORT -- per category")
+        print("=" * 62)
         print(f"  {'File':<35} {'Expected':<22} {'Predicted':<22} {'OK'}")
-        print("─" * 62)
+        print("-" * 62)
         for fname, exp, pred, mark in detail:
             print(f"  {fname:<35} {exp:<22} {pred:<22} {mark}")
 
-        print("\n" + "─" * 62)
+        print("\n" + "-" * 62)
         total_correct = total_files = 0
         for cat, r in sorted(results.items()):
             acc = 100 * r["correct"] / r["total"]
@@ -311,9 +333,9 @@ class ErrorClassifier:
             print(f"  {cat:<25}  {r['correct']}/{r['total']}  ({acc:.0f}%)")
 
         overall = 100 * total_correct / total_files if total_files else 0
-        print("─" * 62)
+        print("-" * 62)
         print(f"  {'OVERALL':<25}  {total_correct}/{total_files}  ({overall:.0f}%)")
-        print("═" * 62 + "\n")
+        print("=" * 62 + "\n")
 
         return results
 
@@ -338,14 +360,9 @@ if __name__ == "__main__":
     PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     TEST_DIR     = os.path.join(PROJECT_ROOT, "test_cases")
 
-    print("Step 1 — Building dataset from test cases...")
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from build_dataset_from_tests import build   # type: ignore
-    build()
-
-    print("\nStep 2 — Training classifier...")
+    print("\nTraining classifier on data/training_data.json...")
     clf = ErrorClassifier()
     clf.train_and_save()
 
-    print("\nStep 3 — Evaluating on test cases...")
+    print("\nEvaluating on test cases...")
     clf.evaluate_on_tests(TEST_DIR)

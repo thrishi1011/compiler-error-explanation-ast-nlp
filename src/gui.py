@@ -6,7 +6,7 @@ import re
 import html
 import time
 import math
-import random
+from typing import Optional, List, Dict, Tuple
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QSplitter, QPlainTextEdit, QTextEdit,
                              QPushButton, QFileDialog, QMessageBox, QLabel, QFrame,
@@ -51,18 +51,76 @@ except ImportError:
 from ast_extractor import extract_ast, extract_node_near_line, parse_ast_to_tree
 from security_analyzer import analyze as analyze_security, format_security_report
 
-BG_COLOR = "#f4f7f9"          
-PANE_BG = "#ffffff"           
-HEADER_BG = "#f4f7f9"         
-BORDER_COLOR = "#e6ebf1"      
-PINK = "#5469d4"  
-TEXT_MAIN = "#1a1f36"         
-TEXT_DIM = "#4f566b"          
-KEYWORD_COLOR = "#5469d4"     
-ERROR_LINE_COLOR = "#fefafb" 
-RED = "#d12441"
-YELLOW = "#ffcc00"
-GREEN = "#24b47e"
+LIGHT_THEME = {
+    "BG_COLOR": "#f4f7f9",
+    "PANE_BG": "#ffffff",
+    "HEADER_BG": "#f4f7f9",
+    "BORDER_COLOR": "#e6ebf1",
+    "PINK": "#5469d4",
+    "TEXT_MAIN": "#1a1f36",
+    "TEXT_DIM": "#4f566b",
+    "KEYWORD_COLOR": "#5469d4",
+    "ERROR_LINE_COLOR": "#fefafb",
+    "RED": "#d12441",
+    "YELLOW": "#ffcc00",
+    "GREEN": "#24b47e",
+    "ACTIVE_NAV_BG": "#e9ecf8",
+    "HOVER_NAV_BG": "#eef2f7",
+    "CODE_BG": "#ffffff",
+    "TERMINAL_BG": "#f8fafc",
+}
+
+DARK_THEME = {
+    "BG_COLOR": "#0f172a",          # Deep slate 900
+    "PANE_BG": "#1e293b",           # Card slate 800
+    "HEADER_BG": "#0f172a",         # Header dark
+    "BORDER_COLOR": "#334155",      # Slate 700 border
+    "PINK": "#818cf8",              # Indigo 400
+    "TEXT_MAIN": "#f8fafc",         # Slate 50
+    "TEXT_DIM": "#94a3b8",          # Slate 400
+    "KEYWORD_COLOR": "#a5b4fc",     # Light indigo 300
+    "ERROR_LINE_COLOR": "#371b26",  # Dark red highlight
+    "RED": "#f87171",               # Coral red
+    "YELLOW": "#fbbf24",            # Amber
+    "GREEN": "#34d399",             # Emerald
+    "ACTIVE_NAV_BG": "#312e81",     # Indigo 900
+    "HOVER_NAV_BG": "#334155",      # Slate 700
+    "CODE_BG": "#1e293b",
+    "TERMINAL_BG": "#0b1120",
+}
+
+CURRENT_THEME = dict(LIGHT_THEME)
+
+BG_COLOR = CURRENT_THEME["BG_COLOR"]
+PANE_BG = CURRENT_THEME["PANE_BG"]
+PANEL_BG = PANE_BG
+HEADER_BG = CURRENT_THEME["HEADER_BG"]
+BORDER_COLOR = CURRENT_THEME["BORDER_COLOR"]
+PINK = CURRENT_THEME["PINK"]
+TEXT_MAIN = CURRENT_THEME["TEXT_MAIN"]
+TEXT_DIM = CURRENT_THEME["TEXT_DIM"]
+KEYWORD_COLOR = CURRENT_THEME["KEYWORD_COLOR"]
+ERROR_LINE_COLOR = CURRENT_THEME["ERROR_LINE_COLOR"]
+RED = CURRENT_THEME["RED"]
+YELLOW = CURRENT_THEME["YELLOW"]
+GREEN = CURRENT_THEME["GREEN"]
+
+def set_global_theme(theme_dict):
+    global BG_COLOR, PANE_BG, PANEL_BG, HEADER_BG, BORDER_COLOR, PINK, TEXT_MAIN, TEXT_DIM, KEYWORD_COLOR, ERROR_LINE_COLOR, RED, YELLOW, GREEN, CURRENT_THEME
+    CURRENT_THEME.update(theme_dict)
+    BG_COLOR = theme_dict["BG_COLOR"]
+    PANE_BG = theme_dict["PANE_BG"]
+    PANEL_BG = PANE_BG
+    HEADER_BG = theme_dict["HEADER_BG"]
+    BORDER_COLOR = theme_dict["BORDER_COLOR"]
+    PINK = theme_dict["PINK"]
+    TEXT_MAIN = theme_dict["TEXT_MAIN"]
+    TEXT_DIM = theme_dict["TEXT_DIM"]
+    KEYWORD_COLOR = theme_dict["KEYWORD_COLOR"]
+    ERROR_LINE_COLOR = theme_dict["ERROR_LINE_COLOR"]
+    RED = theme_dict["RED"]
+    YELLOW = theme_dict["YELLOW"]
+    GREEN = theme_dict["GREEN"]
 
 FONT_FAMILY = "Menlo" if platform.system() == "Darwin" else "Consolas"
 
@@ -223,6 +281,27 @@ def _extract_cpp_cfg(code):
         
     return results
 
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
+
+
+def get_gcc_version() -> str:
+    """Read actual installed g++ version once at startup."""
+    try:
+        res = subprocess.run(["g++", "--version"], capture_output=True, text=True, timeout=3)
+        if res.returncode == 0 and res.stdout:
+            first_line = res.stdout.splitlines()[0]
+            m = re.search(r"(\d+\.\d+(?:\.\d+)?)", first_line)
+            if m:
+                return f"GCC {m.group(1)}"
+    except Exception:
+        pass
+    return "GCC 11.4"
+
+
 class SparklineGraph(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -235,7 +314,14 @@ class SparklineGraph(QWidget):
         self.peak = 0
 
     def update_fluctuation(self):
-        # Base noise
+        if HAS_PSUTIL:
+            try:
+                val = psutil.cpu_percent()
+                self.add_value(val)
+                return
+            except Exception:
+                pass
+        # Base noise fallback
         import random
         noise = random.uniform(0, 2)
         self.add_value(noise)
@@ -768,35 +854,39 @@ class CodeEditor(QPlainTextEdit):
 class CppSyntaxHighlighter(QSyntaxHighlighter):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.apply_theme(CURRENT_THEME)
+
+    def apply_theme(self, theme):
         self.highlightingRules = []
 
         keywordFormat = QTextCharFormat()
-        keywordFormat.setForeground(QColor(KEYWORD_COLOR))
-        keywords = ["int", "return", "if", "else", "for", "while", "class", "public", "private", "protected", "void", "namespace", "using", "auto"]
+        keywordFormat.setForeground(QColor(theme.get("KEYWORD_COLOR", KEYWORD_COLOR)))
+        keywords = ["int", "return", "if", "else", "for", "while", "class", "public", "private", "protected", "void", "namespace", "using", "auto", "double", "float", "char", "bool", "string", "vector"]
         for word in keywords:
             pattern = r"\b" + word + r"\b"
             self.highlightingRules.append((pattern, keywordFormat))
 
         stdFormat = QTextCharFormat()
-        stdFormat.setForeground(QColor(TEXT_MAIN))
+        stdFormat.setForeground(QColor(theme.get("TEXT_MAIN", TEXT_MAIN)))
         self.highlightingRules.append((r"\bstd::\w+\b", stdFormat))
 
         stringFormat = QTextCharFormat()
-        stringFormat.setForeground(QColor(PINK))
+        stringFormat.setForeground(QColor(theme.get("PINK", PINK)))
         self.highlightingRules.append((r'".*"', stringFormat))
         self.highlightingRules.append((r"\b[0-9]+\b", stringFormat))
 
         commentFormat = QTextCharFormat()
-        commentFormat.setForeground(QColor(TEXT_DIM))
+        commentFormat.setForeground(QColor(theme.get("TEXT_DIM", TEXT_DIM)))
         self.highlightingRules.append((r"//[^\n]*", commentFormat))
 
         includeFormat = QTextCharFormat()
-        includeFormat.setForeground(QColor(TEXT_DIM))
+        includeFormat.setForeground(QColor(theme.get("TEXT_DIM", TEXT_DIM)))
         self.highlightingRules.append((r"#\w+", includeFormat))
 
         bracketFormat = QTextCharFormat()
-        bracketFormat.setForeground(QColor(TEXT_MAIN))
+        bracketFormat.setForeground(QColor(theme.get("TEXT_MAIN", TEXT_MAIN)))
         self.highlightingRules.append((r"[\{\}\(\)\[\]]", bracketFormat))
+        self.rehighlight()
 
     def highlightBlock(self, text):
         for pattern, format in self.highlightingRules:
@@ -827,14 +917,20 @@ class CustomFrame(QFrame):
     def set_title(self, title):
         self.header.setText(f" {title} ")
 
+    def apply_theme(self, theme):
+        self.setStyleSheet(f"QFrame {{ border: 1px solid {theme['BORDER_COLOR']}; background-color: {theme['PANE_BG']}; border-radius: 8px; }}")
+        self.header.setStyleSheet(f"QLabel {{ background-color: {theme['HEADER_BG']}; color: {theme['PINK']}; border: none; border-bottom: 1px solid {theme['BORDER_COLOR']}; padding: 8px 15px; border-top-left-radius: 7px; border-top-right-radius: 7px; }}")
+
+
 class ASTWorker(QThread):
     finished = pyqtSignal(list)
-    def __init__(self, file_path):
+    def __init__(self, file_path, code=""):
         super().__init__()
         self.file_path = file_path
+        self.code = code
     def run(self):
         try:
-            ast_raw = extract_ast(self.file_path)
+            ast_raw = extract_ast(self.file_path, code=self.code)
             if ast_raw:
                 ast_tree = parse_ast_to_tree(ast_raw, self.file_path)
                 self.finished.emit(ast_tree)
@@ -1218,36 +1314,93 @@ class UserGuidanceDialog(QDialog):
         return self._hint
 
 
+class SidebarButton(QPushButton):
+    def __init__(self, text: str, tooltip: str = "", parent=None):
+        super().__init__(text, parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedHeight(38)
+        self.setFont(QFont(FONT_FAMILY, 10))
+        self.setToolTip(tooltip)
+        self.is_active = False
+        self._apply_style()
+
+    def set_active(self, active: bool):
+        self.is_active = active
+        self._apply_style()
+
+    def _apply_style(self):
+        active_bg = CURRENT_THEME.get("ACTIVE_NAV_BG", "#e9ecf8")
+        hover_bg = CURRENT_THEME.get("HOVER_NAV_BG", "#eef2f7")
+        if self.is_active:
+            self.setStyleSheet(f"""
+                QPushButton {{
+                    text-align: left;
+                    padding-left: 12px;
+                    border: 1px solid {PINK};
+                    background-color: {active_bg};
+                    color: {PINK};
+                    font-weight: bold;
+                    border-radius: 6px;
+                }}
+            """)
+        else:
+            self.setStyleSheet(f"""
+                QPushButton {{
+                    text-align: left;
+                    padding-left: 12px;
+                    border: 1px solid transparent;
+                    background-color: transparent;
+                    color: {TEXT_MAIN};
+                    border-radius: 6px;
+                }}
+                QPushButton:hover {{
+                    background-color: {hover_bg};
+                    border: 1px solid {BORDER_COLOR};
+                    color: {PINK};
+                }}
+                QPushButton:pressed {{
+                    background-color: {BORDER_COLOR};
+                }}
+            """)
+
+
 class Sidebar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(50)
+        self.setFixedWidth(185)
         
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(5, 10, 5, 10)
-        self.layout.setSpacing(10)
+        self.layout.setContentsMargins(8, 12, 8, 12)
+        self.layout.setSpacing(6)
         
-        # Side buttons - Emoji Only
-        self.btn1 = StyledButton("📁", "outline_dim")
-        self.btn2 = StyledButton("🕒", "outline_dim")
-        self.btn3 = StyledButton("⚡", "outline_dim")
-        self.btn4 = StyledButton("↔", "outline_dim")
-        self.btn5 = StyledButton("🛡", "outline_dim")
-        self.btn6 = StyledButton("🔀", "outline_dim")
-        
-        for btn in [self.btn1, self.btn2, self.btn3, self.btn4, self.btn5, self.btn6]:
-            btn.setFixedWidth(40)
-            btn.setFixedHeight(40)
-            btn.setFont(QFont(FONT_FAMILY, 14))
-        
-        self.layout.addWidget(self.btn1)
-        self.layout.addWidget(self.btn2)
-        self.layout.addWidget(self.btn3)
-        self.layout.addWidget(self.btn4)
-        self.layout.addWidget(self.btn5)
-        self.layout.addWidget(self.btn6)
+        self.title_lbl = QLabel("NAVIGATION")
+        self.title_lbl.setFont(QFont(FONT_FAMILY, 8, QFont.Weight.Bold))
+        self.title_lbl.setStyleSheet(f"color: {TEXT_DIM}; letter-spacing: 1px; padding: 2px 8px 6px 8px;")
+        self.layout.addWidget(self.title_lbl)
+
+        self.btn1 = SidebarButton("💻  Code Editor", "Main C++ editor, diagnostics, and I/O runner")
+        self.btn2 = SidebarButton("🌳  AST Explorer", "Abstract Syntax Tree hierarchy viewer")
+        self.btn3 = SidebarButton("⚡  Energy Metrics", "Real-time energy consumption and carbon emissions")
+        self.btn4 = SidebarButton("🔄  Call Graph", "Function call relationship diagram")
+        self.btn5 = SidebarButton("🛡️  Security Scan", "Static security vulnerability inspection")
+        self.btn6 = SidebarButton("🔀  Control Flow", "Control flow graph (CFG) visualizer")
+        self.btn7 = SidebarButton("🧠  Second Opinion", "ML Classifier vs Regex error categorization")
+        self.btn8 = SidebarButton("📊  Benchmark", "Measured accuracy benchmark comparison")
+
+        self.buttons = [
+            self.btn1, self.btn2, self.btn3, self.btn4,
+            self.btn5, self.btn6, self.btn7, self.btn8
+        ]
+
+        # Compatibility aliases
+        self._btn_second_opinion = self.btn7
+        self._btn_benchmark = self.btn8
+
+        for btn in self.buttons:
+            self.layout.addWidget(btn)
+
         self.layout.addStretch()
-        
+
         self.setStyleSheet(f"""
             QWidget {{
                 background-color: {HEADER_BG};
@@ -1256,24 +1409,75 @@ class Sidebar(QWidget):
                 border-bottom-left-radius: 6px;
             }}
         """)
+        self.set_active(0)
+
+    def set_active(self, active_index: int):
+        for idx, btn in enumerate(self.buttons):
+            btn.set_active(idx == active_index)
+
+    def apply_theme(self, theme):
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {theme['HEADER_BG']};
+                border-right: 1px solid {theme['BORDER_COLOR']};
+                border-top-left-radius: 0px;
+                border-bottom-left-radius: 6px;
+            }}
+        """)
+        if hasattr(self, "title_lbl"):
+            self.title_lbl.setStyleSheet(f"color: {theme['TEXT_DIM']}; letter-spacing: 1px; padding: 2px 8px 6px 8px;")
+        for btn in self.buttons:
+            btn._apply_style()
 
 
 class ASTPage(CustomFrame):
     def __init__(self, parent=None):
         super().__init__("ABSTRACT SYNTAX TREE EXPLORER", left_padding=True)
         
+        # Action bar with Reload, Expand All, Collapse All
+        action_bar = QHBoxLayout()
+        action_bar.setContentsMargins(0, 0, 0, 8)
+        action_bar.setSpacing(8)
+
+        self.info_lbl = QLabel("Parsed Abstract Syntax Tree representing your C++ declarations, statements, and expressions.")
+        self.info_lbl.setFont(QFont(FONT_FAMILY, 9))
+        self.info_lbl.setStyleSheet(f"color: {TEXT_DIM};")
+        self.info_lbl.setWordWrap(True)
+        action_bar.addWidget(self.info_lbl, 1)
+
+        self.btn_reload = StyledButton("🔄 RELOAD AST", "outline_dim")
+        self.btn_reload.setFixedHeight(30)
+        self.btn_reload.setFont(QFont(FONT_FAMILY, 9, QFont.Weight.Bold))
+        self.btn_reload.setToolTip("Parse current editor code into AST tree")
+        action_bar.addWidget(self.btn_reload)
+
+        self.btn_expand = StyledButton("➕ EXPAND ALL", "outline_dim")
+        self.btn_expand.setFixedHeight(30)
+        self.btn_expand.setFont(QFont(FONT_FAMILY, 9, QFont.Weight.Bold))
+        self.btn_expand.setToolTip("Expand all tree branches")
+        action_bar.addWidget(self.btn_expand)
+
+        self.btn_collapse = StyledButton("➖ COLLAPSE ALL", "outline_dim")
+        self.btn_collapse.setFixedHeight(30)
+        self.btn_collapse.setFont(QFont(FONT_FAMILY, 9, QFont.Weight.Bold))
+        self.btn_collapse.setToolTip("Collapse all tree branches")
+        action_bar.addWidget(self.btn_collapse)
+
+        self.content_layout.addLayout(action_bar)
+
         self.tree = QTreeWidget()
         self.tree.setStyle(QStyleFactory.create("windows"))
         self.tree.setHeaderLabels(["NODE TYPE", "DETAILS / SOURCE"])
-        self.tree.setColumnWidth(0, 300)
+        self.tree.setColumnWidth(0, 320)
         self.tree.setAlternatingRowColors(True)
         self.tree.setStyleSheet(f"""
             QTreeWidget {{
                 background-color: {PANE_BG};
                 color: {TEXT_MAIN};
-                border: none;
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 6px;
                 font-family: {FONT_FAMILY};
-                font-size: 13px;
+                font-size: 12px;
                 alternate-background-color: {BG_COLOR};
             }}
             QHeaderView::section {{
@@ -1285,39 +1489,85 @@ class ASTPage(CustomFrame):
                 font-weight: bold;
             }}
             QTreeWidget::item {{
-                padding: 8px;
+                padding: 6px;
             }}
             QTreeWidget::item:selected {{
-                background-color: {BG_COLOR};
+                background-color: {BORDER_COLOR};
                 color: {PINK};
             }}
         """)
-        self.content_layout.addWidget(self.tree)
+        self.content_layout.addWidget(self.tree, 1)
+
+        self.btn_expand.clicked.connect(self.tree.expandAll)
+        self.btn_collapse.clicked.connect(self.tree.collapseAll)
 
     def update_tree(self, ast_tree):
         self.tree.clear()
+        if not ast_tree:
+            empty_item = QTreeWidgetItem(self.tree.invisibleRootItem())
+            empty_item.setText(0, "No AST Nodes")
+            empty_item.setText(1, "Click 'COMPILE' or 'RELOAD AST' to parse your C++ code into an AST tree.")
+            empty_item.setForeground(0, QColor(CURRENT_THEME["TEXT_DIM"]))
+            empty_item.setForeground(1, QColor(CURRENT_THEME["TEXT_DIM"]))
+            return
         self._populate(ast_tree, self.tree.invisibleRootItem())
         self.tree.expandAll()
 
     def _populate(self, nodes, parent_item):
         for n in nodes:
             item = QTreeWidgetItem(parent_item)
-            item.setText(0, n["type"])
-            item.setText(1, n["details"])
+            item.setText(0, n.get("type", ""))
+            item.setText(1, n.get("details", ""))
             
-            if "Decl" in n["type"]:
-                item.setForeground(0, QColor(PINK))
-            elif "Stmt" in n["type"]:
-                item.setForeground(0, QColor(KEYWORD_COLOR))
-            elif "Expr" in n["type"]:
-                item.setForeground(0, QColor(TEXT_MAIN))
+            t = n.get("type", "")
+            if "Decl" in t:
+                item.setForeground(0, QColor(CURRENT_THEME["PINK"]))
+            elif "Stmt" in t:
+                item.setForeground(0, QColor(CURRENT_THEME["KEYWORD_COLOR"]))
+            elif "Expr" in t:
+                item.setForeground(0, QColor(CURRENT_THEME["TEXT_MAIN"]))
             else:
-                item.setForeground(0, QColor(TEXT_DIM))
-            
-            item.setForeground(1, QColor(TEXT_DIM))
+                item.setForeground(0, QColor(CURRENT_THEME["TEXT_DIM"]))
+                
+            item.setForeground(1, QColor(CURRENT_THEME["TEXT_DIM"]))
             
             if "children" in n and n["children"]:
                 self._populate(n["children"], item)
+
+    def apply_theme(self, theme):
+        super().apply_theme(theme)
+        self.tree.setStyleSheet(f"""
+            QTreeWidget {{
+                background-color: {theme['PANE_BG']};
+                color: {theme['TEXT_MAIN']};
+                border: 1px solid {theme['BORDER_COLOR']};
+                border-radius: 6px;
+                font-family: {FONT_FAMILY};
+                font-size: 12px;
+                alternate-background-color: {theme['BG_COLOR']};
+            }}
+            QHeaderView::section {{
+                background-color: {theme['HEADER_BG']};
+                color: {theme['PINK']};
+                border: none;
+                border-bottom: 1px solid {theme['BORDER_COLOR']};
+                padding: 10px;
+                font-weight: bold;
+            }}
+            QTreeWidget::item {{
+                padding: 6px;
+            }}
+            QTreeWidget::item:selected {{
+                background-color: {theme['BORDER_COLOR']};
+                color: {theme['PINK']};
+            }}
+        """)
+        if hasattr(self, "info_lbl"):
+            self.info_lbl.setStyleSheet(f"color: {theme['TEXT_DIM']};")
+        if hasattr(self, "btn_reload"):
+            self.btn_reload._update_style(0)
+            self.btn_expand._update_style(0)
+            self.btn_collapse._update_style(0)
 
 
 class EnergyPage(CustomFrame):
@@ -1448,6 +1698,45 @@ class EnergyPage(CustomFrame):
             <code>/sys/class/powercap</code>.
         """)
 
+    def apply_theme(self, theme):
+        super().apply_theme(theme)
+        if hasattr(self, "desc"):
+            self.desc.setStyleSheet(f"color: {theme['PINK']}; font-weight: bold; font-size: 14px;")
+        for lbl in [getattr(self, "power_value", None), getattr(self, "carbon_value", None), getattr(self, "time_value", None), getattr(self, "rapl_value", None)]:
+            if lbl:
+                lbl.setStyleSheet(f"""
+                    QLabel {{
+                        background-color: {theme['BG_COLOR']};
+                        border: 1px solid {theme['BORDER_COLOR']};
+                        border-radius: 6px;
+                        padding: 10px;
+                        font-family: {FONT_FAMILY};
+                    }}
+                """)
+        if hasattr(self, "graph"):
+            self.graph.setStyleSheet(f"""
+                MetricsGraph {{
+                    background-color: {theme['BG_COLOR']};
+                    border: 1px solid {theme['BORDER_COLOR']};
+                    border-radius: 6px;
+                }}
+            """)
+        if hasattr(self, "notes"):
+            self.notes.setStyleSheet(f"""
+                QTextBrowser {{
+                    background-color: {theme['BG_COLOR']};
+                    border: 1px solid {theme['BORDER_COLOR']};
+                    border-radius: 6px;
+                    color: {theme['TEXT_MAIN']};
+                    font-family: {FONT_FAMILY};
+                    font-size: 12px;
+                    padding: 10px;
+                }}
+            """)
+        if hasattr(self, "btn_download_csv"):
+            self.btn_download_csv._update_style(0)
+
+
 class CallGraphPage(CustomFrame):
     def __init__(self, parent=None):
         super().__init__("FUNCTION CALL GRAPH :: MODULE RELATIONSHIPS", left_padding=True)
@@ -1467,6 +1756,14 @@ class CallGraphPage(CustomFrame):
             f"Functions: {len(functions)} | Internal calls: {len(edges)} | "
             f"External calls: {len(external_calls)} | Modules/includes: {len(modules)}"
         )
+
+    def apply_theme(self, theme):
+        super().apply_theme(theme)
+        if hasattr(self, "summary"):
+            self.summary.setStyleSheet(f"color: {theme['TEXT_DIM']}; font-family: {FONT_FAMILY};")
+        if hasattr(self, "graph"):
+            self.graph.setStyleSheet(f"background-color: {theme['PANE_BG']}; border: 1px solid {theme['BORDER_COLOR']}; border-radius: 6px;")
+            self.graph.scene.setBackgroundBrush(QColor(theme['PANE_BG']))
 
 
 class CFGWidget(QGraphicsView):
@@ -1532,6 +1829,7 @@ class CFGWidget(QGraphicsView):
             
             y_offset += 50 # gap between functions
 
+
 class CFGPage(CustomFrame):
     def __init__(self, parent=None):
         super().__init__("CONTROL FLOW GRAPH :: EXECUTION PATHS", left_padding=True)
@@ -1547,6 +1845,14 @@ class CFGPage(CustomFrame):
         data = _extract_cpp_cfg(code)
         self.graph.update_graph(data)
         self.summary.setText(f"Functions Analyzed: {len(data)} | Total Nodes: {sum(len(f['nodes']) for f in data)}")
+
+    def apply_theme(self, theme):
+        super().apply_theme(theme)
+        if hasattr(self, "summary"):
+            self.summary.setStyleSheet(f"color: {theme['TEXT_DIM']}; font-family: {FONT_FAMILY};")
+        if hasattr(self, "graph"):
+            self.graph.setStyleSheet(f"background-color: {theme['PANE_BG']}; border: 1px solid {theme['BORDER_COLOR']}; border-radius: 6px;")
+            self.graph.setBackgroundBrush(QColor(theme['PANE_BG']))
 
 
 class FilterTabButton(QPushButton):
@@ -2027,6 +2333,26 @@ class SecurityPage(CustomFrame):
         os.environ["ALLOW_ASSEMBLY"] = "1" if self.perm_assembly.isChecked() else "0"
         os.environ["ALLOW_SYS_INCLUDES"] = "1" if self.perm_sys_includes.isChecked() else "0"
 
+    def apply_theme(self, theme):
+        super().apply_theme(theme)
+        card_bg = theme["PANE_BG"]
+        text_color = theme["TEXT_MAIN"]
+        dim_color = theme["TEXT_DIM"]
+        self.setStyleSheet(f"""
+            QFrame {{
+                background-color: {card_bg};
+                border: 1px solid {theme['BORDER_COLOR']};
+                border-radius: 16px;
+            }}
+        """)
+        self.content_widget.setStyleSheet(f"QWidget {{ background-color: {card_bg}; }}")
+        if hasattr(self, "summary"):
+            self.summary.setStyleSheet(f"color: {text_color}; font-size: 18px; font-weight: 800;")
+        if hasattr(self, "subsummary"):
+            self.subsummary.setStyleSheet(f"color: {dim_color}; font-size: 12px;")
+        if hasattr(self, "permissions_box"):
+            self.permissions_box.setStyleSheet(f"background-color: {theme['BG_COLOR']}; border-radius: 8px; border: 1px solid {theme['BORDER_COLOR']};")
+
 
 # ── Import new page classes (Feature 2 & 4) ───────────────────────────────────
 try:
@@ -2047,6 +2373,7 @@ class AppGUI(QMainWindow):
 
         self.file_name = "file.cpp"
         self.file_path = os.path.join(os.getcwd(), self.file_name)
+        self.gcc_version = get_gcc_version()
         self.errors_count = 0
         self.warnings_count = 0
         self.execution_count = 0
@@ -2079,7 +2406,8 @@ class AppGUI(QMainWindow):
             energy_hbox.setContentsMargins(5, 0, 5, 0)
             energy_hbox.setSpacing(10)
             
-            cpu_label = QLabel("CpU utilization")
+            cpu_text = "CPU utilization" if HAS_PSUTIL else "CPU utilization (simulated)"
+            cpu_label = QLabel(cpu_text)
             cpu_label.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.Bold))
             cpu_label.setStyleSheet(f"color: {TEXT_DIM};")
             energy_hbox.addWidget(cpu_label)
@@ -2139,9 +2467,47 @@ class AppGUI(QMainWindow):
 
         self.btn_heal = StyledButton("⚕ AUTO-HEAL", "outline_dim")
         self.btn_heal.clicked.connect(self.start_heal)
-        self.btn_heal.setToolTip("Auto-detect + fix errors (up to 3 attempts)")
+        self.btn_heal.setToolTip("Auto-detect + fix errors (up to 10 attempts)")
         toolbar_layout.addWidget(self.btn_heal)
 
+        self.btn_undo_heal = StyledButton("↺ UNDO HEAL", "outline_dim")
+        self.btn_undo_heal.setToolTip("Restore the file to its state before auto-heal")
+        self.btn_undo_heal.clicked.connect(self.undo_heal)
+        self.btn_undo_heal.setEnabled(False)
+        toolbar_layout.addWidget(self.btn_undo_heal)
+
+        self.btn_theme_toggle = StyledButton("🌙 DARK MODE", "outline_dim")
+        self.btn_theme_toggle.setToolTip("Toggle between Light and Dark mode")
+        self.btn_theme_toggle.clicked.connect(self.toggle_dark_mode)
+        toolbar_layout.addWidget(self.btn_theme_toggle)
+
+        self.is_dark_mode = False
+        self.last_heal_backup = None
+
+        try:
+            import llm_client
+            has_llm_keys = bool(llm_client.get_gemini_key() or llm_client.get_groq_key())
+            ai_status_text = llm_client.status()
+            trail_tooltip = llm_client.get_status_trail() if hasattr(llm_client, "get_status_trail") else ai_status_text
+        except ImportError:
+            has_llm_keys = False
+            ai_status_text = "AI: offline"
+            trail_tooltip = "AI: offline"
+
+        toolbar_layout.addSpacing(15)
+        self.cb_ai_assist = StyledCheckBox("AI assist")
+        self.cb_ai_assist.setChecked(has_llm_keys)
+        self.cb_ai_assist.setEnabled(has_llm_keys)
+        self.cb_ai_assist.setToolTip("Sends your error messages and code to Gemini/Groq")
+        self.cb_ai_assist.stateChanged.connect(lambda: self.update_ai_status())
+        toolbar_layout.addWidget(self.cb_ai_assist)
+
+        toolbar_layout.addSpacing(8)
+        self.ai_status_label = QLabel(self._format_ai_status(ai_status_text))
+        self.ai_status_label.setToolTip(trail_tooltip)
+        self.ai_status_label.setMaximumWidth(280)
+        self.ai_status_label.setStyleSheet(f"color: {PINK}; font-size: 10px; font-family: {FONT_FAMILY}; font-weight: bold;")
+        toolbar_layout.addWidget(self.ai_status_label)
 
         self.cb_output_toggle = StyledCheckBox("Compile Output")
         self.cb_output_toggle.setChecked(True)
@@ -2189,6 +2555,8 @@ class AppGUI(QMainWindow):
         self.stack.addWidget(self.splitter) # Index 0
 
         self.ast_page = ASTPage()
+        if hasattr(self.ast_page, "btn_reload"):
+            self.ast_page.btn_reload.clicked.connect(self.switch_to_ast)
         self.stack.addWidget(self.ast_page) # Index 1
 
         self.energy_page = EnergyPage()
@@ -2224,36 +2592,13 @@ class AppGUI(QMainWindow):
         self.sidebar.btn4.clicked.connect(self.switch_to_call_graph)
         self.sidebar.btn5.clicked.connect(self.switch_to_security)
         self.sidebar.btn6.clicked.connect(self.switch_to_cfg)
+        self.sidebar.btn7.clicked.connect(lambda: self.stack.setCurrentIndex(6))
+        self.sidebar.btn8.clicked.connect(lambda: self.stack.setCurrentIndex(7))
 
-        # ── New sidebar buttons for Feature 2 & 4 ────────────────────────────
-        from PyQt6.QtWidgets import QPushButton as _QPB
-        self._btn_second_opinion = _QPB("🔍", self.sidebar)
-        self._btn_second_opinion.setFixedWidth(40)
-        self._btn_second_opinion.setFixedHeight(40)
-        self._btn_second_opinion.setFont(QFont(FONT_FAMILY, 14))
-        self._btn_second_opinion.setToolTip("Second Opinion — classifier comparison")
-        self._btn_second_opinion.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._btn_second_opinion.setStyleSheet(f"""
-            QPushButton {{ border: 1px solid {BORDER_COLOR}; background-color: {PANE_BG};
-                           color: {TEXT_MAIN}; border-radius: 4px; padding: 4px; }}
-            QPushButton:hover {{ background-color: {HEADER_BG}; border: 1px solid {PINK}; }}
-        """)
-        self._btn_second_opinion.clicked.connect(lambda: self.stack.setCurrentIndex(6))
-        self.sidebar.layout.insertWidget(6, self._btn_second_opinion)
+        self._btn_second_opinion = self.sidebar.btn7
+        self._btn_benchmark = self.sidebar.btn8
 
-        self._btn_benchmark = _QPB("📊", self.sidebar)
-        self._btn_benchmark.setFixedWidth(40)
-        self._btn_benchmark.setFixedHeight(40)
-        self._btn_benchmark.setFont(QFont(FONT_FAMILY, 14))
-        self._btn_benchmark.setToolTip("Accuracy Benchmark — three-method comparison")
-        self._btn_benchmark.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._btn_benchmark.setStyleSheet(f"""
-            QPushButton {{ border: 1px solid {BORDER_COLOR}; background-color: {PANE_BG};
-                           color: {TEXT_MAIN}; border-radius: 4px; padding: 4px; }}
-            QPushButton:hover {{ background-color: {HEADER_BG}; border: 1px solid {PINK}; }}
-        """)
-        self._btn_benchmark.clicked.connect(lambda: self.stack.setCurrentIndex(7))
-        self.sidebar.layout.insertWidget(7, self._btn_benchmark)
+        self.stack.currentChanged.connect(self.sidebar.set_active)
 
 
         if not hasattr(self, "energy_timer"):
@@ -2307,10 +2652,21 @@ class AppGUI(QMainWindow):
         input_layout = QVBoxLayout(input_container)
         input_layout.setContentsMargins(0, 0, 0, 10)
         
+        input_header_layout = QHBoxLayout()
         input_label = QLabel("INPUT SCREEN (stdin)")
         input_label.setFont(QFont(FONT_FAMILY, 8, QFont.Weight.Bold))
         input_label.setStyleSheet(f"color: {TEXT_DIM}; margin-bottom: 4px;")
-        input_layout.addWidget(input_label)
+        input_header_layout.addWidget(input_label)
+        input_header_layout.addStretch()
+
+        self.btn_send_input = StyledButton("SEND TO STDIN", "outline_dim")
+        self.btn_send_input.setFixedHeight(24)
+        self.btn_send_input.setFont(QFont(FONT_FAMILY, 8, QFont.Weight.Bold))
+        self.btn_send_input.setToolTip("Send text to running program stdin")
+        self.btn_send_input.clicked.connect(self.send_stdin_input)
+        input_header_layout.addWidget(self.btn_send_input)
+
+        input_layout.addLayout(input_header_layout)
         
         self.input_area = QTextEdit()
         self.input_area.setPlaceholderText("Paste your test cases here...")
@@ -2350,7 +2706,8 @@ class AppGUI(QMainWindow):
         self.v_splitter.setSizes([500, 250])
 
         footer_layout = QHBoxLayout()
-        self.status_bar_left = QLabel("Compiler: GCC 11.4 | Language: C++17 | Errors: 1 | Warnings: 0 | File Name: file.cpp")
+        gcc_ver = getattr(self, "gcc_version", "GCC 11.4")
+        self.status_bar_left = QLabel(f"Compiler: {gcc_ver} | Language: C++17 | Errors: 1 | Warnings: 0 | File Name: file.cpp")
         self.status_bar_left.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.Bold))
         self.status_bar_left.setStyleSheet(f"color: {TEXT_DIM};")
         footer_layout.addWidget(self.status_bar_left)
@@ -2405,13 +2762,92 @@ class AppGUI(QMainWindow):
     # ── Auto-Heal ─────────────────────────────────────────────────────────────
 
 
+    def _format_ai_status(self, text: str) -> str:
+        if not text:
+            return "AI: offline"
+        if len(text) > 30:
+            return text[:27] + "..."
+        return text
+
+    def toggle_dark_mode(self):
+        self.is_dark_mode = not getattr(self, "is_dark_mode", False)
+        if hasattr(self, "btn_theme_toggle"):
+            self.btn_theme_toggle.setText("☀️ LIGHT MODE" if self.is_dark_mode else "🌙 DARK MODE")
+        self.apply_theme(self.is_dark_mode)
+
+    def apply_theme(self, is_dark: bool):
+        theme = DARK_THEME if is_dark else LIGHT_THEME
+        set_global_theme(theme)
+        
+        # Main window & splitters
+        self.setStyleSheet(f"QMainWindow {{ background-color: {theme['BG_COLOR']}; }}")
+        if hasattr(self, "splitter"):
+            self.splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {theme['BG_COLOR']}; }}")
+        if hasattr(self, "v_splitter"):
+            self.v_splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {theme['BG_COLOR']}; }}")
+        if hasattr(self, "runner_splitter"):
+            self.runner_splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {theme['BG_COLOR']}; height: 4px; }}")
+
+        # Labels
+        if hasattr(self, "status_label"):
+            self.status_label.setStyleSheet(f"color: {theme['PINK']};")
+        if hasattr(self, "ai_status_label"):
+            self.ai_status_label.setStyleSheet(f"color: {theme['PINK']}; font-size: 10px; font-family: {FONT_FAMILY}; font-weight: bold;")
+        if hasattr(self, "status_bar_left"):
+            self.status_bar_left.setStyleSheet(f"color: {theme['TEXT_DIM']};")
+
+        # Editor
+        if hasattr(self, "editor"):
+            self.editor.setStyleSheet(f"QPlainTextEdit {{ background-color: {theme['CODE_BG']}; color: {theme['TEXT_MAIN']}; border: none; }}")
+            self.editor.line_number_area.update()
+        if hasattr(self, "highlighter"):
+            self.highlighter.apply_theme(theme)
+
+        # Terminal & Input
+        if hasattr(self, "terminal"):
+            self.terminal.setStyleSheet(f"QTextEdit {{ background-color: {theme['TERMINAL_BG']}; border: 1px solid {theme['BORDER_COLOR']}; border-radius: 4px; color: {theme['TEXT_MAIN']}; line-height: 1.5; }}")
+        if hasattr(self, "input_area"):
+            self.input_area.setStyleSheet(f"QTextEdit {{ background-color: {theme['BG_COLOR']}; border: 1px solid {theme['BORDER_COLOR']}; color: {theme['GREEN']}; border-radius: 4px; }}")
+
+        # Sidebar
+        if hasattr(self, "sidebar"):
+            self.sidebar.apply_theme(theme)
+
+        # Frames
+        if hasattr(self, "pane_left"):
+            self.pane_left.apply_theme(theme)
+        if hasattr(self, "pane_right_top"):
+            self.pane_right_top.apply_theme(theme)
+        if hasattr(self, "pane_right_bottom"):
+            self.pane_right_bottom.apply_theme(theme)
+
+        # Pages
+        if hasattr(self, "ast_page") and hasattr(self.ast_page, "apply_theme"):
+            self.ast_page.apply_theme(theme)
+        if hasattr(self, "energy_page") and hasattr(self.energy_page, "apply_theme"):
+            self.energy_page.apply_theme(theme)
+        if hasattr(self, "call_graph_page") and hasattr(self.call_graph_page, "apply_theme"):
+            self.call_graph_page.apply_theme(theme)
+        if hasattr(self, "security_page") and hasattr(self.security_page, "apply_theme"):
+            self.security_page.apply_theme(theme)
+        if hasattr(self, "cfg_page") and hasattr(self.cfg_page, "apply_theme"):
+            self.cfg_page.apply_theme(theme)
+        if hasattr(self, "second_opinion_page") and hasattr(self.second_opinion_page, "apply_theme"):
+            self.second_opinion_page.apply_theme(theme)
+        if hasattr(self, "benchmark_page") and hasattr(self.benchmark_page, "apply_theme"):
+            self.benchmark_page.apply_theme(theme)
+
+        # Buttons
+        for btn in [getattr(self, "btn_heal", None), getattr(self, "btn_undo_heal", None), getattr(self, "btn_theme_toggle", None), getattr(self, "btn_send_input", None)]:
+            if btn and hasattr(btn, "_update_style"):
+                btn._update_style(0)
+
     def switch_to_ast(self):
-        # Starts empty; content reflects file state
-        if self.file_path and os.path.exists(self.file_path):
-            self.status_label.setText("STATUS: ● LOADING AST... 🕒")
-            self.ast_worker = ASTWorker(self.file_path)
-            self.ast_worker.finished.connect(self._on_ast_ready)
-            self.ast_worker.start()
+        code = self.editor.toPlainText() if hasattr(self, "editor") else ""
+        self.status_label.setText("STATUS: ● LOADING AST... 🕒")
+        self.ast_worker = ASTWorker(self.file_path, code=code)
+        self.ast_worker.finished.connect(self._on_ast_ready)
+        self.ast_worker.start()
         
         self.stack.setCurrentIndex(1)
 
@@ -2439,10 +2875,35 @@ class AppGUI(QMainWindow):
             self.cfg_page.update_from_code(self.editor.toPlainText())
         self.stack.setCurrentIndex(5)
 
+    def update_ai_status(self):
+        try:
+            import llm_client
+            has_keys = bool(llm_client.get_gemini_key() or llm_client.get_groq_key())
+            self.cb_ai_assist.setEnabled(has_keys)
+            raw = llm_client.status()
+            self.ai_status_label.setText(self._format_ai_status(raw))
+            self.ai_status_label.setToolTip(raw)
+        except Exception:
+            pass
+
+    def is_ai_enabled(self) -> bool:
+        if not hasattr(self, 'cb_ai_assist'):
+            return False
+        try:
+            import llm_client
+            has_keys = bool(llm_client.get_gemini_key() or llm_client.get_groq_key())
+            return has_keys and self.cb_ai_assist.isChecked()
+        except Exception:
+            return False
+
+
     def start_heal(self):
         """Launch the auto-heal loop in a background thread."""
         if not HEALER_AVAILABLE:
             QMessageBox.warning(self, "Auto-Heal", "heal_loop.py not found.")
+            return
+        if getattr(self, "heal_worker", None) is not None and self.heal_worker.isRunning():
+            QMessageBox.warning(self, "Auto-Heal", "Auto-heal is already in progress.")
             return
         if not self.save_file():
             return
@@ -2452,7 +2913,9 @@ class AppGUI(QMainWindow):
         if classifier is None:
             classifier = _KeywordClassifier()
 
-        # Clear the cards pane and show a status message
+        # Clear the cards pane and show initial errors with offline explanation
+        current_errors = list(getattr(self.editor, "errors", []))
+
         for i in reversed(range(self.error_cards_layout.count())):
             w = self.error_cards_layout.itemAt(i).widget()
             if w:
@@ -2460,22 +2923,67 @@ class AppGUI(QMainWindow):
         
         self.editor.clear_fixed_lines()
 
-        header = QLabel("⚕ AUTO-HEAL IN PROGRESS…")
-        header.setStyleSheet(f"color: {YELLOW}; font-size: 13px; font-family: {FONT_FAMILY}; font-weight: bold;")
-        self.error_cards_layout.addWidget(header)
+        self.heal_header = QLabel("⚕ AUTO-HEAL IN PROGRESS…")
+        self.heal_header.setStyleSheet(f"color: {YELLOW}; font-size: 13px; font-family: {FONT_FAMILY}; font-weight: bold;")
+        self.error_cards_layout.addWidget(self.heal_header)
+
+        if current_errors:
+            lbl_init = QLabel("INITIAL COMPILER ERRORS (before healing):")
+            lbl_init.setStyleSheet(f"color: {PINK}; font-size: 11px; font-weight: bold; font-family: {FONT_FAMILY}; margin-top: 4px;")
+            self.error_cards_layout.addWidget(lbl_init)
+            for err in current_errors:
+                self.error_cards_layout.addWidget(self._create_error_card(err))
 
         self.btn_heal.setEnabled(False)
         self.status_label.setText("STATUS: ● HEALING…")
 
-        self.heal_worker = HealWorker(self.file_path, classifier)
+        enable_ai = self.is_ai_enabled()
+        self.heal_worker = HealWorker(self.file_path, classifier, enable_ai=enable_ai)
+        self.heal_worker.finished.connect(lambda: self.btn_heal.setEnabled(True))
         self.heal_worker.attempt_started.connect(self._on_heal_attempt)
         self.heal_worker.diff_ready.connect(self._on_heal_diff)
         self.heal_worker.compile_clean.connect(self._on_heal_success)
+        self.heal_worker.heal_summary.connect(self._on_heal_summary)
         self.heal_worker.give_up.connect(self._on_heal_give_up)
         self.heal_worker.error_signal.connect(self._on_heal_error)
         self.heal_worker.lines_fixed.connect(self.editor.set_fixed_lines)
+        self.heal_worker.backup_created.connect(self._on_heal_backup_created)
         self.heal_worker.telemetry_ready.connect(self._on_telemetry_ready)
+        self.heal_worker.status_update.connect(self.status_label.setText)
+        self.heal_worker.info_message.connect(self._on_heal_info)
         self.heal_worker.start()
+
+    def _on_heal_backup_created(self, backup_path: str):
+        self.last_heal_backup = backup_path
+        self.btn_undo_heal.setEnabled(True)
+
+    def _on_heal_info(self, msg: str):
+        lbl = QLabel(f"ℹ️ {msg}")
+        lbl.setStyleSheet(f"color: {TEXT_DIM}; font-size: 11px; font-family: {FONT_FAMILY};")
+        lbl.setWordWrap(True)
+        self.error_cards_layout.addWidget(lbl)
+
+    def undo_heal(self):
+        """Restore file from the latest heal backup."""
+        if not self.last_heal_backup or not os.path.exists(self.last_heal_backup):
+            QMessageBox.information(self, "Undo Heal", "No backup available to restore.")
+            return
+        try:
+            with open(self.last_heal_backup, "r", encoding="utf-8") as f:
+                content = f.read()
+            with open(self.file_path, "w", encoding="utf-8") as f:
+                content = f.write(content)
+            self.editor.blockSignals(True)
+            self.editor.setPlainText(content)
+            self.editor.blockSignals(False)
+            self.editor.clear_fixed_lines()
+            self.btn_undo_heal.setEnabled(False)
+            self.status_label.setText("STATUS: ● RESTORED")
+            lbl = QLabel(f"↺ Restored original code from {os.path.basename(self.last_heal_backup)}")
+            lbl.setStyleSheet(f"color: {YELLOW}; font-size: 11px; font-family: {FONT_FAMILY};")
+            self.error_cards_layout.addWidget(lbl)
+        except Exception as e:
+            QMessageBox.critical(self, "Undo Heal Error", f"Failed to restore backup: {e}")
 
     def _on_telemetry_ready(self, telemetry: list):
         for entry in telemetry:
@@ -2484,13 +2992,14 @@ class AppGUI(QMainWindow):
     def _on_heal_attempt(self, attempt_no: int, error: dict):
         msg = error.get("message", "?")
         cat = error.get("category", "?")
-        lbl = QLabel(f"<b>Attempt {attempt_no}/15</b> — [{cat.upper()}] {msg}")
+        lbl = QLabel(f"<b>Attempt {attempt_no}/10</b> — [{cat.upper()}] {msg}")
         lbl.setStyleSheet(f"color: {YELLOW}; font-size: 11px; font-family: {FONT_FAMILY};")
         lbl.setWordWrap(True)
         self.error_cards_layout.addWidget(lbl)
 
-    def _on_heal_diff(self, attempt_no: int, diff_html: str):
-        title = QLabel(f"<b>Diff — Attempt {attempt_no}</b>")
+    def _on_heal_diff(self, attempt_no: int, diff_html: str, label: str = ""):
+        title_text = f"<b>Diff — {label}</b>" if label else f"<b>Diff — Attempt {attempt_no}</b>"
+        title = QLabel(title_text)
         title.setStyleSheet(f"color: {TEXT_DIM}; font-size: 10px; font-family: {FONT_FAMILY};")
         self.error_cards_layout.addWidget(title)
 
@@ -2520,12 +3029,122 @@ class AppGUI(QMainWindow):
             self.editor.blockSignals(False)
             pass
 
-    def _on_heal_success(self):
+    def _on_heal_summary(self, summary: dict):
+        clean = summary.get("clean", False)
+        rounds = summary.get("rounds", [])
+        total_sec = summary.get("total_duration", 0.0)
+        status_msg = summary.get("message", "Compiles OK")
+
+        # Replace heal progress header
+        if hasattr(self, "heal_header") and self.heal_header:
+            if clean:
+                self.heal_header.setText("✅ AUTO-HEAL: COMPILES OK")
+                self.heal_header.setStyleSheet(f"color: {GREEN}; font-size: 14px; font-family: {FONT_FAMILY}; font-weight: bold;")
+            else:
+                self.heal_header.setText(f"⚠️ AUTO-HEAL: {summary.get('status', 'finished').upper()}")
+                self.heal_header.setStyleSheet(f"color: {YELLOW}; font-size: 14px; font-family: {FONT_FAMILY}; font-weight: bold;")
+
+        # Summary Card
+        card = QFrame()
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {PANE_BG};
+                border: 1px solid {GREEN if clean else YELLOW};
+                border-radius: 6px;
+                padding: 10px;
+                margin-top: 6px;
+            }}
+        """)
+        c_layout = QVBoxLayout(card)
+
+        hdr_text = f"<b>HEAL SUMMARY:</b> {len(rounds)} round(s) in {total_sec:.2f}s — {'Compiles OK' if clean else status_msg}"
+        lbl_h = QLabel(hdr_text)
+        lbl_h.setStyleSheet(f"color: {GREEN if clean else YELLOW}; font-size: 12px; font-family: {FONT_FAMILY};")
+        c_layout.addWidget(lbl_h)
+
+        # Method per round breakdown
+        for r in rounds:
+            r_no = r.get("round_no", 1)
+            r_method = r.get("method", "offline rules")
+            r_sec = r.get("seconds", 0.0)
+            r_lbl = QLabel(f"• Round {r_no}: {r_method} ({r_sec:.2f}s)")
+            r_lbl.setStyleSheet(f"color: {TEXT_MAIN}; font-size: 11px; font-family: {FONT_FAMILY};")
+            c_layout.addWidget(r_lbl)
+
+        # Diff of changed lines if available
+        last_diff = None
+        for r in reversed(rounds):
+            if r.get("diff_html"):
+                last_diff = r.get("diff_html")
+                break
+        if last_diff:
+            diff_lbl = QLabel("<b>Changed Lines:</b>")
+            diff_lbl.setStyleSheet(f"color: {TEXT_DIM}; font-size: 10px; font-family: {FONT_FAMILY}; margin-top: 4px;")
+            c_layout.addWidget(diff_lbl)
+            diff_box = QTextBrowser()
+            diff_box.setOpenLinks(False)
+            diff_box.setHtml(last_diff)
+            diff_box.setStyleSheet(f"""
+                QTextBrowser {{
+                    background-color: {BG_COLOR};
+                    border: 1px solid {BORDER_COLOR};
+                    border-radius: 4px;
+                    padding: 4px;
+                    font-family: {FONT_FAMILY};
+                }}
+            """)
+            diff_box.setMaximumHeight(140)
+            c_layout.addWidget(diff_box)
+
+        # Silent re-analysis for footer agreement and remaining security check
+        self._silent_reanalysis_after_heal(summary, c_layout)
+
+        self.error_cards_layout.addWidget(card)
+
+    def _silent_reanalysis_after_heal(self, summary: dict, card_layout=None):
+        """Silently re-analyzes code to ensure footer, error counts, and security findings agree."""
+        try:
+            # 1. Reload file in editor
+            with open(self.file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            self.editor.blockSignals(True)
+            self.editor.setPlainText(content)
+            self.editor.blockSignals(False)
+
+            # 2. Check compiler status silently
+            from heal_engine import compile_source
+            errors, warnings, _ = compile_source(content, syntax_only=False)
+            self.errors_count = len(errors)
+            self.warnings_count = len(warnings)
+            self.editor.set_errors(errors)
+            self._update_footer()
+
+            # 3. Check security findings
+            from security_analyzer import analyze as analyze_security, format_security_report
+            findings = analyze_security(self.file_path, errors)
+            self.latest_security_findings = findings
+            self.latest_security_report = format_security_report(findings)
+            self.security_page.update_report(findings)
+
+            if findings and card_layout:
+                sec_lbl = QLabel(f"⚠️ <b>Security Notice:</b> {len(findings)} security finding(s) detected in healed code (see Security tab)")
+                sec_lbl.setStyleSheet(f"color: {YELLOW}; font-size: 11px; font-family: {FONT_FAMILY}; margin-top: 4px;")
+                sec_lbl.setWordWrap(True)
+                card_layout.addWidget(sec_lbl)
+            elif warnings and card_layout:
+                warn_lbl = QLabel(f"ℹ️ Code compiles with {len(warnings)} warning(s).")
+                warn_lbl.setStyleSheet(f"color: {TEXT_DIM}; font-size: 11px; font-family: {FONT_FAMILY};")
+                card_layout.addWidget(warn_lbl)
+        except Exception:
+            pass
+
+    def _on_heal_success(self, method: str = "Healed by offline rules"):
         self.btn_heal.setEnabled(True)
         self.status_label.setText("STATUS: ● HEALED ✅")
-        lbl = QLabel("✅ Code healed successfully — no errors remaining!")
+        lbl = QLabel(f"✅ {method} — Compiles OK - please review the changes.")
         lbl.setStyleSheet(f"color: {GREEN}; font-size: 13px; font-weight: bold; font-family: {FONT_FAMILY};")
         self.error_cards_layout.addWidget(lbl)
+
         # Note: We no longer auto-trigger self.analyze() here to allow the user 
         # to review the heal history before manually recompiling.
         # self.analyze()
@@ -2554,15 +3173,27 @@ class AppGUI(QMainWindow):
         elif result == UserGuidanceDialog.GIVE_HINT:
             hint = dlg.hint_text()
             if hint:
-                self.heal_worker = HealWorker(self.file_path, classifier, hint=hint)
+                if not self.is_ai_enabled():
+                    QMessageBox.information(self, "AI Assist Required", "hints need AI assist")
+                    return
+                classifier = self.error_classifier
+                if classifier is None:
+                    classifier = _KeywordClassifier()
+                self.heal_worker = HealWorker(self.file_path, classifier, hint=hint, enable_ai=self.is_ai_enabled())
+                self.heal_worker.finished.connect(lambda: self.btn_heal.setEnabled(True))
                 self.heal_worker.attempt_started.connect(self._on_heal_attempt)
                 self.heal_worker.diff_ready.connect(self._on_heal_diff)
                 self.heal_worker.compile_clean.connect(self._on_heal_success)
                 self.heal_worker.give_up.connect(self._on_heal_give_up)
                 self.heal_worker.error_signal.connect(self._on_heal_error)
+                self.heal_worker.lines_fixed.connect(self.editor.set_fixed_lines)
+                self.heal_worker.backup_created.connect(self._on_heal_backup_created)
                 self.heal_worker.telemetry_ready.connect(self._on_telemetry_ready)
+                self.heal_worker.status_update.connect(self.status_label.setText)
+                self.heal_worker.info_message.connect(self._on_heal_info)
                 self.btn_heal.setEnabled(False)
                 self.heal_worker.start()
+
         # SKIP THIS ERROR — do nothing (fall through)
 
     def _record_execution(self):
@@ -2614,20 +3245,21 @@ class AppGUI(QMainWindow):
         
         # Stats row (Horizontal)
         stats_widget = QWidget()
+        stats_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         stats_layout = QHBoxLayout(stats_widget)
         stats_layout.setContentsMargins(0, 0, 0, 0)
-        stats_layout.setSpacing(5)
+        stats_layout.setSpacing(4)
         
         def create_stat(emoji, text, color):
             lbl = QLabel(f"<b>{emoji} {text}</b>")
-            lbl.setStyleSheet(f"color: {color}; font-size: 9px; font-family: {FONT_FAMILY}; padding: 1px 3px; border: 1px solid {BORDER_COLOR}; border-radius: 3px; background-color: {BG_COLOR};")
+            lbl.setStyleSheet(f"color: {color}; font-size: 9px; font-family: {FONT_FAMILY}; padding: 1px 4px; border: 1px solid {BORDER_COLOR}; border-radius: 3px; background-color: {BG_COLOR};")
             return lbl
 
-        stats_layout.addWidget(create_stat('⚡', f"CPU: {cpu} mWh", PINK))
-        stats_layout.addWidget(create_stat('🧠', f"MEM: {mem}", PINK))
-        stats_layout.addWidget(create_stat('🔥', f"HOTSPOT: {hotspot}", YELLOW))
-        stats_layout.addWidget(create_stat('🌍', f"CO₂: {co2} mg", GREEN))
-        stats_layout.addWidget(create_stat('🛡️', f"RISK: {risk.upper()}", RED if risk.upper() == 'HIGH' else YELLOW))
+        stats_layout.addWidget(create_stat('⚡', f"{cpu} mWh", PINK))
+        stats_layout.addWidget(create_stat('🧠', f"{mem}", PINK))
+        stats_layout.addWidget(create_stat('🔥', f"{hotspot}", YELLOW))
+        stats_layout.addWidget(create_stat('🌍', f"{co2} mg", GREEN))
+        stats_layout.addWidget(create_stat('🛡️', f"{risk.upper()}", RED if risk.upper() == 'HIGH' else YELLOW))
         stats_layout.addStretch()
         layout.addWidget(stats_widget)
         
@@ -2642,7 +3274,45 @@ class AppGUI(QMainWindow):
             sugg_lbl.setStyleSheet(f"color: {GREEN}; font-size: 10px; font-family: {FONT_FAMILY};")
             sugg_lbl.setWordWrap(True)
             layout.addWidget(sugg_lbl)
-        
+
+        # AI Explanation section
+        def add_ai_explanation(ai_data: dict):
+            provider_name = (ai_data.get('provider') or 'AI').capitalize()
+            ai_box = QFrame()
+            ai_box.setStyleSheet(f"background-color: {BG_COLOR}; border: 1px solid {BORDER_COLOR}; border-radius: 4px; padding: 4px; margin-top: 4px;")
+            ai_layout = QVBoxLayout(ai_box)
+            ai_layout.setContentsMargins(4, 4, 4, 4)
+            ai_layout.setSpacing(2)
+
+            ai_title = QLabel(f"<b>AI explanation ({provider_name})</b>")
+            ai_title.setStyleSheet(f"color: {PINK}; font-size: 10px; font-family: {FONT_FAMILY}; font-weight: bold;")
+            ai_layout.addWidget(ai_title)
+
+            if ai_data.get("explanation"):
+                ai_expl_lbl = QLabel(ai_data["explanation"])
+                ai_expl_lbl.setStyleSheet(f"color: {TEXT_MAIN}; font-size: 10px; font-family: {FONT_FAMILY};")
+                ai_expl_lbl.setWordWrap(True)
+                ai_layout.addWidget(ai_expl_lbl)
+
+            if ai_data.get("fix"):
+                ai_fix_lbl = QLabel(f"<b>Suggested Fix:</b> <code>{html.escape(ai_data['fix'])}</code>")
+                ai_fix_lbl.setStyleSheet(f"color: {GREEN}; font-size: 10px; font-family: {FONT_FAMILY};")
+                ai_fix_lbl.setWordWrap(True)
+                ai_layout.addWidget(ai_fix_lbl)
+
+            if ai_data.get("why"):
+                ai_why_lbl = QLabel(f"<b>Why:</b> {ai_data['why']}")
+                ai_why_lbl.setStyleSheet(f"color: {TEXT_DIM}; font-size: 9px; font-family: {FONT_FAMILY};")
+                ai_why_lbl.setWordWrap(True)
+                ai_layout.addWidget(ai_why_lbl)
+
+            layout.addWidget(ai_box)
+
+        card.add_ai_explanation = add_ai_explanation
+        ai = error.get('ai_explanation')
+        if ai and isinstance(ai, dict):
+            add_ai_explanation(ai)
+
         # Pulse animation (opacity)
         effect = QGraphicsOpacityEffect(card)
         card.setGraphicsEffect(effect)
@@ -2735,7 +3405,8 @@ class AppGUI(QMainWindow):
             pass
 
     def _update_footer(self):
-        text = f"Compiler: GCC 11.4 | Language: C++17 | Errors: {self.errors_count} | Warnings: {self.warnings_count} | File Name: {self.file_name}"
+        gcc_ver = getattr(self, "gcc_version", "GCC 11.4")
+        text = f"Compiler: {gcc_ver} | Language: C++17 | Errors: {self.errors_count} | Warnings: {self.warnings_count} | File Name: {self.file_name}"
         self.status_bar_left.setText(text)
 
     def _animate_loading(self):
@@ -2749,14 +3420,59 @@ class AppGUI(QMainWindow):
         should_show = (state == Qt.CheckState.Checked.value)
         self.pane_right_bottom.setVisible(should_show)
 
+    def _find_executable(self) -> Optional[str]:
+        names = ["a.exe", "a.out"] if (os.name == "nt" or sys.platform == "win32") else ["a.out", "a.exe"]
+        for name in names:
+            for candidate in [name, os.path.join(".", name), os.path.join(os.getcwd(), name)]:
+                if os.path.exists(candidate) and os.path.isfile(candidate):
+                    return os.path.abspath(candidate)
+        return None
+
+    def send_stdin_input(self):
+        text = self.input_area.toPlainText()
+        if hasattr(self, 'process') and self.process.state() == QProcess.ProcessState.Running:
+            if text:
+                if not text.endswith('\n'):
+                    text += '\n'
+                self.process.write(text.encode('utf-8'))
+                self.terminal.append_output(f"<span style='color:{TEXT_DIM}'><i>[sent to stdin]: {text.strip()}</i></span><br>", is_html=True)
+        else:
+            self.run_code()
+
     def run_code(self):
-        if not os.path.exists("./a.out"):
-             self.terminal.append_output(f"<span style='color:{PINK}'>File 'a.out' not found. Please compile first.</span>", is_html=True)
-             return
-             
         self.terminal.clear()
         self.editor.clear_fixed_lines()
         self._record_execution()
+
+        # Find or compile executable
+        target_exe = self._find_executable()
+        needs_compile = False
+        if not target_exe:
+            needs_compile = True
+        elif os.path.exists(self.file_path):
+            try:
+                if os.path.getmtime(self.file_path) > os.path.getmtime(target_exe):
+                    needs_compile = True
+            except OSError:
+                pass
+
+        if needs_compile:
+            if not self.save_file():
+                self.terminal.append_output(f"<div style='color:{PINK};'>ERROR: Could not save file before compiling.</div>", is_html=True)
+                return
+            exe_target = "a.exe" if (os.name == "nt" or sys.platform == "win32") else "a.out"
+            res = subprocess.run(["g++", "-std=c++17", self.file_path, "-o", exe_target], capture_output=True, text=True)
+            if res.returncode != 0:
+                self.terminal.append_output(f"<div style='color:{PINK}; white-space:pre-wrap;'><b>Compilation failed:</b>\n{res.stderr}</div>", is_html=True)
+                self.status_label.setText("STATUS: ● COMPILE FAILED")
+                return
+            target_exe = os.path.abspath(exe_target)
+
+        if not target_exe or not os.path.exists(target_exe):
+            exe_name = "a.exe" if (os.name == "nt" or sys.platform == "win32") else "a.out"
+            self.terminal.append_output(f"<span style='color:{PINK}'>File '{exe_name}' not found. Please compile first.</span>", is_html=True)
+            return
+
         self.is_loading = True
         self.loading_prefix = "STATUS: ● EXECUTING BINARY "
         self.loading_timer.start(300)
@@ -2766,7 +3482,7 @@ class AppGUI(QMainWindow):
 
         if hasattr(self, 'process') and self.process.state() == QProcess.ProcessState.Running:
             self.process.kill()
-            self.process.waitForFinished()
+            self.process.waitForFinished(1000)
 
         self.process = QProcess(self)
         self.terminal.process = self.process # Link process to terminal for input
@@ -2776,19 +3492,26 @@ class AppGUI(QMainWindow):
         self.process.errorOccurred.connect(self._on_process_error)
         
         # Start the process
-        self.process.start("./a.out")
+        self.process.start(target_exe)
         
-        # Automatically send batch input if available
-        input_text = self.input_area.toPlainText()
-        if input_text:
-            if not input_text.endswith('\n'):
-                input_text += '\n'
-            self.process.write(input_text.encode())
+        # Wait for started and feed input from input_area if available
+        if self.process.waitForStarted(1500):
+            input_text = self.input_area.toPlainText()
+            if input_text:
+                if not input_text.endswith('\n'):
+                    input_text += '\n'
+                self.process.write(input_text.encode('utf-8'))
+        else:
+            self.loading_timer.stop()
+            self.is_loading = False
+            self.status_label.setText("STATUS: ● PROCESS START FAILED")
+            self.terminal.append_output(f"<span style='color:{PINK}'>Failed to start '{os.path.basename(target_exe)}'.</span>", is_html=True)
 
     def _read_process_output(self):
-        data = self.process.readAllStandardOutput().data().decode()
-        # Append to terminal
-        self.terminal.append_output(data)
+        raw = self.process.readAllStandardOutput().data()
+        data = raw.decode('utf-8', errors='replace')
+        if data:
+            self.terminal.append_output(data)
 
     def _on_process_finished(self, exit_code, exit_status):
         self.loading_timer.stop()
@@ -2800,6 +3523,8 @@ class AppGUI(QMainWindow):
             
         self.status_label.setText(status_msg)
         self.terminal.setReadOnly(True)
+        if not self.terminal.toPlainText().strip():
+            self.terminal.append_output(f"<span style='color:{TEXT_DIM}'><i>(Program finished with exit code {exit_code} - no output)</i></span>", is_html=True)
 
     def _on_process_error(self, error):
         self.loading_timer.stop()
@@ -2925,11 +3650,11 @@ class AppGUI(QMainWindow):
                 self.call_graph_page.update_from_code(self.editor.toPlainText())
             
             # Auto-generate the AST for the just-compiled source without changing pages.
-            if self.file_path and os.path.exists(self.file_path):
-                self.status_label.setText("STATUS: ● BUILDING AST...")
-                self.ast_worker = ASTWorker(self.file_path)
-                self.ast_worker.finished.connect(self._on_compile_ast_ready)
-                self.ast_worker.start()
+            code = self.editor.toPlainText() if hasattr(self, "editor") else ""
+            self.status_label.setText("STATUS: ● BUILDING AST...")
+            self.ast_worker = ASTWorker(self.file_path, code=code)
+            self.ast_worker.finished.connect(self._on_compile_ast_ready)
+            self.ast_worker.start()
                 
         except json.JSONDecodeError:
             err_block = f"<span style='color:{PINK};'>COMPILE ERRORS OR JSON DECODE ERROR:</span><br>{stdout}<br>{stderr}"
@@ -2950,10 +3675,39 @@ class AppGUI(QMainWindow):
         report_text = data.get("security_report", "")
         if status == "success":
             self.status_label.setText("STATUS: ● SUCCESSFUL")
-            lbl = QLabel("NO ISSUES DETECTED.")
-            lbl.setStyleSheet(f"color: {PINK}; font-weight: bold; font-family: {FONT_FAMILY}; font-size: 14px;")
-            self.error_cards_layout.addWidget(lbl)
-            self.terminal.append_output(f"<span style='color:{TEXT_MAIN};'>Compilation finished successfully.</span>", is_html=True)
+            if findings:
+                card = QFrame()
+                card.setStyleSheet(f"""
+                    QFrame {{
+                        background-color: {PANE_BG};
+                        border: 1px solid {YELLOW};
+                        border-radius: 6px;
+                        padding: 10px;
+                        margin-bottom: 8px;
+                    }}
+                """)
+                c_layout = QVBoxLayout(card)
+                title = QLabel(f"COMPILES OK — {len(findings)} security finding(s)")
+                title.setStyleSheet(f"color: {YELLOW}; font-weight: bold; font-family: {FONT_FAMILY}; font-size: 13px;")
+                c_layout.addWidget(title)
+
+                for f in findings[:3]:
+                    sev = f.get("severity", "MEDIUM").upper() if isinstance(f, dict) else getattr(f, "severity", "MEDIUM").upper()
+                    ftype = f.get("type", "Security Finding") if isinstance(f, dict) else getattr(f, "type", "Security Finding")
+                    fline = f.get("line", "?") if isinstance(f, dict) else getattr(f, "line", "?")
+                    fdesc = f.get("description", "") if isinstance(f, dict) else getattr(f, "description", "")
+                    lbl_f = QLabel(f"• <b>[{sev}] {ftype}</b> (line {fline}): {fdesc}")
+                    lbl_f.setStyleSheet(f"color: {TEXT_MAIN}; font-size: 11px; font-family: {FONT_FAMILY};")
+                    lbl_f.setWordWrap(True)
+                    c_layout.addWidget(lbl_f)
+
+                self.error_cards_layout.addWidget(card)
+            else:
+                lbl = QLabel("NO ISSUES DETECTED.")
+                lbl.setStyleSheet(f"color: {PINK}; font-weight: bold; font-family: {FONT_FAMILY}; font-size: 14px;")
+                self.error_cards_layout.addWidget(lbl)
+
+            self.terminal.append_output(f"<span style='color:{TEXT_MAIN};'>Compilation finished successfully. Click 'RUN CODE' to execute.</span><br>", is_html=True)
             self.editor.set_errors([])
             self.errors_count = 0
             self.warnings_count = 0
@@ -2962,6 +3716,7 @@ class AppGUI(QMainWindow):
             self.latest_security_report = report_text
             self.security_page.update_report(findings)
             return
+
             
         self.errors_count = data.get('error_count', 0)
         self.warnings_count = data.get('warning_count', 0)
@@ -2987,6 +3742,7 @@ class AppGUI(QMainWindow):
 
         first_err_line = None
         compiler_html = ""
+        created_cards = []
 
         for idx, e in enumerate(errors):
 
@@ -3005,6 +3761,7 @@ class AppGUI(QMainWindow):
 
             # Create and add an error card for this issue
             card = self._create_error_card(e)
+            created_cards.append(card)
             self.error_cards_layout.addWidget(card)
 
             compiler_html += f"<span style='color:{tag_color};'>[{etype.upper()}]</span> {os.path.basename(file_name)}:{line}:{col}: <span style='color:{tag_color};'>{etype}:</span> {msg}<br>"
@@ -3023,6 +3780,32 @@ class AppGUI(QMainWindow):
                     else:
                         compiler_html += f"   {i:3} | <span style='color:{TEXT_DIM}'>{txt}</span><br>"
             compiler_html += "<br>"
+
+        # Asynchronously fetch AI explanations if AI assist is enabled
+        if self.is_ai_enabled() and errors:
+            try:
+                from ai_explainer import AIExplainWorker
+                self.ai_status_label.setText("AI: analyzing...")
+                src_code = self.editor.toPlainText()
+                self.ai_explain_worker = AIExplainWorker(errors[:5], src_code)
+                
+                def on_ai_batch_ready(results_by_idx: dict, provider: str):
+                    provider_disp = (provider or "AI").capitalize()
+                    self.ai_status_label.setText(f"AI: explained by {provider_disp}")
+                    for idx, ai_data in results_by_idx.items():
+                        if 0 <= idx < len(created_cards):
+                            created_cards[idx].add_ai_explanation(ai_data)
+
+                def on_ai_failed(reason: str):
+                    self.ai_status_label.setText(f"AI: {reason}")
+
+                self.ai_explain_worker.batch_ready.connect(on_ai_batch_ready)
+                self.ai_explain_worker.failed.connect(on_ai_failed)
+                self.ai_explain_worker.start()
+            except Exception as ex:
+                self.ai_status_label.setText(f"AI: {ex}")
+        else:
+            self.update_ai_status()
 
         compiler_html += f"<br>C++_ANALYZER_V2.0.1_READY > _"
         self.terminal.append_output(f"<div style='white-space:pre-wrap; font-family:{FONT_FAMILY};'>{compiler_html}</div>", is_html=True)

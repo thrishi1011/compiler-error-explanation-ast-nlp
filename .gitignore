@@ -45,3 +45,5 @@ emissions.csv*
 *.swp
 *.swo
 *~
+data/heal_backups/
+data/llm_debug.log

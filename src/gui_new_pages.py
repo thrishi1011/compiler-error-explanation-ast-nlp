@@ -238,6 +238,21 @@ class SecondOpinionPage(QWidget):
         else:
             self._cand_outer.setVisible(False)
 
+    def apply_theme(self, t):
+        self._verdict_frame.setStyleSheet(
+            f"QFrame {{ background-color: {t['PANE_BG']}; border: 1px solid {t['BORDER_COLOR']}; "
+            f"border-radius: 8px; }}"
+        )
+        self._regex_card["frame"].setStyleSheet(
+            f"QFrame {{ background-color: {t['PANE_BG']}; border: 1px solid {t['BORDER_COLOR']}; border-radius: 8px; }}"
+        )
+        self._ml_card["frame"].setStyleSheet(
+            f"QFrame {{ background-color: {t['PANE_BG']}; border: 1px solid {t['BORDER_COLOR']}; border-radius: 8px; }}"
+        )
+        self._cand_outer.setStyleSheet(
+            f"QFrame {{ background-color: {t['PANE_BG']}; border: 1px solid {t['BORDER_COLOR']}; border-radius: 8px; }}"
+        )
+
     def clear(self):
         self.show_opinion("")
 
@@ -268,24 +283,44 @@ class BenchmarkPage(QWidget):
 
         title = QLabel("ACCURACY BENCHMARK  ·  THREE-METHOD COMPARISON")
         title.setFont(QFont("Consolas", 11, QFont.Weight.Bold))
-        title.setStyleSheet("color: #5469d4; padding-bottom: 4px;")
+        title.setStyleSheet(f"color: {_PINK()}; padding-bottom: 2px;")
         root.addWidget(title)
 
-        intro = QLabel(
-            "Runs every labelled test file through three independent classifiers "
-            "and compares their accuracy side-by-side. "
-            "Fully offline — uses g++ and the local ML model."
+        # Explanatory card describing what this benchmark is and what each method does
+        self._guide_frame = QFrame()
+        self._guide_frame.setStyleSheet(
+            f"QFrame {{ background-color: {_PANE()}; border: 1px solid {_BORDER()}; "
+            f"border-radius: 8px; }}"
         )
-        intro.setWordWrap(True)
-        intro.setStyleSheet("color: #4f566b; font-size: 12px;")
-        root.addWidget(intro)
+        guide_lay = QVBoxLayout(self._guide_frame)
+        guide_lay.setContentsMargins(14, 12, 14, 12)
+        guide_lay.setSpacing(6)
+
+        guide_header = QLabel("📌  WHAT THIS BENCHMARK DOES & WHY IT IS USED")
+        guide_header.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
+        guide_header.setStyleSheet(f"color: {_PINK()};")
+        guide_lay.addWidget(guide_header)
+
+        guide_summary = QLabel(
+            "This benchmark evaluates the error explainer across 23 standardized C++ test cases to measure how "
+            "accurately different approaches diagnose compiler errors without guessing.\n\n"
+            "• ⚙️ Regex Classifier (Rule-based): Fast deterministic regex & keyword matching on GCC stderr diagnostics. Zero ML training needed.\n"
+            "• 🧠 ML Classifier (Machine Learning): A trained TF-IDF + Logistic Regression model that learns semantic patterns across compiler errors.\n"
+            "• 🤝 Combined Method (Ensemble): Blends Regex rules and ML confidence predictions; surfaces mutual agreement and shows doubts when they disagree.\n\n"
+            "Usage: Click '▶ RUN BENCHMARK' to evaluate all 23 test files and view live per-file accuracy results side-by-side."
+        )
+        guide_summary.setWordWrap(True)
+        guide_summary.setFont(QFont("Consolas", 9))
+        guide_summary.setStyleSheet(f"color: {_DIM()}; line-height: 1.4;")
+        guide_lay.addWidget(guide_summary)
+        root.addWidget(self._guide_frame)
 
         # Summary score cards
         score_row = QHBoxLayout()
         score_row.setSpacing(10)
-        self._regex_card = self._make_score_card("Regex Classifier", "—")
-        self._ml_card    = self._make_score_card("ML Classifier",    "—")
-        self._combo_card = self._make_score_card("Combined Method",  "—")
+        self._regex_card = self._make_score_card("Regex Classifier", "Rule-based Keywords", "—")
+        self._ml_card    = self._make_score_card("ML Classifier",    "TF-IDF + Logistic Reg", "—")
+        self._combo_card = self._make_score_card("Combined Method",  "Ensemble Agreement",    "—")
         score_row.addWidget(self._regex_card["frame"], 1)
         score_row.addWidget(self._ml_card["frame"],    1)
         score_row.addWidget(self._combo_card["frame"], 1)
@@ -297,34 +332,34 @@ class BenchmarkPage(QWidget):
         self._progress.setValue(0)
         self._progress.setTextVisible(True)
         self._progress.setFormat("Press RUN BENCHMARK to start")
-        self._progress.setFixedHeight(18)
+        self._progress.setFixedHeight(20)
         self._progress.setStyleSheet(
-            "QProgressBar { background-color: #f4f7f9; border: 1px solid #e6ebf1; "
-            "border-radius: 8px; }"
-            "QProgressBar::chunk { background-color: #5469d4; border-radius: 8px; }"
+            f"QProgressBar {{ background-color: {_BG()}; border: 1px solid {_BORDER()}; "
+            f"border-radius: 8px; color: {_TEXT()}; }}"
+            f"QProgressBar::chunk {{ background-color: {_PINK()}; border-radius: 8px; }}"
         )
         root.addWidget(self._progress)
 
-        # Run button (plain QPushButton so no circular import needed)
+        # Run button
         from PyQt6.QtWidgets import QPushButton
-        btn = QPushButton(" ▶  RUN BENCHMARK ")
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setFont(QFont("Consolas", 11, QFont.Weight.Bold))
-        btn.setStyleSheet(
-            "QPushButton { background-color: #5469d4; color: white; border: none; "
-            "border-radius: 6px; padding: 8px 18px; }"
-            "QPushButton:hover { background-color: #6578e0; }"
-            "QPushButton:pressed { background-color: #4356c0; }"
+        self._btn_run = QPushButton(" ▶  RUN BENCHMARK ")
+        self._btn_run.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_run.setFont(QFont("Consolas", 11, QFont.Weight.Bold))
+        self._btn_run.setStyleSheet(
+            f"QPushButton {{ background-color: {_PINK()}; color: white; border: none; "
+            f"border-radius: 6px; padding: 8px 18px; }}"
+            f"QPushButton:hover {{ opacity: 0.9; }}"
+            f"QPushButton:pressed {{ background-color: #4356c0; }}"
         )
-        btn.clicked.connect(self._start)
-        root.addWidget(btn, 0, Qt.AlignmentFlag.AlignLeft)
+        self._btn_run.clicked.connect(self._start)
+        root.addWidget(self._btn_run, 0, Qt.AlignmentFlag.AlignLeft)
 
         # Results table inside a scroll area
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setStyleSheet(
-            "QScrollArea { border: 1px solid #e6ebf1; "
-            "background-color: #ffffff; border-radius: 6px; }"
+            f"QScrollArea {{ border: 1px solid {_BORDER()}; "
+            f"background-color: {_PANE()}; border-radius: 6px; }}"
         )
         self._table_host = QWidget()
         self._table_host.setStyleSheet("QWidget { background-color: transparent; }")
@@ -339,23 +374,52 @@ class BenchmarkPage(QWidget):
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
-    def _make_score_card(self, title: str, value: str) -> dict:
+    def _make_score_card(self, title: str, subtitle: str, value: str) -> dict:
         frame = QFrame()
         frame.setStyleSheet(
-            "QFrame { background-color: #ffffff; border: 1px solid #e6ebf1; "
-            "border-radius: 8px; }"
+            f"QFrame {{ background-color: {_PANE()}; border: 1px solid {_BORDER()}; "
+            f"border-radius: 8px; }}"
         )
         lay = QVBoxLayout(frame)
         lay.setContentsMargins(14, 12, 14, 12)
         lay.setSpacing(2)
         t = QLabel(title)
-        t.setStyleSheet("color: #4f566b; font-size: 10px; font-weight: bold;")
+        t.setStyleSheet(f"color: {_TEXT()}; font-size: 11px; font-weight: bold;")
         lay.addWidget(t)
+        sub = QLabel(subtitle)
+        sub.setStyleSheet(f"color: {_DIM()}; font-size: 9px;")
+        lay.addWidget(sub)
         v = QLabel(value)
         v.setFont(QFont("Consolas", 22, QFont.Weight.Bold))
-        v.setStyleSheet("color: #5469d4;")
+        v.setStyleSheet(f"color: {_PINK()};")
         lay.addWidget(v)
-        return {"frame": frame, "val": v}
+        return {"frame": frame, "val": v, "title": t, "sub": sub}
+
+    def apply_theme(self, t):
+        self._guide_frame.setStyleSheet(
+            f"QFrame {{ background-color: {t['PANE_BG']}; border: 1px solid {t['BORDER_COLOR']}; "
+            f"border-radius: 8px; }}"
+        )
+        self._scroll.setStyleSheet(
+            f"QScrollArea {{ border: 1px solid {t['BORDER_COLOR']}; "
+            f"background-color: {t['PANE_BG']}; border-radius: 6px; }}"
+        )
+        self._progress.setStyleSheet(
+            f"QProgressBar {{ background-color: {t['BG_COLOR']}; border: 1px solid {t['BORDER_COLOR']}; "
+            f"border-radius: 8px; color: {t['TEXT_MAIN']}; }}"
+            f"QProgressBar::chunk {{ background-color: {t['PINK']}; border-radius: 8px; }}"
+        )
+        self._btn_run.setStyleSheet(
+            f"QPushButton {{ background-color: {t['PINK']}; color: white; border: none; "
+            f"border-radius: 6px; padding: 8px 18px; }}"
+        )
+        for card in [self._regex_card, self._ml_card, self._combo_card]:
+            card["frame"].setStyleSheet(
+                f"QFrame {{ background-color: {t['PANE_BG']}; border: 1px solid {t['BORDER_COLOR']}; border-radius: 8px; }}"
+            )
+            card["title"].setStyleSheet(f"color: {t['TEXT_MAIN']}; font-size: 11px; font-weight: bold;")
+            card["sub"].setStyleSheet(f"color: {t['TEXT_DIM']}; font-size: 9px;")
+            card["val"].setStyleSheet(f"color: {t['PINK']};")
 
     def _clear_table(self):
         while self._table_vbox.count():
@@ -372,7 +436,7 @@ class BenchmarkPage(QWidget):
 
     def _make_header_row(self) -> QWidget:
         row = QWidget()
-        row.setStyleSheet("background-color: #f4f7f9; border-radius: 4px;")
+        row.setStyleSheet(f"background-color: {_HEADER()}; border-radius: 4px;")
         hl = QHBoxLayout(row)
         hl.setContentsMargins(8, 6, 8, 6)
         hl.setSpacing(0)
@@ -382,7 +446,7 @@ class BenchmarkPage(QWidget):
         ]:
             lbl = QLabel(text)
             lbl.setFont(QFont("Consolas", 9, QFont.Weight.Bold))
-            lbl.setStyleSheet("color: #5469d4;")
+            lbl.setStyleSheet(f"color: {_PINK()};")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter if stretch == 1
                              else Qt.AlignmentFlag.AlignLeft)
             hl.addWidget(lbl, stretch)
@@ -395,11 +459,11 @@ class BenchmarkPage(QWidget):
         hl.setSpacing(0)
 
         fname = QLabel(file_result.filename)
-        fname.setStyleSheet("color: #1a1f36; font-size: 11px;")
+        fname.setStyleSheet(f"color: {_TEXT()}; font-size: 11px;")
         hl.addWidget(fname, 5)
 
         exp = QLabel(file_result.expected)
-        exp.setStyleSheet("color: #4f566b; font-size: 11px;")
+        exp.setStyleSheet(f"color: {_DIM()}; font-size: 11px;")
         hl.addWidget(exp, 4)
 
         for ok in [file_result.regex_ok, file_result.ml_ok, file_result.combo_ok]:

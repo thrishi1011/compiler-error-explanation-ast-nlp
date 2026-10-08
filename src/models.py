@@ -26,7 +26,7 @@ class CompilerError:
             else:
                 findings.append(str(finding))
 
-        return {
+        res = {
             "file":self.file,
             "line":self.line,
             "column":self.column,
@@ -41,6 +41,9 @@ class CompilerError:
             "risk_reason":self.risk_reason,
             "security_findings":findings,
         }
+        if hasattr(self, "ai_explanation") and self.ai_explanation is not None:
+            res["ai_explanation"] = self.ai_explanation
+        return res
     
     def __str__(self):
         parts=[]

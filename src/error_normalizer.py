@@ -168,3 +168,89 @@ def normalize_error(raw_message: str) -> Tuple[str, str]:
     dataset_msg = normalize_for_dataset(raw_message)
     ui_msg = build_ui_message(raw_message)
     return dataset_msg, ui_msg
+
+
+# ---------------------------------------------------------------------------
+# ML Classifier Normalization Engine
+# ---------------------------------------------------------------------------
+
+_PRESERVED_CPP_TOKENS = {
+    # Keywords & basic types
+    "int", "float", "double", "char", "bool", "void", "auto", "long", "short",
+    "unsigned", "signed", "const", "static", "return", "class", "struct",
+    "private", "protected", "public", "virtual", "namespace", "template",
+    "new", "delete", "nullptr", "true", "false", "if", "else", "for", "while",
+    "do", "switch", "case", "default", "break", "continue", "goto", "operator",
+    "sizeof", "typedef", "typename", "using", "constexpr", "enum", "union",
+    "friend", "inline", "explicit", "mutable", "this", "throw", "try", "catch",
+    "main", "argc", "argv", "std",
+    # Standard library symbols & containers
+    "cout", "cin", "cerr", "endl", "ostream", "istream", "printf", "scanf",
+    "fprintf", "string", "getline", "vector", "map", "set", "unordered_map",
+    "unordered_set", "list", "queue", "stack", "deque", "array", "pair",
+    "tuple", "optional", "sort", "find", "max", "min", "reverse", "count",
+    "fill", "copy", "abs", "sqrt", "pow", "ceil", "floor", "unique_ptr",
+    "shared_ptr", "make_unique", "make_shared", "assert", "INT_MAX", "INT_MIN",
+    "size_t", "NULL",
+    # Punctuation & operators
+    ";", "}", "{", ")", "(", "]", "[", ":", ",", ">>", "<<", "=", "+", "-",
+    "*", "/", "%", "==", "!=", "<", ">", "<=", ">=", "&&", "||", "!", "&",
+    "|", "^", "~", "++", "--", "+=", "-=", "*=", "/=", "->", ".", "::",
+}
+
+_PREFIX_REGEX = re.compile(r'^(?:[A-Za-z]:)?[^:\r\n]+:\d+(?::\d+)?: (?:fatal )?(?:error|warning|note):\s*')
+
+def normalize_for_classifier(raw_message: str) -> str:
+    """
+    Normalizes a compiler diagnostic for ML classification:
+    - Strips file paths, line/column numbers, and 'error:' / 'warning:' prefixes
+    - Strips memory/hex addresses (0x...)
+    - Preserves C++ keywords, types, standard library symbols, operators, and [-W...] flags
+    - Masks arbitrary user identifiers in quotes to '<ID>'
+    - Masks raw numeric literals to '<NUM>'
+    - Trims and collapses whitespace
+    """
+    if not raw_message:
+        return ""
+
+    # 1. Strip file/line/col prefix if present
+    msg = _PREFIX_REGEX.sub("", raw_message.strip())
+
+    # 2. Normalize linker error text
+    if "undefined reference to" in msg:
+        m = re.search(r"undefined reference to [\'`\"]?([^\'\"\n]+)[\'`\"]?", msg)
+        if m:
+            sym = m.group(1).split("(")[0]
+            if sym in _PRESERVED_CPP_TOKENS:
+                return f"undefined reference to '{sym}'"
+            return "undefined reference to '<ID>'"
+        return "undefined reference to '<ID>'"
+
+    # 3. Strip hex addresses
+    msg = re.sub(r"\b0x[0-9a-fA-F]+\b", "<ADDR>", msg)
+
+    # 4. Process quoted tokens: preserve keywords/types/std symbols/punctuation/flags, mask user IDs
+    def _replace_quoted(match):
+        token = match.group(1).strip()
+        # If token is a warning flag or contains std types, preserve
+        if token.startswith("-W") or token.startswith("std::") or token in _PRESERVED_CPP_TOKENS:
+            return f"'{token}'"
+        # Check compound standard types like 'std::vector<int>'
+        if any(std_sym in token for std_sym in ["vector", "string", "map", "set", "pair", "tuple", "ostream", "istream"]):
+            return f"'{token}'"
+        # Check if punctuation
+        if token in _PRESERVED_CPP_TOKENS:
+            return f"'{token}'"
+        # Otherwise it's a user identifier / custom name
+        return "'<ID>'"
+
+    # Replace both 'token' and `token`
+    msg = re.sub(r"['`]([^'`\n]+)['`]", _replace_quoted, msg)
+
+    # 5. Mask numbers outside identifiers/flags
+    msg = re.sub(r"(?<![A-Za-z0-9_-])\b\d+\b(?![A-Za-z0-9_-])", "<NUM>", msg)
+
+    # 6. Collapse multiple spaces
+    msg = re.sub(r"\s+", " ", msg).strip()
+    return msg
+
