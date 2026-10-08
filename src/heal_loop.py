@@ -65,7 +65,7 @@ def _compile(file_path: str) -> tuple[list[dict], str]:
         }], "error: Malicious code blocked"
 
     res = subprocess.run(
-        ["g++", "-std=c++17", "-Wall", file_path],
+        ["g++", "-fsyntax-only", "-std=c++17", "-Wall", file_path],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -219,6 +219,7 @@ class HealWorker(QThread):
     attempt_started = pyqtSignal(int, dict)          # (attempt_no, error)
     diff_ready      = pyqtSignal(int, str, str)       # (attempt_no, diff_html, label)
     compile_clean   = pyqtSignal(str)                 # label: "Healed by AI (Gemini)", etc.
+    heal_summary    = pyqtSignal(dict)                # full result dictionary
     give_up         = pyqtSignal(list)                # history list
     error_signal    = pyqtSignal(str)                 # fatal/internal errors
     hint_required   = pyqtSignal(int, dict, list)     # (attempt_no, error, history)
@@ -296,6 +297,7 @@ class HealWorker(QThread):
                 "success": rnd.get("errors_after", 0) == 0,
             })
 
+        self.heal_summary.emit(result.to_dict())
         if result.clean:
             self.compile_clean.emit(result.message)
         else:

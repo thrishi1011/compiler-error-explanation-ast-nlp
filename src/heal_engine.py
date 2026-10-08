@@ -31,7 +31,6 @@ if _SRC_DIR not in sys.path:
 
 from compiler_runner import _sanitize_code
 from error_parser import parse_errors
-from error_explainer import enrich_error
 from auto_healer import attempt_fix, UNFIXABLE_CATEGORIES, clean_duplicate_headers
 from diff_viewer import compute_diff, format_diff_html, has_changes
 import llm_client
@@ -49,9 +48,11 @@ _ERR_PATTERN = re.compile(
 )
 
 
-def compile_source(source: str) -> Tuple[List[dict], List[dict], str]:
+def compile_source(source: str, syntax_only: bool = True) -> Tuple[List[dict], List[dict], str]:
     """
-    Compile C++ code with g++ -std=c++17 -Wall.
+    Compile C++ code with g++.
+    If syntax_only=True: uses g++ -fsyntax-only -std=c++17 -Wall (fast syntax check).
+    If syntax_only=False: does a full compile with -o <temp_exe> which is deleted immediately.
     Returns (errors_list, warnings_list, raw_stderr).
     Each item is a dict with file, line, column, type, message, raw.
     """
@@ -72,9 +73,16 @@ def compile_source(source: str) -> Tuple[List[dict], List[dict], str]:
         tmp_path = tmp.name
         tmp.write(source)
 
+    out_exe = None
     try:
+        if syntax_only:
+            cmd = ["g++", "-fsyntax-only", "-std=c++17", "-Wall", tmp_path]
+        else:
+            out_exe = tmp_path + (".exe" if os.name == "nt" else ".out")
+            cmd = ["g++", "-std=c++17", "-Wall", tmp_path, "-o", out_exe]
+
         res = subprocess.run(
-            ["g++", "-std=c++17", "-Wall", tmp_path],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -101,6 +109,11 @@ def compile_source(source: str) -> Tuple[List[dict], List[dict], str]:
         if os.path.exists(tmp_path):
             try:
                 os.remove(tmp_path)
+            except OSError:
+                pass
+        if out_exe and os.path.exists(out_exe):
+            try:
+                os.remove(out_exe)
             except OSError:
                 pass
 
@@ -229,6 +242,9 @@ def heal_until_clean(
     initial_compile = True
     initial_error_count = 0
 
+    # Reset per-heal-run AI time budget (capped by HEAL_AI_BUDGET_SEC, default 20s)
+    llm_client.reset_heal_ai_budget()
+
     # Initialize tracker if telemetry enabled and init takes < 1s
     tracker = None
     if os.environ.get("ENABLE_TELEMETRY", "1") != "0" and HAS_CODECARBON:
@@ -262,34 +278,36 @@ def heal_until_clean(
         for round_no in range(1, max_rounds + 1):
             round_start_time = time.time()
 
-            # 1. Compile current source
-            errors, warnings, raw_stderr = compile_source(current_source)
+            # 1. Compile current source (syntax check inside rounds)
+            errors, warnings, raw_stderr = compile_source(current_source, syntax_only=True)
             if initial_compile:
                 initial_error_count = len(errors)
                 initial_compile = False
 
-            # If zero hard errors, we are done!
+            # If zero hard errors, do one full compile to verify and finish
             if len(errors) == 0:
-                msg = f"Compiles with {len(warnings)} warning(s)" if warnings else "Compiles cleanly with 0 errors"
-                current_source = clean_duplicate_headers(current_source)
-                emit("status_update", {"text": f"STATUS: ● HEALED ✅ ({msg})"})
-                duration = time.time() - start_time
-                emissions = 0.0
-                if tracker:
-                    try: emissions = tracker.stop() or 0.0
-                    except: pass
-                return HealResult(
-                    code=current_source,
-                    status="healed",
-                    clean=True,
-                    rounds=rounds_history,
-                    attempts=all_attempts_flat,
-                    message=msg,
-                    total_duration=round(duration, 3),
-                    total_emissions=round(emissions, 6),
-                    initial_errors=initial_error_count,
-                    remaining_errors=0,
-                )
+                full_errors, full_warnings, _ = compile_source(current_source, syntax_only=False)
+                if len(full_errors) == 0:
+                    msg = f"Compiles with {len(full_warnings)} warning(s)" if full_warnings else "Compiles cleanly with 0 errors"
+                    current_source = clean_duplicate_headers(current_source)
+                    emit("status_update", {"text": f"STATUS: ● HEALED ✅ ({msg})"})
+                    duration = time.time() - start_time
+                    emissions = 0.0
+                    if tracker:
+                        try: emissions = tracker.stop() or 0.0
+                        except: pass
+                    return HealResult(
+                        code=current_source,
+                        status="healed",
+                        clean=True,
+                        rounds=rounds_history,
+                        attempts=all_attempts_flat,
+                        message=msg,
+                        total_duration=round(duration, 3),
+                        total_emissions=round(emissions, 6),
+                        initial_errors=initial_error_count,
+                        remaining_errors=0,
+                    )
 
             current_sig = (hashlib.sha256(current_source.encode("utf-8")).hexdigest(), tuple(e["message"] for e in errors))
             if prev_round_sig == current_sig:
@@ -307,10 +325,14 @@ def heal_until_clean(
             round_model = None
             candidate_code = None
 
-            # 2. Try AI attempt if allowed
+            # 2. Try AI attempt if allowed and within budget
             g_avail, _ = llm_client._GEMINI_STATE.is_available()
             gr_avail, _ = llm_client._GROQ_STATE.is_available()
-            can_try_ai = ai_allowed and (g_avail or gr_avail)
+            has_budget = llm_client.get_heal_ai_budget_remaining() >= 2.0
+            can_try_ai = ai_allowed and (g_avail or gr_avail) and has_budget
+
+            if not has_budget and ai_allowed and (g_avail or gr_avail):
+                emit("info_message", {"text": f"Round {round_no}: AI heal budget spent ({llm_client.get_heal_ai_budget():.0f}s). Finishing with offline rules."})
 
             if can_try_ai:
                 provider_label = "Gemini" if g_avail else "Groq"
@@ -319,8 +341,8 @@ def heal_until_clean(
                     current_source, errors, hint=hint
                 )
                 if ai_code:
-                    # Validate compile improvement
-                    ai_errors, _, _ = compile_source(ai_code)
+                    # Validate compile improvement with fast syntax check
+                    ai_errors, _, _ = compile_source(ai_code, syntax_only=True)
                     if len(ai_errors) < errors_before:
                         candidate_code = ai_code
                         round_applied = True
@@ -341,7 +363,7 @@ def heal_until_clean(
                 max_offline_attempts = 10
 
                 for off_att in range(1, max_offline_attempts + 1):
-                    off_errors, off_warnings, _ = compile_source(offline_source)
+                    off_errors, off_warnings, _ = compile_source(offline_source, syntax_only=True)
                     if len(off_errors) == 0:
                         offline_source = clean_duplicate_headers(offline_source)
                         break
@@ -373,8 +395,8 @@ def heal_until_clean(
                         })
                         continue
 
-                    # Check that patch didn't make errors worse
-                    test_errors, _, _ = compile_source(patched)
+                    # Check that patch didn't make errors worse (syntax check)
+                    test_errors, _, _ = compile_source(patched, syntax_only=True)
                     if len(test_errors) > len(off_errors):
                         # Revert this patch
                         all_attempts_flat.append({
@@ -402,7 +424,7 @@ def heal_until_clean(
                     offline_attempts_count += 1
 
                 # If offline loop improved code (errors decreased or did not get worse while fixing statements):
-                off_final_errors, _, _ = compile_source(offline_source)
+                off_final_errors, _, _ = compile_source(offline_source, syntax_only=True)
                 if offline_source != current_source and len(off_final_errors) <= errors_before:
                     candidate_code = offline_source
                     round_applied = True
@@ -412,7 +434,7 @@ def heal_until_clean(
 
             # 4. Evaluate round results
             if round_applied and candidate_code is not None:
-                new_errors, new_warnings, _ = compile_source(candidate_code)
+                new_errors, new_warnings, _ = compile_source(candidate_code, syntax_only=True)
                 errors_after = len(new_errors)
                 round_duration = time.time() - round_start_time
 
@@ -432,26 +454,29 @@ def heal_until_clean(
                 current_source = candidate_code
 
                 if errors_after == 0:
-                    msg = f"Compiles with {len(new_warnings)} warning(s)" if new_warnings else "Compiles cleanly with 0 errors"
-                    current_source = clean_duplicate_headers(current_source)
-                    emit("status_update", {"text": f"STATUS: ● HEALED ✅ ({msg})"})
-                    duration = time.time() - start_time
-                    emissions = 0.0
-                    if tracker:
-                        try: emissions = tracker.stop() or 0.0
-                        except: pass
-                    return HealResult(
-                        code=current_source,
-                        status="healed",
-                        clean=True,
-                        rounds=rounds_history,
-                        attempts=all_attempts_flat,
-                        message=msg,
-                        total_duration=round(duration, 3),
-                        total_emissions=round(emissions, 6),
-                        initial_errors=initial_error_count,
-                        remaining_errors=0,
-                    )
+                    # One full compile to verify
+                    full_errors, full_warnings, _ = compile_source(current_source, syntax_only=False)
+                    if len(full_errors) == 0:
+                        msg = f"Compiles with {len(full_warnings)} warning(s)" if full_warnings else "Compiles cleanly with 0 errors"
+                        current_source = clean_duplicate_headers(current_source)
+                        emit("status_update", {"text": f"STATUS: ● HEALED ✅ ({msg})"})
+                        duration = time.time() - start_time
+                        emissions = 0.0
+                        if tracker:
+                            try: emissions = tracker.stop() or 0.0
+                            except: pass
+                        return HealResult(
+                            code=current_source,
+                            status="healed",
+                            clean=True,
+                            rounds=rounds_history,
+                            attempts=all_attempts_flat,
+                            message=msg,
+                            total_duration=round(duration, 3),
+                            total_emissions=round(emissions, 6),
+                            initial_errors=initial_error_count,
+                            remaining_errors=0,
+                        )
             else:
                 # Neither AI nor offline rules made progress
                 rounds_history.append({
@@ -470,9 +495,9 @@ def heal_until_clean(
             try: tracker.stop()
             except: pass
 
-    # 5. Final status calculation
+    # 5. Final status calculation - ONE full compile to verify end state
     current_source = clean_duplicate_headers(current_source)
-    final_errors, final_warnings, _ = compile_source(current_source)
+    final_errors, final_warnings, _ = compile_source(current_source, syntax_only=False)
     total_duration = round(time.time() - start_time, 3)
 
     if len(final_errors) == 0:
