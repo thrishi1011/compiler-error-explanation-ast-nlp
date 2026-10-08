@@ -93,6 +93,7 @@ CURRENT_THEME = dict(LIGHT_THEME)
 
 BG_COLOR = CURRENT_THEME["BG_COLOR"]
 PANE_BG = CURRENT_THEME["PANE_BG"]
+PANEL_BG = PANE_BG
 HEADER_BG = CURRENT_THEME["HEADER_BG"]
 BORDER_COLOR = CURRENT_THEME["BORDER_COLOR"]
 PINK = CURRENT_THEME["PINK"]
@@ -105,10 +106,11 @@ YELLOW = CURRENT_THEME["YELLOW"]
 GREEN = CURRENT_THEME["GREEN"]
 
 def set_global_theme(theme_dict):
-    global BG_COLOR, PANE_BG, HEADER_BG, BORDER_COLOR, PINK, TEXT_MAIN, TEXT_DIM, KEYWORD_COLOR, ERROR_LINE_COLOR, RED, YELLOW, GREEN, CURRENT_THEME
+    global BG_COLOR, PANE_BG, PANEL_BG, HEADER_BG, BORDER_COLOR, PINK, TEXT_MAIN, TEXT_DIM, KEYWORD_COLOR, ERROR_LINE_COLOR, RED, YELLOW, GREEN, CURRENT_THEME
     CURRENT_THEME.update(theme_dict)
     BG_COLOR = theme_dict["BG_COLOR"]
     PANE_BG = theme_dict["PANE_BG"]
+    PANEL_BG = PANE_BG
     HEADER_BG = theme_dict["HEADER_BG"]
     BORDER_COLOR = theme_dict["BORDER_COLOR"]
     PINK = theme_dict["PINK"]
@@ -3046,7 +3048,7 @@ class AppGUI(QMainWindow):
         card = QFrame()
         card.setStyleSheet(f"""
             QFrame {{
-                background-color: {PANEL_BG};
+                background-color: {PANE_BG};
                 border: 1px solid {GREEN if clean else YELLOW};
                 border-radius: 6px;
                 padding: 10px;
@@ -3677,7 +3679,7 @@ class AppGUI(QMainWindow):
                 card = QFrame()
                 card.setStyleSheet(f"""
                     QFrame {{
-                        background-color: {PANEL_BG};
+                        background-color: {PANE_BG};
                         border: 1px solid {YELLOW};
                         border-radius: 6px;
                         padding: 10px;
