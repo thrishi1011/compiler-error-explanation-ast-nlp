@@ -511,10 +511,12 @@ def _call_gemini(
 
     models = get_gemini_models(kind)
     if call_timeout is not None:
-        read_timeout = max(1.0, call_timeout - 2.0)
+        read_timeout = max(1.0, min(3.5 if kind == "heal" else 5.0, call_timeout - 1.0))
+        conn_timeout = min(2.5, call_timeout)
     else:
-        read_timeout = 10.0 if kind == "heal" else 4.0
-    timeout_tuple = (2.0, read_timeout)
+        read_timeout = 3.5 if kind == "heal" else 4.0
+        conn_timeout = 2.5
+    timeout_tuple = (conn_timeout, read_timeout)
 
     last_err = ""
     for model in models:
@@ -647,10 +649,12 @@ def _call_groq(
         "Authorization": f"Bearer {key}",
     }
     if call_timeout is not None:
-        read_timeout = max(1.0, call_timeout - 2.0)
+        read_timeout = max(1.0, min(3.5 if kind == "heal" else 5.0, call_timeout - 1.0))
+        conn_timeout = min(2.5, call_timeout)
     else:
-        read_timeout = 10.0 if kind == "heal" else 4.0
-    timeout_tuple = (2.0, read_timeout)
+        read_timeout = 3.5 if kind == "heal" else 4.0
+        conn_timeout = 2.5
+    timeout_tuple = (conn_timeout, read_timeout)
 
     last_err = ""
     for model in models:
@@ -781,7 +785,7 @@ def ask(
         budget_rem = get_heal_ai_budget_remaining()
         if budget_rem < 2.0:
             return LLMResult(None, None, "AI heal time budget exhausted (20s limit reached)")
-        max_call_sec = min(12.0, budget_rem)
+        max_call_sec = min(float(os.environ.get("HEAL_AI_CALL_MAX_SEC", "4.5")), budget_rem)
     else:
         # explain: at most 6s total
         max_call_sec = 6.0

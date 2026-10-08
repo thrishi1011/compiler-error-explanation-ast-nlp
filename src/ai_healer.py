@@ -7,6 +7,7 @@ rigorous multi-step validation, and automatic offline rule-based fallback.
 
 import os
 import re
+import time
 import json
 import difflib
 import tempfile
@@ -85,7 +86,7 @@ def validate_ai_code(original_source: str, fixed_code: str) -> Tuple[bool, str, 
         with open(tmp_path, "w", encoding="utf-8") as f:
             f.write(fixed_code)
         res = subprocess.run(
-            ["g++", "-std=c++17", "-Wall", tmp_path],
+            ["g++", "-fsyntax-only", "-std=c++17", "-Wall", tmp_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -132,7 +133,7 @@ def attempt_ai_heal(
     source: str,
     compiler_errors: list,
     hint: str = "",
-    max_tokens: int = 3000,
+    max_tokens: int = 1024,
 ) -> Tuple[Optional[str], Optional[str], List[str], str]:
     """
     Attempt AI self-healing with Gemini/Groq.
@@ -143,6 +144,7 @@ def attempt_ai_heal(
     if len(lines) > 300:
         return None, None, [], f"File too large for AI heal ({len(lines)} lines > 300), using offline fallback"
 
+    t_start = time.time()
     code_hash = hashlib.sha256(source.encode("utf-8")).hexdigest()
 
     # Build initial prompt
@@ -184,7 +186,10 @@ def attempt_ai_heal(
         llm_client.cache_validated_heal(code_hash, res)
         return candidate_code, res.provider, changes, f"Healed by AI ({res.provider.capitalize()})"
 
-    # Retry ONCE with compiler feedback if validation failed
+    # Retry ONCE with compiler feedback if validation failed, provided we are within budget
+    if (time.time() - t_start > 3.0) or (llm_client.get_heal_ai_budget_remaining() < 3.0):
+        return None, None, [], f"AI validation failed: {reason} (using offline fallback for speed)"
+
     retry_prompt = (
         f"{hint_section}"
         f"Your previous fix failed validation: {reason}.\n"

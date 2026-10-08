@@ -247,7 +247,7 @@ def heal_until_clean(
 
     # Initialize tracker if telemetry enabled and init takes < 1s
     tracker = None
-    if os.environ.get("ENABLE_TELEMETRY", "1") != "0" and HAS_CODECARBON:
+    if os.environ.get("ENABLE_TELEMETRY", "0") == "1" and HAS_CODECARBON:
         try:
             t0 = time.time()
             tracker = EmissionsTracker(
@@ -342,12 +342,14 @@ def heal_until_clean(
                 )
                 if ai_code:
                     # Validate compile improvement with fast syntax check
-                    ai_errors, _, _ = compile_source(ai_code, syntax_only=True)
+                    ai_errors, ai_warnings, _ = compile_source(ai_code, syntax_only=True)
                     if len(ai_errors) < errors_before:
                         candidate_code = ai_code
                         round_applied = True
                         round_method = f"AI ({provider.capitalize() if provider else 'AI'})"
                         round_model = provider
+                        new_errors = ai_errors
+                        new_warnings = ai_warnings
                     else:
                         last_failure_reason = f"AI heal did not reduce error count ({len(ai_errors)} >= {errors_before})"
                         emit("info_message", {"text": f"Round {round_no}: AI fix rejected (errors not reduced). Falling back to offline rules."})
@@ -359,11 +361,12 @@ def heal_until_clean(
             if not round_applied:
                 emit("status_update", {"text": f"Round {round_no}/{max_rounds} - offline rules"})
                 offline_source = current_source
+                off_errors = list(errors)
+                off_warnings = list(warnings)
                 offline_attempts_count = 0
                 max_offline_attempts = 10
 
                 for off_att in range(1, max_offline_attempts + 1):
-                    off_errors, off_warnings, _ = compile_source(offline_source, syntax_only=True)
                     if len(off_errors) == 0:
                         offline_source = clean_duplicate_headers(offline_source)
                         break
@@ -396,7 +399,7 @@ def heal_until_clean(
                         continue
 
                     # Check that patch didn't make errors worse (syntax check)
-                    test_errors, _, _ = compile_source(patched, syntax_only=True)
+                    test_errors, test_warnings, _ = compile_source(patched, syntax_only=True)
                     if len(test_errors) > len(off_errors):
                         # Revert this patch
                         all_attempts_flat.append({
@@ -421,21 +424,25 @@ def heal_until_clean(
                     })
 
                     offline_source = patched
+                    off_errors = test_errors
+                    off_warnings = test_warnings
                     offline_attempts_count += 1
 
                 # If offline loop improved code (errors decreased or did not get worse while fixing statements):
-                off_final_errors, _, _ = compile_source(offline_source, syntax_only=True)
-                if offline_source != current_source and len(off_final_errors) <= errors_before:
+                if offline_source != current_source and len(off_errors) <= errors_before:
                     candidate_code = offline_source
                     round_applied = True
                     round_method = "offline rules"
+                    new_errors = off_errors
+                    new_warnings = off_warnings
                 else:
                     last_failure_reason = last_failure_reason or "offline rules could not resolve remaining errors"
 
             # 4. Evaluate round results
             if round_applied and candidate_code is not None:
-                new_errors, new_warnings, _ = compile_source(candidate_code, syntax_only=True)
                 errors_after = len(new_errors)
+                errors = new_errors
+                warnings = new_warnings
                 round_duration = time.time() - round_start_time
 
                 diff = compute_diff(current_source, candidate_code)
