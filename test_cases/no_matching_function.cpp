@@ -4,7 +4,6 @@ using namespace std;
 void foo(int x) {}
 
 int main() {
-    foo(1);
-    cout << "Hello";
+    foo(1, 2);
     return 0;
 }
