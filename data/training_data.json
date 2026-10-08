@@ -55730,5 +55730,23 @@
     "explanation": "What happened:\n A variable declared as 'const' cannot be modified after initialization. Assigning to it violates its const guarantee.\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.",
     "suggestion": "Remove the 'const' qualifier if the variable needs to change, or do not assign to it after initialization",
     "confidence": 1.0
+  },
+  {
+    "message": "redefinition of 'int foo()'",
+    "raw_message": "redefinition of 'int foo()'",
+    "category": "redefinition",
+    "ast_node": "FunctionDecl",
+    "explanation": "What happened:\n 'int foo()' has already been defined again in this scope.\n\nWhy it happened:\n C++ does not allow two definitions of the same variable or function in the same scope.\n\nHow to fix it:\n Remove the duplicate definition. If it is coming from a header file, add #pragma once or include guards.\n\nThis error occurred inside a FunctionDecl statement.",
+    "suggestion": "Remove the duplicate definition or add include guards to your header.",
+    "confidence": 1.0
+  },
+  {
+    "message": "too many arguments to function 'void foo(int)'",
+    "raw_message": "too many arguments to function 'void foo(int)'",
+    "category": "type_error",
+    "ast_node": "CallExpr",
+    "explanation": "What happened:\n Too many arguments to function 'void foo(int)'.\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.\n\nThis error occurred inside a CallExpr statement.",
+    "suggestion": "Ensure both operands are compatible types or add an explicit cast.",
+    "confidence": 0.9382475361608311
   }
 ]
