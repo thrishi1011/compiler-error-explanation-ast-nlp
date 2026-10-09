@@ -21,6 +21,10 @@ from urllib.parse import urlparse
 
 # Suppress sklearn version mismatch warnings (model trained on older sklearn)
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
+warnings.filterwarnings("ignore", message=r".*unpickle estimator.*")
+warnings.filterwarnings("ignore", message=r".*InconsistentVersionWarning.*")
+import logging
+logging.getLogger("codecarbon").setLevel(logging.ERROR)
 
 # Ensure src/ is on sys.path
 SRC_DIR = os.path.dirname(os.path.abspath(__file__))

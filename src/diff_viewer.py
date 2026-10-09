@@ -68,9 +68,10 @@ def format_diff_text(diff: List[DiffLine]) -> str:
 
 def format_diff_html(diff: List[DiffLine],
                      font_family: str = "JetBrains Mono",
-                     color_add: str = "#3fb950",
-                     color_del: str = "#f85149",
-                     color_ctx: str = "#8b949e") -> str:
+                     color_add: str = "#34d399",
+                     color_del: str = "#f87171",
+                     color_ctx: str = "#94a3b8",
+                     color_line_num: str = "#64748b") -> str:
     """
     HTML representation of the diff for embedding in a QTextEdit / QLabel.
     """
@@ -100,8 +101,8 @@ def format_diff_html(diff: List[DiffLine],
         row = (
             f"<span style='color:{color}; font-family:{font_family}; font-size:12px;'>"
             f"<b>{prefix}</b>&nbsp;"
-            f"<span style='color:#555e6a;'>Line&nbsp;{line_label:>4}&nbsp;&nbsp;</span>"
-            f"{safe_content}"
+            f"<span style='color:{color_line_num}; font-weight:bold;'>Line&nbsp;{line_label:>4}&nbsp;&nbsp;</span>"
+            f"<span style='color:{color};'>{safe_content}</span>"
             f"</span><br>"
         )
         rows.append(row)

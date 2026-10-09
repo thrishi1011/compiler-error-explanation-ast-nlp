@@ -55748,5 +55748,167 @@
     "explanation": "What happened:\n Too many arguments to function 'void foo(int)'.\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.\n\nThis error occurred inside a CallExpr statement.",
     "suggestion": "Ensure both operands are compatible types or add an explicit cast.",
     "confidence": 0.9382475361608311
+  },
+  {
+    "message": "unused variable identifier [-Wunused-variable]",
+    "raw_message": "unused variable 'x' [-Wunused-variable]",
+    "category": "other",
+    "ast_node": "CallExpr",
+    "explanation": "What happened:\n Unused variable 'x' [-Wunused-variable].\n\nWhy it happened:\n This may be a warning treated as an error, a platform-specific issue, or an uncommon language rule violation.\n\nHow to fix it:\n Read the full compiler message carefully and check the indicated line for the root cause.\n\nThis error occurred inside a CallExpr statement.",
+    "suggestion": "Read the compiler message carefully and correct the highlighted code.",
+    "confidence": 1.0
+  },
+  {
+    "message": "expected statement terminator before closing brace token",
+    "raw_message": "expected ';' before '}' token",
+    "category": "syntax_error",
+    "ast_node": null,
+    "explanation": "What happened:\n The compiler expected a ';' before '}' token.\n\nWhy it happened:\n C++ has strict syntax rules. A missing semicolon, bracket, or parenthesis causes the parser to lose track of where one statement ends and another begins.\n\nHow to fix it:\n Check the line reported and the line just before it. Look for a missing ';', unmatched '(' or '{', or a stray character.",
+    "suggestion": "Fix the syntax error near the reported location.",
+    "confidence": 0.9994904680393293
+  },
+  {
+    "message": "break statement not within loop or switch",
+    "raw_message": "break statement not within loop or switch",
+    "category": "syntax_error",
+    "ast_node": "CallExpr",
+    "explanation": "What happened:\n Break statement not within loop or switch.\n\nWhy it happened:\n C++ has strict syntax rules. A missing semicolon, bracket, or parenthesis causes the parser to lose track of where one statement ends and another begins.\n\nHow to fix it:\n Check the line reported and the line just before it. Look for a missing ';', unmatched '(' or '{', or a stray character.\n\nThis error occurred inside a CallExpr statement.",
+    "suggestion": "Fix the syntax error near the reported location.",
+    "confidence": 0.29427886235613465
+  },
+  {
+    "message": "continue statement not within a loop",
+    "raw_message": "continue statement not within a loop",
+    "category": "syntax_error",
+    "ast_node": "CallExpr",
+    "explanation": "What happened:\n Continue statement not within a loop.\n\nWhy it happened:\n C++ has strict syntax rules. A missing semicolon, bracket, or parenthesis causes the parser to lose track of where one statement ends and another begins.\n\nHow to fix it:\n Check the line reported and the line just before it. Look for a missing ';', unmatched '(' or '{', or a stray character.\n\nThis error occurred inside a CallExpr statement.",
+    "suggestion": "Fix the syntax error near the reported location.",
+    "confidence": 0.2622057067269811
+  },
+  {
+    "message": "'::main' must return type",
+    "raw_message": "'::main' must return 'int'",
+    "category": "return_type_error",
+    "ast_node": "FunctionDecl",
+    "explanation": "What happened:\n '::main' must return 'int'.\n\nWhy it happened:\n In C++, non-void functions must return a value that matches their declared return type. main() must always return int.\n\nHow to fix it:\n Add a return statement with the correct type. For main(), use 'return 0;' at the end.\n\nThis error occurred inside a FunctionDecl statement.",
+    "suggestion": "Add a return statement matching the function's declared return type.",
+    "confidence": 0.9378390092049048
+  },
+  {
+    "message": "identifier was not declared in this scope",
+    "raw_message": "'cout' was not declared in this scope",
+    "category": "missing_include",
+    "ast_node": "CallExpr",
+    "explanation": "What happened:\n The identifier 'cout' is unavailable because the <iostream> header has not been included.\n\nWhy it happened:\n The function or class you are using is defined in a header file that has not been included in your source file.\n\nHow to fix it:\n Add the appropriate #include at the top of your file. For standard library features use angle brackets e.g. #include <iostream>.",
+    "suggestion": "Add '#include <iostream>' at the top of your file",
+    "confidence": 1.0
+  },
+  {
+    "message": "no match for 'operator+' (operand types are type and 'std::__cxx11::string {aka std::__cxx11::basic_string<char>}')",
+    "raw_message": "no match for 'operator+' (operand types are 'int' and 'std::__cxx11::string {aka std::__cxx11::basic_string<char>}')",
+    "category": "type_error",
+    "ast_node": "DeclStmt",
+    "explanation": "What happened:\n No match for 'operator+' (operand types are 'int' and 'std::__cxx11::string {aka std::__cxx11::basic_string<char>}').\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.\n\nThis error occurred inside a DeclStmt statement.",
+    "suggestion": "Ensure both operands are compatible types or add an explicit cast.",
+    "confidence": 1.0
+  },
+  {
+    "message": "invalid types 'int [5][double]' for array subscript",
+    "raw_message": "invalid types 'int [5][double]' for array subscript",
+    "category": "type_error",
+    "ast_node": "CallExpr",
+    "explanation": "What happened:\n Invalid types 'int [5][double]' for array subscript.\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.\n\nThis error occurred inside a CallExpr statement.",
+    "suggestion": "Ensure both operands are compatible types or add an explicit cast.",
+    "confidence": 0.8099921625089258
+  },
+  {
+    "message": "void value not ignored as it ought to be",
+    "raw_message": "void value not ignored as it ought to be",
+    "category": "type_error",
+    "ast_node": "DeclStmt",
+    "explanation": "What happened:\n Void value not ignored as it ought to be.\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.\n\nThis error occurred inside a DeclStmt statement.",
+    "suggestion": "Ensure both operands are compatible types or add an explicit cast.",
+    "confidence": 0.35924075458574245
+  },
+  {
+    "message": "comparison between signed and unsigned integer expressions [-Wsign-compare]",
+    "raw_message": "comparison between signed and unsigned integer expressions [-Wsign-compare]",
+    "category": "other",
+    "ast_node": "IfStmt",
+    "explanation": "What happened:\n Comparison between signed and unsigned integer expressions [-Wsign-compare].\n\nWhy it happened:\n This may be a warning treated as an error, a platform-specific issue, or an uncommon language rule violation.\n\nHow to fix it:\n Read the full compiler message carefully and check the indicated line for the root cause.\n\nThis error occurred inside a IfStmt statement.",
+    "suggestion": "Read the compiler message carefully and correct the highlighted code.",
+    "confidence": 0.8420377215050548
+  },
+  {
+    "message": "ISO C++ forbids applying identifier to an expression of function type [-fpermissive]",
+    "raw_message": "ISO C++ forbids applying 'sizeof' to an expression of function type [-fpermissive]",
+    "category": "type_error",
+    "ast_node": "DeclStmt",
+    "explanation": "What happened:\n ISO C++ forbids applying 'sizeof' to an expression of function type [-fpermissive].\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.\n\nThis error occurred inside a DeclStmt statement.",
+    "suggestion": "Ensure both operands are compatible types or add an explicit cast.",
+    "confidence": 0.3017788453960988
+  },
+  {
+    "message": "invalid type argument of unary '*' (have type)",
+    "raw_message": "invalid type argument of unary '*' (have 'int')",
+    "category": "redefinition",
+    "ast_node": "DeclStmt",
+    "explanation": "What happened:\n Invalid type argument of unary '*' (have 'int').\n\nWhy it happened:\n C++ does not allow two definitions of the same variable or function in the same scope.\n\nHow to fix it:\n Remove the duplicate definition. If it is coming from a header file, add #pragma once or include guards.\n\nThis error occurred inside a DeclStmt statement.",
+    "suggestion": "Remove the duplicate definition or add include guards to your header.",
+    "confidence": 0.43640199843934097
+  },
+  {
+    "message": "invalid conversion from 'const char*' to type [-fpermissive]",
+    "raw_message": "invalid conversion from 'const char*' to 'int' [-fpermissive]",
+    "category": "type_error",
+    "ast_node": "ReturnStmt",
+    "explanation": "What happened:\n A value of type 'const char*' cannot be used where 'int' is required.\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.\n\nThis error occurred inside a ReturnStmt statement.",
+    "suggestion": "Ensure both operands are compatible types or add an explicit cast.",
+    "confidence": 0.992919525185946
+  },
+  {
+    "message": "statement has no effect [-Wunused-value]",
+    "raw_message": "statement has no effect [-Wunused-value]",
+    "category": "other",
+    "ast_node": "CallExpr",
+    "explanation": "What happened:\n Statement has no effect [-Wunused-value].\n\nWhy it happened:\n This may be a warning treated as an error, a platform-specific issue, or an uncommon language rule violation.\n\nHow to fix it:\n Read the full compiler message carefully and check the indicated line for the root cause.\n\nThis error occurred inside a CallExpr statement.",
+    "suggestion": "Read the compiler message carefully and correct the highlighted code.",
+    "confidence": 0.8349383876291625
+  },
+  {
+    "message": "invalid static_cast from type type to type 'int*'",
+    "raw_message": "invalid static_cast from type 'int' to type 'int*'",
+    "category": "type_error",
+    "ast_node": "CallExpr",
+    "explanation": "What happened:\n Invalid static_cast from type 'int' to type 'int*'.\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.\n\nThis error occurred inside a CallExpr statement.",
+    "suggestion": "Ensure both operands are compatible types or add an explicit cast.",
+    "confidence": 0.7802153301987542
+  },
+  {
+    "message": "expected comma or statement terminator before type",
+    "raw_message": "expected ',' or ';' before 'int'",
+    "category": "syntax_error",
+    "ast_node": "CallExpr",
+    "explanation": "What happened:\n The compiler expected a ',' (or ';' before 'int').\n\nWhy it happened:\n C++ has strict syntax rules. A missing semicolon, bracket, or parenthesis causes the parser to lose track of where one statement ends and another begins.\n\nHow to fix it:\n Check the line reported and the line just before it. Look for a missing ';', unmatched '(' or '{', or a stray character.\n\nThis error occurred inside a CallExpr statement.",
+    "suggestion": "Fix the syntax error near the reported location.",
+    "confidence": 1.0
+  },
+  {
+    "message": "no matching function for call to 'Dog::Dog(int)'",
+    "raw_message": "no matching function for call to 'Dog::Dog(int)'",
+    "category": "type_error",
+    "ast_node": "FunctionDecl",
+    "explanation": "What happened:\n No overload of 'Dog::Dog(int)' matches the arguments you provided. Check the function signature and argument types.\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.\n\nThis error occurred inside a FunctionDecl statement.",
+    "suggestion": "Ensure both operands are compatible types or add an explicit cast.",
+    "confidence": 1.0
+  },
+  {
+    "message": "no matching function for call to 'add(int, double)'",
+    "raw_message": "no matching function for call to 'add(int, double)'",
+    "category": "type_error",
+    "ast_node": "CallExpr",
+    "explanation": "What happened:\n No overload of 'add(int, double)' matches the arguments you provided. Check the function signature and argument types.\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.\n\nThis error occurred inside a CallExpr statement.",
+    "suggestion": "Ensure both operands are compatible types or add an explicit cast.",
+    "confidence": 1.0
   }
 ]

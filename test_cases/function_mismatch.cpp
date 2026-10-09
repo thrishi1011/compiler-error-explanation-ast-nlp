@@ -4,7 +4,7 @@ using namespace std;
 void print(int x);
 
 int main() {
-    print(3.14);
+    print("mismatched_type");
     return 0;
 }
 

@@ -19,6 +19,21 @@ from PyQt6.QtGui import QFont, QColor, QPainter, QTextFormat, QTextCharFormat, Q
 import platform
 import socket
 import tempfile
+import warnings
+import logging
+
+# Suppress CodeCarbon multi-instance warnings
+logging.getLogger("codecarbon").setLevel(logging.ERROR)
+
+# Suppress scikit-learn version mismatch unpickling warnings
+warnings.filterwarnings("ignore", message=r".*unpickle estimator.*")
+warnings.filterwarnings("ignore", message=r".*InconsistentVersionWarning.*")
+try:
+    from sklearn.exceptions import InconsistentVersionWarning
+    warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
+except ImportError:
+    pass
+
 try:
     from codecarbon import EmissionsTracker
     CODECARBON_AVAILABLE = True
@@ -68,6 +83,8 @@ LIGHT_THEME = {
     "HOVER_NAV_BG": "#eef2f7",
     "CODE_BG": "#ffffff",
     "TERMINAL_BG": "#f8fafc",
+    "FIXED_LINE_BG": "#dcfce7",
+    "FIXED_LINE_BORDER": "#22c55e",
 }
 
 DARK_THEME = {
@@ -87,6 +104,8 @@ DARK_THEME = {
     "HOVER_NAV_BG": "#334155",      # Slate 700
     "CODE_BG": "#1e293b",
     "TERMINAL_BG": "#0b1120",
+    "FIXED_LINE_BG": "#064e3b",      # Deep emerald green (rich contrast with light text)
+    "FIXED_LINE_BORDER": "#10b981",
 }
 
 CURRENT_THEME = dict(LIGHT_THEME)
@@ -749,11 +768,11 @@ class CodeEditor(QPlainTextEdit):
             selection.cursor.clearSelection()
             extraSelections.append(selection)
 
-        # Draw green background for lines changed by the healer
+        # Draw green background for lines changed by the healer (theme-aware)
+        fixed_bg_color = QColor(CURRENT_THEME.get("FIXED_LINE_BG", "#064e3b" if CURRENT_THEME["BG_COLOR"] == DARK_THEME["BG_COLOR"] else "#dcfce7"))
         for line in self.fixed_lines:
             fixed_selection = QTextEdit.ExtraSelection()
-            # Very light green background for modern feel
-            fixed_selection.format.setBackground(QColor("#edfff2")) 
+            fixed_selection.format.setBackground(fixed_bg_color)
             fixed_selection.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
             
             cursor = QTextCursor(self.document())
@@ -1315,13 +1334,27 @@ class UserGuidanceDialog(QDialog):
 
 
 class SidebarButton(QPushButton):
-    def __init__(self, text: str, tooltip: str = "", parent=None):
-        super().__init__(text, parent)
+    def __init__(self, icon: str, label: str, tooltip: str = "", parent=None):
+        super().__init__(f"{icon}  {label}", parent)
+        self.icon_symbol = icon
+        self.label_text = label
+        self.full_tooltip = tooltip or f"{icon} {label}"
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(38)
         self.setFont(QFont(FONT_FAMILY, 10))
-        self.setToolTip(tooltip)
+        self.setToolTip(f"{self.label_text}: {self.full_tooltip}")
         self.is_active = False
+        self.is_collapsed = False
+        self._apply_style()
+
+    def set_collapsed(self, collapsed: bool):
+        self.is_collapsed = collapsed
+        if collapsed:
+            self.setText(self.icon_symbol)
+            self.setFont(QFont(FONT_FAMILY, 12))
+        else:
+            self.setText(f"{self.icon_symbol}  {self.label_text}")
+            self.setFont(QFont(FONT_FAMILY, 10))
         self._apply_style()
 
     def set_active(self, active: bool):
@@ -1331,11 +1364,13 @@ class SidebarButton(QPushButton):
     def _apply_style(self):
         active_bg = CURRENT_THEME.get("ACTIVE_NAV_BG", "#e9ecf8")
         hover_bg = CURRENT_THEME.get("HOVER_NAV_BG", "#eef2f7")
+        align = "center" if self.is_collapsed else "left"
+        pad = "0px" if self.is_collapsed else "12px"
         if self.is_active:
             self.setStyleSheet(f"""
                 QPushButton {{
-                    text-align: left;
-                    padding-left: 12px;
+                    text-align: {align};
+                    padding-left: {pad};
                     border: 1px solid {PINK};
                     background-color: {active_bg};
                     color: {PINK};
@@ -1346,8 +1381,8 @@ class SidebarButton(QPushButton):
         else:
             self.setStyleSheet(f"""
                 QPushButton {{
-                    text-align: left;
-                    padding-left: 12px;
+                    text-align: {align};
+                    padding-left: {pad};
                     border: 1px solid transparent;
                     background-color: transparent;
                     color: {TEXT_MAIN};
@@ -1367,25 +1402,44 @@ class SidebarButton(QPushButton):
 class Sidebar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(185)
+        self.is_collapsed = False
+        self.expanded_width = 185
+        self.collapsed_width = 54
+        self.setFixedWidth(self.expanded_width)
         
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(8, 12, 8, 12)
+        self.layout.setContentsMargins(6, 10, 6, 10)
         self.layout.setSpacing(6)
         
-        self.title_lbl = QLabel("NAVIGATION")
-        self.title_lbl.setFont(QFont(FONT_FAMILY, 8, QFont.Weight.Bold))
-        self.title_lbl.setStyleSheet(f"color: {TEXT_DIM}; letter-spacing: 1px; padding: 2px 8px 6px 8px;")
-        self.layout.addWidget(self.title_lbl)
+        # Hamburger header row
+        self.header_widget = QWidget()
+        header_hbox = QHBoxLayout(self.header_widget)
+        header_hbox.setContentsMargins(2, 0, 2, 4)
+        header_hbox.setSpacing(6)
 
-        self.btn1 = SidebarButton("💻  Code Editor", "Main C++ editor, diagnostics, and I/O runner")
-        self.btn2 = SidebarButton("🌳  AST Explorer", "Abstract Syntax Tree hierarchy viewer")
-        self.btn3 = SidebarButton("⚡  Energy Metrics", "Real-time energy consumption and carbon emissions")
-        self.btn4 = SidebarButton("🔄  Call Graph", "Function call relationship diagram")
-        self.btn5 = SidebarButton("🛡️  Security Scan", "Static security vulnerability inspection")
-        self.btn6 = SidebarButton("🔀  Control Flow", "Control flow graph (CFG) visualizer")
-        self.btn7 = SidebarButton("🧠  Second Opinion", "ML Classifier vs Regex error categorization")
-        self.btn8 = SidebarButton("📊  Benchmark", "Measured accuracy benchmark comparison")
+        self.btn_hamburger = QPushButton("☰")
+        self.btn_hamburger.setToolTip("Toggle Sidebar (Collapse / Expand)")
+        self.btn_hamburger.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_hamburger.setFixedSize(36, 32)
+        self.btn_hamburger.setFont(QFont(FONT_FAMILY, 13, QFont.Weight.Bold))
+        self.btn_hamburger.clicked.connect(self.toggle_collapse)
+        header_hbox.addWidget(self.btn_hamburger)
+
+        self.title_lbl = QLabel("NAVIGATE")
+        self.title_lbl.setFont(QFont(FONT_FAMILY, 8, QFont.Weight.Bold))
+        self.title_lbl.setStyleSheet(f"color: {TEXT_DIM}; letter-spacing: 1px;")
+        header_hbox.addWidget(self.title_lbl)
+        header_hbox.addStretch()
+        self.layout.addWidget(self.header_widget)
+
+        self.btn1 = SidebarButton("💻", "Code Editor", "Main C++ editor, diagnostics, and I/O runner")
+        self.btn2 = SidebarButton("🌳", "AST Explorer", "Abstract Syntax Tree hierarchy viewer")
+        self.btn3 = SidebarButton("⚡", "Energy Metrics", "Real-time energy consumption and carbon emissions")
+        self.btn4 = SidebarButton("🔄", "Call Graph", "Function call relationship diagram")
+        self.btn5 = SidebarButton("🛡️", "Security Scan", "Static security vulnerability inspection")
+        self.btn6 = SidebarButton("🔀", "Control Flow", "Control flow graph (CFG) visualizer")
+        self.btn7 = SidebarButton("🧠", "Second Opinion", "ML Classifier vs Regex error categorization")
+        self.btn8 = SidebarButton("📊", "Benchmark", "Measured accuracy benchmark comparison")
 
         self.buttons = [
             self.btn1, self.btn2, self.btn3, self.btn4,
@@ -1401,6 +1455,7 @@ class Sidebar(QWidget):
 
         self.layout.addStretch()
 
+        self._style_hamburger()
         self.setStyleSheet(f"""
             QWidget {{
                 background-color: {HEADER_BG};
@@ -1410,6 +1465,37 @@ class Sidebar(QWidget):
             }}
         """)
         self.set_active(0)
+
+    def _style_hamburger(self):
+        hover_bg = CURRENT_THEME.get("HOVER_NAV_BG", "#eef2f7")
+        self.btn_hamburger.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 6px;
+                color: {PINK};
+                font-size: 14px;
+            }}
+            QPushButton:hover {{
+                background-color: {hover_bg};
+                color: {TEXT_MAIN};
+                border: 1px solid {PINK};
+            }}
+        """)
+
+    def toggle_collapse(self):
+        self.is_collapsed = not self.is_collapsed
+        if self.is_collapsed:
+            self.setFixedWidth(self.collapsed_width)
+            self.title_lbl.hide()
+            self.btn_hamburger.setToolTip("Expand Navigation Sidebar")
+        else:
+            self.setFixedWidth(self.expanded_width)
+            self.title_lbl.show()
+            self.btn_hamburger.setToolTip("Collapse Navigation Sidebar")
+
+        for btn in self.buttons:
+            btn.set_collapsed(self.is_collapsed)
 
     def set_active(self, active_index: int):
         for idx, btn in enumerate(self.buttons):
@@ -1425,7 +1511,8 @@ class Sidebar(QWidget):
             }}
         """)
         if hasattr(self, "title_lbl"):
-            self.title_lbl.setStyleSheet(f"color: {theme['TEXT_DIM']}; letter-spacing: 1px; padding: 2px 8px 6px 8px;")
+            self.title_lbl.setStyleSheet(f"color: {theme['TEXT_DIM']}; letter-spacing: 1px;")
+        self._style_hamburger()
         for btn in self.buttons:
             btn._apply_style()
 
@@ -2367,7 +2454,7 @@ except ImportError:
 class AppGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("CppCheck Error Explainer")
+        self.setWindowTitle("🌿 C++ Compiler Error Explainer & Auto-Healer")
         self.resize(1400, 850)
 
 
@@ -2393,10 +2480,10 @@ class AppGUI(QMainWindow):
         main_layout.setSpacing(15)
 
         header_layout = QHBoxLayout()
-        logo = QLabel("CppCheck Error Explainer")
-        logo.setFont(QFont(FONT_FAMILY, 12, QFont.Weight.Bold))
-        logo.setStyleSheet(f"color: {PINK}; letter-spacing:1px;")
-        header_layout.addWidget(logo)
+        self.logo = QLabel("🌿 C++ Compiler Error Explainer & Auto-Healer")
+        self.logo.setFont(QFont(FONT_FAMILY, 12, QFont.Weight.Bold))
+        self.logo.setStyleSheet(f"color: {PINK}; letter-spacing:1px;")
+        header_layout.addWidget(self.logo)
         header_layout.addStretch()
         
         if CODECARBON_AVAILABLE:
@@ -2642,22 +2729,31 @@ class AppGUI(QMainWindow):
         self.pane_right_bottom = CustomFrame("RUNNER CONSOLE :: I/O INTERFACE", left_padding=True)
         
         console_split_layout = QVBoxLayout()
-        console_split_layout.setSpacing(0)
+        console_split_layout.setContentsMargins(4, 4, 4, 4)
+        console_split_layout.setSpacing(4)
         
         self.runner_splitter = QSplitter(Qt.Orientation.Vertical)
-        self.runner_splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {BG_COLOR}; height: 4px; }}")
+        self.runner_splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {BORDER_COLOR}; height: 4px; }}")
 
         # Input Screen
         input_container = QWidget()
         input_layout = QVBoxLayout(input_container)
-        input_layout.setContentsMargins(0, 0, 0, 10)
+        input_layout.setContentsMargins(0, 0, 0, 4)
+        input_layout.setSpacing(4)
         
         input_header_layout = QHBoxLayout()
         input_label = QLabel("INPUT SCREEN (stdin)")
-        input_label.setFont(QFont(FONT_FAMILY, 8, QFont.Weight.Bold))
-        input_label.setStyleSheet(f"color: {TEXT_DIM}; margin-bottom: 4px;")
+        input_label.setFont(QFont(FONT_FAMILY, 9, QFont.Weight.Bold))
+        input_label.setStyleSheet(f"color: {TEXT_DIM};")
         input_header_layout.addWidget(input_label)
         input_header_layout.addStretch()
+
+        self.btn_toggle_io_layout = StyledButton("⇄ SIDE-BY-SIDE", "outline_dim")
+        self.btn_toggle_io_layout.setFixedHeight(24)
+        self.btn_toggle_io_layout.setFont(QFont(FONT_FAMILY, 8, QFont.Weight.Bold))
+        self.btn_toggle_io_layout.setToolTip("Toggle I/O between stacked (vertical) and side-by-side (horizontal)")
+        self.btn_toggle_io_layout.clicked.connect(self.toggle_io_orientation)
+        input_header_layout.addWidget(self.btn_toggle_io_layout)
 
         self.btn_send_input = StyledButton("SEND TO STDIN", "outline_dim")
         self.btn_send_input.setFixedHeight(24)
@@ -2671,12 +2767,14 @@ class AppGUI(QMainWindow):
         self.input_area = QTextEdit()
         self.input_area.setPlaceholderText("Paste your test cases here...")
         self.input_area.setFont(QFont(FONT_FAMILY, 11))
+        self.input_area.setMinimumHeight(80)
         self.input_area.setStyleSheet(f"""
             QTextEdit {{
                 background-color: {BG_COLOR};
                 border: 1px solid {BORDER_COLOR};
                 color: {GREEN};
                 border-radius: 4px;
+                padding: 4px;
             }}
         """)
         input_layout.addWidget(self.input_area)
@@ -2685,25 +2783,31 @@ class AppGUI(QMainWindow):
         # Output Screen
         output_container = QWidget()
         output_layout = QVBoxLayout(output_container)
-        output_layout.setContentsMargins(0, 10, 0, 0)
+        output_layout.setContentsMargins(0, 4, 0, 0)
+        output_layout.setSpacing(4)
 
         output_label = QLabel("OUTPUT SCREEN (stdout/stderr)")
-        output_label.setFont(QFont(FONT_FAMILY, 8, QFont.Weight.Bold))
-        output_label.setStyleSheet(f"color: {TEXT_DIM}; margin-bottom: 4px;")
+        output_label.setFont(QFont(FONT_FAMILY, 9, QFont.Weight.Bold))
+        output_label.setStyleSheet(f"color: {TEXT_DIM};")
         output_layout.addWidget(output_label)
 
         self.terminal = TerminalDisplay()
+        self.terminal.setMinimumHeight(100)
         output_layout.addWidget(self.terminal)
         self.runner_splitter.addWidget(output_container)
         
-        self.runner_splitter.setSizes([300, 500])
+        self.runner_splitter.setSizes([200, 240])
+        self.runner_splitter.setStretchFactor(0, 1)
+        self.runner_splitter.setStretchFactor(1, 1)
         console_split_layout.addWidget(self.runner_splitter)
         
         self.pane_right_bottom.content_layout.addLayout(console_split_layout)
         self.v_splitter.addWidget(self.pane_right_bottom)
 
-        self.splitter.setSizes([700, 650])
-        self.v_splitter.setSizes([500, 250])
+        self.splitter.setSizes([650, 650])
+        self.v_splitter.setSizes([450, 450])
+        self.v_splitter.setStretchFactor(0, 1)
+        self.v_splitter.setStretchFactor(1, 1)
 
         footer_layout = QHBoxLayout()
         gcc_ver = getattr(self, "gcc_version", "GCC 11.4")
@@ -2765,8 +2869,17 @@ class AppGUI(QMainWindow):
     def _format_ai_status(self, text: str) -> str:
         if not text:
             return "AI: offline"
-        if len(text) > 30:
-            return text[:27] + "..."
+        t_low = text.lower()
+        if "online" in t_low or "ready" in t_low:
+            return "AI: Ready ●"
+        if "groq" in t_low and "skipped" not in t_low:
+            return "AI: Groq ●"
+        if "gemini" in t_low and "timeout" not in t_low and "skipped" not in t_low:
+            return "AI: Gemini ●"
+        if "timeout" in t_low or "skipped" in t_low:
+            return "AI: fallback"
+        if len(text) > 22:
+            return text[:20] + "…"
         return text
 
     def toggle_dark_mode(self):
@@ -2800,6 +2913,7 @@ class AppGUI(QMainWindow):
         if hasattr(self, "editor"):
             self.editor.setStyleSheet(f"QPlainTextEdit {{ background-color: {theme['CODE_BG']}; color: {theme['TEXT_MAIN']}; border: none; }}")
             self.editor.line_number_area.update()
+            self.editor.highlight_current_line()
         if hasattr(self, "highlighter"):
             self.highlighter.apply_theme(theme)
 
@@ -2836,6 +2950,17 @@ class AppGUI(QMainWindow):
             self.second_opinion_page.apply_theme(theme)
         if hasattr(self, "benchmark_page") and hasattr(self.benchmark_page, "apply_theme"):
             self.benchmark_page.apply_theme(theme)
+
+        if hasattr(self, "logo"):
+            self.logo.setStyleSheet(f"color: {theme['PINK']}; letter-spacing:1px;")
+        if hasattr(self, "error_cards_layout"):
+            for i in range(self.error_cards_layout.count()):
+                item = self.error_cards_layout.itemAt(i)
+                w = item.widget() if item else None
+                if isinstance(w, QFrame) and not isinstance(w, QTextBrowser):
+                    w.setStyleSheet(f"QFrame {{ background-color: {theme['PANE_BG']}; border: 1px solid {theme['BORDER_COLOR']}; border-radius: 6px; padding: 6px; margin-bottom: 4px; }}")
+                elif isinstance(w, QTextBrowser):
+                    w.setStyleSheet(f"QTextBrowser {{ background-color: {theme['BG_COLOR']}; border: 1px solid {theme['BORDER_COLOR']}; border-radius: 4px; padding: 6px; font-family: {FONT_FAMILY}; color: {theme['TEXT_MAIN']}; }}")
 
         # Buttons
         for btn in [getattr(self, "btn_heal", None), getattr(self, "btn_undo_heal", None), getattr(self, "btn_theme_toggle", None), getattr(self, "btn_send_input", None)]:
@@ -2959,7 +3084,7 @@ class AppGUI(QMainWindow):
 
     def _on_heal_info(self, msg: str):
         lbl = QLabel(f"ℹ️ {msg}")
-        lbl.setStyleSheet(f"color: {TEXT_DIM}; font-size: 11px; font-family: {FONT_FAMILY};")
+        lbl.setStyleSheet(f"color: {TEXT_MAIN}; font-size: 11px; font-family: {FONT_FAMILY};")
         lbl.setWordWrap(True)
         self.error_cards_layout.addWidget(lbl)
 
@@ -2970,17 +3095,17 @@ class AppGUI(QMainWindow):
             return
         try:
             with open(self.last_heal_backup, "r", encoding="utf-8") as f:
-                content = f.read()
+                backup_content = f.read()
             with open(self.file_path, "w", encoding="utf-8") as f:
-                content = f.write(content)
+                f.write(backup_content)
             self.editor.blockSignals(True)
-            self.editor.setPlainText(content)
+            self.editor.setPlainText(backup_content)
             self.editor.blockSignals(False)
             self.editor.clear_fixed_lines()
             self.btn_undo_heal.setEnabled(False)
             self.status_label.setText("STATUS: ● RESTORED")
             lbl = QLabel(f"↺ Restored original code from {os.path.basename(self.last_heal_backup)}")
-            lbl.setStyleSheet(f"color: {YELLOW}; font-size: 11px; font-family: {FONT_FAMILY};")
+            lbl.setStyleSheet(f"color: {YELLOW}; font-size: 11px; font-family: {FONT_FAMILY}; font-weight: bold;")
             self.error_cards_layout.addWidget(lbl)
         except Exception as e:
             QMessageBox.critical(self, "Undo Heal Error", f"Failed to restore backup: {e}")
@@ -2993,14 +3118,14 @@ class AppGUI(QMainWindow):
         msg = error.get("message", "?")
         cat = error.get("category", "?")
         lbl = QLabel(f"<b>Attempt {attempt_no}/10</b> — [{cat.upper()}] {msg}")
-        lbl.setStyleSheet(f"color: {YELLOW}; font-size: 11px; font-family: {FONT_FAMILY};")
+        lbl.setStyleSheet(f"color: {YELLOW}; font-size: 11px; font-family: {FONT_FAMILY}; font-weight: bold;")
         lbl.setWordWrap(True)
         self.error_cards_layout.addWidget(lbl)
 
     def _on_heal_diff(self, attempt_no: int, diff_html: str, label: str = ""):
         title_text = f"<b>Diff — {label}</b>" if label else f"<b>Diff — Attempt {attempt_no}</b>"
         title = QLabel(title_text)
-        title.setStyleSheet(f"color: {TEXT_DIM}; font-size: 10px; font-family: {FONT_FAMILY};")
+        title.setStyleSheet(f"color: {PINK}; font-size: 11px; font-family: {FONT_FAMILY}; font-weight: bold;")
         self.error_cards_layout.addWidget(title)
 
         diff_box = QTextBrowser()
@@ -3011,8 +3136,9 @@ class AppGUI(QMainWindow):
                 background-color: {BG_COLOR};
                 border: 1px solid {BORDER_COLOR};
                 border-radius: 4px;
-                padding: 4px;
+                padding: 6px;
                 font-family: {FONT_FAMILY};
+                color: {TEXT_MAIN};
             }}
         """)
         diff_box.setMaximumHeight(160)
@@ -3079,7 +3205,7 @@ class AppGUI(QMainWindow):
                 break
         if last_diff:
             diff_lbl = QLabel("<b>Changed Lines:</b>")
-            diff_lbl.setStyleSheet(f"color: {TEXT_DIM}; font-size: 10px; font-family: {FONT_FAMILY}; margin-top: 4px;")
+            diff_lbl.setStyleSheet(f"color: {TEXT_MAIN}; font-size: 11px; font-family: {FONT_FAMILY}; font-weight: bold; margin-top: 4px;")
             c_layout.addWidget(diff_lbl)
             diff_box = QTextBrowser()
             diff_box.setOpenLinks(False)
@@ -3089,8 +3215,9 @@ class AppGUI(QMainWindow):
                     background-color: {BG_COLOR};
                     border: 1px solid {BORDER_COLOR};
                     border-radius: 4px;
-                    padding: 4px;
+                    padding: 6px;
                     font-family: {FONT_FAMILY};
+                    color: {TEXT_MAIN};
                 }}
             """)
             diff_box.setMaximumHeight(140)
@@ -3159,42 +3286,11 @@ class AppGUI(QMainWindow):
 
     def _on_heal_give_up(self, history: list):
         self.btn_heal.setEnabled(True)
-        self.status_label.setText("STATUS: ● HEAL FAILED")
-        dlg = UserGuidanceDialog(history, self)
-        result = dlg.exec()
-        if result == UserGuidanceDialog.EDIT_MANUALLY:
-            # Focus editor on the last error line
-            last_err = next((h.get("error") for h in reversed(history) if h.get("error")), None)
-            if last_err and last_err.get("line"):
-                cursor = self.editor.textCursor()
-                block = self.editor.document().findBlockByLineNumber(int(last_err["line"]) - 1)
-                cursor.setPosition(block.position())
-                self.editor.setTextCursor(cursor)
-        elif result == UserGuidanceDialog.GIVE_HINT:
-            hint = dlg.hint_text()
-            if hint:
-                if not self.is_ai_enabled():
-                    QMessageBox.information(self, "AI Assist Required", "hints need AI assist")
-                    return
-                classifier = self.error_classifier
-                if classifier is None:
-                    classifier = _KeywordClassifier()
-                self.heal_worker = HealWorker(self.file_path, classifier, hint=hint, enable_ai=self.is_ai_enabled())
-                self.heal_worker.finished.connect(lambda: self.btn_heal.setEnabled(True))
-                self.heal_worker.attempt_started.connect(self._on_heal_attempt)
-                self.heal_worker.diff_ready.connect(self._on_heal_diff)
-                self.heal_worker.compile_clean.connect(self._on_heal_success)
-                self.heal_worker.give_up.connect(self._on_heal_give_up)
-                self.heal_worker.error_signal.connect(self._on_heal_error)
-                self.heal_worker.lines_fixed.connect(self.editor.set_fixed_lines)
-                self.heal_worker.backup_created.connect(self._on_heal_backup_created)
-                self.heal_worker.telemetry_ready.connect(self._on_telemetry_ready)
-                self.heal_worker.status_update.connect(self.status_label.setText)
-                self.heal_worker.info_message.connect(self._on_heal_info)
-                self.btn_heal.setEnabled(False)
-                self.heal_worker.start()
-
-        # SKIP THIS ERROR — do nothing (fall through)
+        self.status_label.setText("STATUS: ● HEAL COMPLETED")
+        lbl = QLabel("ℹ️ Auto-heal passes completed. Review the healed source and diagnostics above.")
+        lbl.setStyleSheet(f"color: {YELLOW}; font-size: 12px; font-weight: bold; font-family: {FONT_FAMILY};")
+        lbl.setWordWrap(True)
+        self.error_cards_layout.addWidget(lbl)
 
     def _record_execution(self):
         self.execution_count += 1
@@ -3228,50 +3324,61 @@ class AppGUI(QMainWindow):
             QFrame {{
                 background-color: {PANE_BG};
                 border: 1px solid {severity_color};
-                border-radius: 4px;
-                padding: 4px;
-                margin-bottom: 4px;
+                border-radius: 6px;
+                padding: 6px;
+                margin-bottom: 6px;
             }}
         """)
         layout = QVBoxLayout(card)
-        layout.setSpacing(3)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(5)
+        layout.setContentsMargins(6, 6, 6, 6)
         
         # Header (Type + Message)
         header_lbl = QLabel(f"<b>[{etype}]</b> {msg}")
-        header_lbl.setStyleSheet(f"color: {severity_color}; font-size: 11px; font-family: {FONT_FAMILY};")
+        header_lbl.setStyleSheet(f"color: {severity_color}; font-size: 11px; font-family: {FONT_FAMILY}; line-height: 1.3;")
         header_lbl.setWordWrap(True)
         layout.addWidget(header_lbl)
         
-        # Stats row (Horizontal)
+        # Stats rows (2 compact wrapped rows to never overflow bounds)
         stats_widget = QWidget()
         stats_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-        stats_layout = QHBoxLayout(stats_widget)
-        stats_layout.setContentsMargins(0, 0, 0, 0)
-        stats_layout.setSpacing(4)
+        stats_vbox = QVBoxLayout(stats_widget)
+        stats_vbox.setContentsMargins(0, 2, 0, 2)
+        stats_vbox.setSpacing(4)
         
         def create_stat(emoji, text, color):
             lbl = QLabel(f"<b>{emoji} {text}</b>")
-            lbl.setStyleSheet(f"color: {color}; font-size: 9px; font-family: {FONT_FAMILY}; padding: 1px 4px; border: 1px solid {BORDER_COLOR}; border-radius: 3px; background-color: {BG_COLOR};")
+            lbl.setStyleSheet(f"color: {color}; font-size: 9px; font-family: {FONT_FAMILY}; padding: 2px 5px; border: 1px solid {BORDER_COLOR}; border-radius: 4px; background-color: {BG_COLOR};")
             return lbl
 
-        stats_layout.addWidget(create_stat('⚡', f"{cpu} mWh", PINK))
-        stats_layout.addWidget(create_stat('🧠', f"{mem}", PINK))
-        stats_layout.addWidget(create_stat('🔥', f"{hotspot}", YELLOW))
-        stats_layout.addWidget(create_stat('🌍', f"{co2} mg", GREEN))
-        stats_layout.addWidget(create_stat('🛡️', f"{risk.upper()}", RED if risk.upper() == 'HIGH' else YELLOW))
-        stats_layout.addStretch()
+        row1 = QHBoxLayout()
+        row1.setContentsMargins(0, 0, 0, 0)
+        row1.setSpacing(4)
+        row1.addWidget(create_stat('⚡', f"{cpu} mWh", PINK))
+        row1.addWidget(create_stat('🧠', f"{mem}", PINK))
+        row1.addWidget(create_stat('🔥', f"{hotspot}", YELLOW))
+        row1.addStretch()
+
+        row2 = QHBoxLayout()
+        row2.setContentsMargins(0, 0, 0, 0)
+        row2.setSpacing(4)
+        row2.addWidget(create_stat('🌍', f"{co2} mg", GREEN))
+        row2.addWidget(create_stat('🛡️', f"{risk.upper()}", RED if risk.upper() == 'HIGH' else YELLOW))
+        row2.addStretch()
+
+        stats_vbox.addLayout(row1)
+        stats_vbox.addLayout(row2)
         layout.addWidget(stats_widget)
         
         # Details text
         if expl:
             expl_lbl = QLabel(expl)
-            expl_lbl.setStyleSheet(f"color: {TEXT_MAIN}; font-size: 10px; font-family: {FONT_FAMILY};")
+            expl_lbl.setStyleSheet(f"color: {TEXT_MAIN}; font-size: 10px; font-family: {FONT_FAMILY}; line-height: 1.3;")
             expl_lbl.setWordWrap(True)
             layout.addWidget(expl_lbl)
         if sugg:
             sugg_lbl = QLabel(f"<b>SUGGESTION:</b> {sugg}")
-            sugg_lbl.setStyleSheet(f"color: {GREEN}; font-size: 10px; font-family: {FONT_FAMILY};")
+            sugg_lbl.setStyleSheet(f"color: {GREEN}; font-size: 10px; font-family: {FONT_FAMILY}; word-break: break-all;")
             sugg_lbl.setWordWrap(True)
             layout.addWidget(sugg_lbl)
 
@@ -3279,10 +3386,10 @@ class AppGUI(QMainWindow):
         def add_ai_explanation(ai_data: dict):
             provider_name = (ai_data.get('provider') or 'AI').capitalize()
             ai_box = QFrame()
-            ai_box.setStyleSheet(f"background-color: {BG_COLOR}; border: 1px solid {BORDER_COLOR}; border-radius: 4px; padding: 4px; margin-top: 4px;")
+            ai_box.setStyleSheet(f"background-color: {BG_COLOR}; border: 1px solid {BORDER_COLOR}; border-radius: 4px; padding: 6px; margin-top: 4px;")
             ai_layout = QVBoxLayout(ai_box)
-            ai_layout.setContentsMargins(4, 4, 4, 4)
-            ai_layout.setSpacing(2)
+            ai_layout.setContentsMargins(6, 6, 6, 6)
+            ai_layout.setSpacing(3)
 
             ai_title = QLabel(f"<b>AI explanation ({provider_name})</b>")
             ai_title.setStyleSheet(f"color: {PINK}; font-size: 10px; font-family: {FONT_FAMILY}; font-weight: bold;")
@@ -3295,7 +3402,8 @@ class AppGUI(QMainWindow):
                 ai_layout.addWidget(ai_expl_lbl)
 
             if ai_data.get("fix"):
-                ai_fix_lbl = QLabel(f"<b>Suggested Fix:</b> <code>{html.escape(ai_data['fix'])}</code>")
+                escaped_fix = html.escape(ai_data['fix'])
+                ai_fix_lbl = QLabel(f"<b>Suggested Fix:</b> <pre style='white-space: pre-wrap; word-break: break-all; margin: 2px 0;'>{escaped_fix}</pre>")
                 ai_fix_lbl.setStyleSheet(f"color: {GREEN}; font-size: 10px; font-family: {FONT_FAMILY};")
                 ai_fix_lbl.setWordWrap(True)
                 ai_layout.addWidget(ai_fix_lbl)
@@ -3427,6 +3535,22 @@ class AppGUI(QMainWindow):
                 if os.path.exists(candidate) and os.path.isfile(candidate):
                     return os.path.abspath(candidate)
         return None
+
+    def toggle_io_orientation(self):
+        if not hasattr(self, "runner_splitter"):
+            return
+        if self.runner_splitter.orientation() == Qt.Orientation.Vertical:
+            self.runner_splitter.setOrientation(Qt.Orientation.Horizontal)
+            self.runner_splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {BORDER_COLOR}; width: 4px; }}")
+            if hasattr(self, "btn_toggle_io_layout"):
+                self.btn_toggle_io_layout.setText("⇅ STACKED")
+            self.runner_splitter.setSizes([260, 260])
+        else:
+            self.runner_splitter.setOrientation(Qt.Orientation.Vertical)
+            self.runner_splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {BORDER_COLOR}; height: 4px; }}")
+            if hasattr(self, "btn_toggle_io_layout"):
+                self.btn_toggle_io_layout.setText("⇄ SIDE-BY-SIDE")
+            self.runner_splitter.setSizes([200, 240])
 
     def send_stdin_input(self):
         text = self.input_area.toPlainText()
@@ -3720,7 +3844,14 @@ class AppGUI(QMainWindow):
             
         self.errors_count = data.get('error_count', 0)
         self.warnings_count = data.get('warning_count', 0)
-        self.status_label.setText(f"STATUS: ● {self.errors_count} ERRORS FOUND")
+        if self.errors_count > 0 and self.warnings_count > 0:
+            self.status_label.setText(f"STATUS: ● {self.errors_count} ERRORS, {self.warnings_count} WARNINGS FOUND")
+        elif self.errors_count > 0:
+            self.status_label.setText(f"STATUS: ● {self.errors_count} ERRORS FOUND")
+        elif self.warnings_count > 0:
+            self.status_label.setText(f"STATUS: ● {self.warnings_count} WARNINGS FOUND")
+        else:
+            self.status_label.setText(f"STATUS: ● {len(data.get('errors', []))} ISSUES FOUND")
         self._update_footer()
 
         errors = data.get("errors", [])

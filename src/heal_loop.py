@@ -32,6 +32,11 @@ from auto_healer import attempt_fix, UNFIXABLE_CATEGORIES
 from diff_viewer import compute_diff, format_diff_html, has_changes
 from healing_suggester import suggest_failed_heal
 import time
+import logging
+import warnings
+logging.getLogger("codecarbon").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore", message=r".*unpickle estimator.*")
+
 try:
     from codecarbon import EmissionsTracker
     HAS_CODECARBON = True

@@ -128,3 +128,13 @@
 [2026-10-08 10:51:29] provider=groq model=openai/gpt-oss-20b duration=0.000s status=200 error=-
 [2026-10-08 10:51:29] provider=gemini model=gemini-3.5-flash-lite duration=0.000s status=408 error=ReadTimeout
 [2026-10-08 10:51:29] provider=groq model=openai/gpt-oss-20b duration=0.000s status=200 error=-
+[2026-10-09 07:52:01] provider=gemini model=gemini-3.5-flash-lite duration=1.694s status=400 error=-
+[2026-10-09 07:52:06] provider=gemini model=gemini-3.8-flash duration=5.010s status=408 error=ReadTimeout
+[2026-10-09 07:52:23] provider=gemini model=gemini-3.8-flash duration=3.979s status=408 error=ReadTimeout
+[2026-10-09 07:53:04] provider=groq model=openai/gpt-oss-20b duration=1.526s status=200 error=-
+[2026-10-09 07:55:19] provider=gemini model=gemini-3.5-flash-lite duration=1.534s status=400 error=-
+[2026-10-09 07:55:24] provider=gemini model=gemini-3.8-flash duration=5.024s status=408 error=ReadTimeout
+[2026-10-09 07:55:26] provider=gemini model=gemini-3.8-flash duration=3.849s status=408 error=ReadTimeout
+[2026-10-09 07:56:01] provider=groq model=openai/gpt-oss-120b duration=1.499s status=200 error=-
+[2026-10-09 07:57:09] provider=groq model=openai/gpt-oss-120b duration=1.016s status=200 error=-
+[2026-10-09 07:57:10] provider=groq model=openai/gpt-oss-120b duration=0.583s status=200 error=-

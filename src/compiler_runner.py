@@ -50,7 +50,7 @@ def run_cpp_compiler(file_path, permissions=None):
             except OSError:
                 pass
         res=subprocess.run(
-            ["g++","-std=c++17",file_path, "-o", exe_target],
+            ["g++", "-std=c++17", "-Wall", "-Wextra", "-Wshadow", "-Wnull-dereference", file_path, "-o", exe_target],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

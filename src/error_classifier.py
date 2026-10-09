@@ -1,7 +1,17 @@
 import json
 import os
+import warnings
 from collections import Counter
 from typing import Optional, Tuple, List
+
+# Suppress sklearn unpickling version warnings
+warnings.filterwarnings("ignore", message=r".*unpickle estimator.*")
+warnings.filterwarnings("ignore", message=r".*InconsistentVersionWarning.*")
+try:
+    from sklearn.exceptions import InconsistentVersionWarning
+    warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
+except ImportError:
+    pass
 
 import joblib
 from sklearn.feature_extraction.text import TfidfVectorizer

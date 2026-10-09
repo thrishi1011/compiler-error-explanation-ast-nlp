@@ -161,6 +161,14 @@ def main():
             ]
 
     visible_errors = [e for e in errors if not _is_security_only_diagnostic(e)]
+    def _diagnostic_sort_key(e):
+        etype = (getattr(e, "error_type", "") or "").lower()
+        msg = (getattr(e, "message", "") or "").lower()
+        is_minor = "statement has no effect" in msg
+        is_priority = "no return statement" in msg or "return-type" in msg or etype == "error"
+        return (0 if is_priority else (2 if is_minor else 1), e.line or 0)
+
+    visible_errors.sort(key=_diagnostic_sort_key)
     visible_error_count = sum(1 for e in visible_errors if e.error_type == "error")
     visible_warning_count = sum(1 for e in visible_errors if e.error_type == "warning")
 

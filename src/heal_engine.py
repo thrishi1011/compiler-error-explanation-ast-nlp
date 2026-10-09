@@ -284,10 +284,36 @@ def heal_until_clean(
                 initial_error_count = len(errors)
                 initial_compile = False
 
-            # If zero hard errors, do one full compile to verify and finish
+            # If zero hard errors, check if fixable warnings exist before finishing
             if len(errors) == 0:
                 full_errors, full_warnings, _ = compile_source(current_source, syntax_only=False)
                 if len(full_errors) == 0:
+                    warning_fixed = False
+                    if full_warnings:
+                        target_warn = pick_offline_target(full_warnings, current_source)
+                        if target_warn:
+                            patched_warn = attempt_fix(current_source, target_warn)
+                            if patched_warn and patched_warn != current_source:
+                                w_errors, w_warnings, _ = compile_source(patched_warn, syntax_only=False)
+                                if len(w_errors) == 0 and len(w_warnings) <= len(full_warnings):
+                                    diff = compute_diff(current_source, patched_warn)
+                                    diff_html = format_diff_html(diff) if has_changes(diff) else ""
+                                    fixed_lines = [d.line_no_new for d in diff if d.kind == "+" and d.line_no_new is not None]
+                                    emit("diff_ready", {"attempt": len(all_attempts_flat) + 1, "diff_html": diff_html, "label": "offline rules"})
+                                    emit("lines_fixed", {"lines": fixed_lines})
+                                    rounds_history.append({
+                                        "round_no": round_no,
+                                        "method": "offline rules",
+                                        "model": None,
+                                        "errors_before": len(full_warnings),
+                                        "errors_after": len(w_warnings),
+                                        "seconds": round(time.time() - round_start_time, 3),
+                                        "diff_html": diff_html,
+                                    })
+                                    current_source = patched_warn
+                                    full_warnings = w_warnings
+                                    warning_fixed = True
+
                     msg = f"Compiles with {len(full_warnings)} warning(s)" if full_warnings else "Compiles cleanly with 0 errors"
                     current_source = clean_duplicate_headers(current_source)
                     emit("status_update", {"text": f"STATUS: ● HEALED ✅ ({msg})"})
@@ -400,7 +426,7 @@ def heal_until_clean(
 
                     # Check that patch didn't make errors worse (syntax check)
                     test_errors, test_warnings, _ = compile_source(patched, syntax_only=True)
-                    if len(test_errors) > len(off_errors):
+                    if target.get("category") not in ("security", "security_error", "security_violation") and len(test_errors) > len(off_errors):
                         # Revert this patch
                         all_attempts_flat.append({
                             "attempt_no": len(all_attempts_flat) + 1,
