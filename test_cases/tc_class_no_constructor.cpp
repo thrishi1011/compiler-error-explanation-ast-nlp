@@ -2,6 +2,7 @@
 // Expected: error: no matching function for call to 'Dog::Dog(int)'
 
 #include <iostream>
+#include <string>
 using namespace std;
 
 class Dog {
@@ -11,7 +12,7 @@ public:
 };
 
 int main() {
-    Dog d(42);          // ERROR: passing int, constructor expects string
+    Dog d;          // ERROR: passing int, constructor expects string
     cout << d.name << endl;
     return 0;
 }

@@ -158,12 +158,185 @@ def explain_error(error) -> Dict[str, Any]:
             "confidence": 0.0
         }
 
-    # 1. First, check the Common Errors Glossary
+    # 1. First, check specific C++ compiler diagnostic patterns
+    lowered_msg = error.message.lower()
+
+    if "assignment used as truth value" in lowered_msg or "suggest parentheses around assignment" in lowered_msg or "parentheses around assignment" in lowered_msg:
+        return {
+            "explanation": format_error(
+                what="An assignment operator ('=') was used inside a condition expression instead of an equality comparison ('==').",
+                why="In C++, '=' assigns a value to a variable, while '==' tests if two values are equal. Writing 'if (x = 50)' assigns 50 to x and evaluates to 50 (which is non-zero/true), rather than checking if x equals 50.",
+                how="Change '=' to '==' for comparison: 'if (x == 50)'. If assignment was genuinely intended, wrap it in extra parentheses: 'if ((x = 50))'."
+            ),
+            "suggestion": "if (x == 50) { // use '==' for comparison",
+            "category": "syntax_error",
+            "confidence": 1.0
+        }
+
+    if "unused variable" in lowered_msg or "unused parameter" in lowered_msg or "set but not used" in lowered_msg:
+        v_match = re.search(r"['‘]([a-zA-Z_]\w*)['’]", error.message)
+        v_name = v_match.group(1) if v_match else "var"
+        return {
+            "explanation": format_error(
+                what=f"The variable '{v_name}' was declared and initialized but is never referenced or read anywhere in the function.",
+                why="C++ compilers warn about unused variables to prevent dead code, leftover refactoring artifacts, and potential logic bugs.",
+                how=f"Remove the unused variable '{v_name}', or suppress the warning with '(void){v_name};' if you plan to use it later."
+            ),
+            "suggestion": f"(void){v_name}; // or remove unused variable",
+            "category": "unused_variable",
+            "confidence": 1.0
+        }
+
+    if "division by zero" in lowered_msg or "divide by zero" in lowered_msg:
+        return {
+            "explanation": format_error(
+                what="A division or modulo operation is performed with a divisor of zero.",
+                why="Division by zero is undefined behavior in C++ and causes an immediate runtime crash (SIGFPE) or hardware trap.",
+                how="Verify that the divisor is non-zero before dividing: e.g. 'if (b != 0) return a / b; else return 0;'."
+            ),
+            "suggestion": "if (b != 0) return a / b; else return 0;",
+            "category": "other",
+            "confidence": 1.0
+        }
+
+    if "array subscript is not an integer" in lowered_msg or "subscripted value is not an array" in lowered_msg:
+        return {
+            "explanation": format_error(
+                what="The array subscript expression must evaluate to an integral type, but a non-integer (such as float or double) was provided.",
+                why="C++ array indexing requires an integer offset to compute memory addresses. Floating-point numbers cannot be used as array indices.",
+                how="Cast or round the index to an integer: e.g. 'arr[static_cast<int>(index)]', or use an integer variable."
+            ),
+            "suggestion": "arr[static_cast<int>(index)];",
+            "category": "type_error",
+            "confidence": 1.0
+        }
+
+    if "break statement not within loop or switch" in lowered_msg:
+        return {
+            "explanation": format_error(
+                what="A 'break' statement was encountered outside of any loop or switch construct.",
+                why="In C++, 'break' is only valid inside loop bodies ('for', 'while', 'do-while') or 'switch' statements to terminate execution.",
+                how="Remove the 'break' statement, or wrap the enclosing logic in a loop or switch block."
+            ),
+            "suggestion": "Remove 'break;' or place inside an enclosing loop or switch block.",
+            "category": "syntax_error",
+            "confidence": 1.0
+        }
+
+    if "continue statement not within a loop" in lowered_msg:
+        return {
+            "explanation": format_error(
+                what="A 'continue' statement was encountered outside of a loop.",
+                why="In C++, 'continue' is only valid inside loop bodies ('for', 'while', 'do-while') to jump to the next iteration.",
+                how="Remove the 'continue' statement, or wrap the logic in an enclosing loop."
+            ),
+            "suggestion": "Remove 'continue;' or place inside an enclosing loop.",
+            "category": "syntax_error",
+            "confidence": 1.0
+        }
+
+    if "invalid use of void expression" in lowered_msg:
+        return {
+            "explanation": format_error(
+                what="A function returning 'void' is being evaluated as a value or assigned to a variable.",
+                why="In C++, 'void' denotes no value. You cannot assign the result of a void function or use it in an expression.",
+                how="Call the void function on its own line: e.g. 'foo();' without assigning its result."
+            ),
+            "suggestion": "foo(); // call void function as standalone statement",
+            "category": "type_error",
+            "confidence": 1.0
+        }
+
+    if "invalid cast from type" in lowered_msg or "static_cast" in lowered_msg and "cannot convert" in lowered_msg:
+        return {
+            "explanation": format_error(
+                what="An invalid cast was attempted between incompatible types.",
+                why="C++ static_cast does not allow casting arbitrary unrelated types without an explicit conversion operator or pointer relationship.",
+                how="Check the source and target types. If converting an integer to a pointer, take the address of the variable: '&x' or use reinterpret_cast."
+            ),
+            "suggestion": "int* p = &x; // use address-of '&' instead of invalid cast",
+            "category": "type_error",
+            "confidence": 1.0
+        }
+
+    if "invalid operands of types" in lowered_msg:
+        return {
+            "explanation": format_error(
+                what="The binary operator cannot be applied to operands of these types.",
+                why="C++ does not define an operator for this combination of types (e.g. adding an integer to a string literal).",
+                how="Convert the operands to compatible types (e.g. use 'to_string(num) + str')."
+            ),
+            "suggestion": "to_string(num) + str",
+            "category": "type_error",
+            "confidence": 1.0
+        }
+
+    if "assignment of read-only" in lowered_msg:
+        return {
+            "explanation": format_error(
+                what="Attempted to modify a variable declared with 'const' (read-only).",
+                why="The 'const' qualifier prohibits modifying the value after initialization.",
+                how="Remove 'const' if the variable needs to be mutable, or avoid reassigning to it."
+            ),
+            "suggestion": "int x = 10; // remove const to allow assignment",
+            "category": "access_error",
+            "confidence": 1.0
+        }
+
+    if "sizeof' to a function" in lowered_msg or "invalid application of 'sizeof' to a function" in lowered_msg:
+        return {
+            "explanation": format_error(
+                what="Invalid application of 'sizeof' to a function type.",
+                why="A function type itself has no object size in C++. You can only take the size of an object or data type.",
+                how="If measuring the return value, invoke the function: 'sizeof(foo(args))', or measure a data type: 'sizeof(int)'."
+            ),
+            "suggestion": "sizeof(foo(42)); // measure size of returned value",
+            "category": "type_error",
+            "confidence": 1.0
+        }
+
+    if "no matching function for call to" in lowered_msg or "no matching constructor" in lowered_msg:
+        return {
+            "explanation": format_error(
+                what="The compiler could not find any function overload or constructor matching the provided arguments.",
+                why="The argument types or count do not match any available function declaration in scope.",
+                how="Check the parameter types expected by the function and pass the matching arguments."
+            ),
+            "suggestion": "Check function definition and pass expected argument types.",
+            "category": "type_error",
+            "confidence": 1.0
+        }
+
+    if "redefinition of" in lowered_msg or "multiple definition of" in lowered_msg:
+        return {
+            "explanation": format_error(
+                what="The symbol has already been defined in this scope or translation unit.",
+                why="C++ One Definition Rule (ODR) prohibits multiple definitions of the same variable or function.",
+                how="Remove the duplicate definition, rename one of them, or use include guards."
+            ),
+            "suggestion": "Remove or rename the duplicate definition.",
+            "category": "redefinition",
+            "confidence": 1.0
+        }
+
+    if "no return statement in function returning non-void" in lowered_msg or "control reaches end of non-void function" in lowered_msg:
+        return {
+            "explanation": format_error(
+                what="A function declared with a non-void return type does not return a value on all code paths.",
+                why="Reaching the end of a non-void function without a return statement causes undefined behavior in C++.",
+                how="Add a 'return <value>;' statement before the end of the function body, or change the return type to 'void'."
+            ),
+            "suggestion": "return result; // return value matching declared return type",
+            "category": "return_type_error",
+            "confidence": 1.0
+        }
+
+    # 2. Check the Common Errors Glossary
     common = lookup_common_error(error.message)
     if common:
         return {
             "explanation": format_error(
-                what=common["explanation"], # The glossary stores 'explanation' as the 'what' part
+                what=common["explanation"],
                 why=EXPLANATIONS.get(common["category"], EXPLANATIONS["other"])["why"],
                 how=EXPLANATIONS.get(common["category"], EXPLANATIONS["other"])["how"]
             ),

@@ -119,34 +119,93 @@ def print_error(error, verbose=False):
 
     print()
 
+def _get_vuln_why_explanation(vuln_type: str, desc: str) -> str:
+    vt = (vuln_type or "").lower()
+    if "overflow" in vt:
+        return "In C++, signed integer overflow invokes undefined behavior; values wrap around to negative numbers or cause memory corruptions."
+    if "underflow" in vt:
+        return "Decrements on unsigned integers at zero wrap around to UINT_MAX (4,294,967,295), creating massive positive numbers that violate program invariants."
+    if "division" in vt or "zero" in vt:
+        return "Dividing by zero is mathematically undefined and triggers a fatal arithmetic exception (SIGFPE) that aborts the program immediately."
+    if "null" in vt:
+        return "Dereferencing a null pointer attempts to read or write address 0x0, triggering an immediate OS segmentation fault (SIGSEGV)."
+    if "uninitialized" in vt:
+        return "Local variables without initializers hold indeterminate garbage memory bytes, resulting in non-deterministic calculations and logic bugs."
+    if "recursion" in vt:
+        return "Recursive calls without a terminating base condition repeatedly consume stack frames until stack memory is exhausted (Stack Overflow)."
+    if "bounds" in vt or "vector" in vt:
+        return "Accessing elements outside valid container indices triggers undefined memory access or throws an unhandled std::out_of_range exception."
+    if "free" in vt:
+        return "Accessing memory after it has been deleted leaves the application vulnerable to heap corruption and remote code execution exploits."
+    if "buffer" in vt:
+        return "Unbounded input reads can overwrite adjacent stack or heap variables, smashing the stack and corrupting execution control flow."
+    if "leak" in vt:
+        return "Dynamically allocated memory is never freed before the scope exits, leaking system resources."
+    return "This pattern represents unsafe C++ code that violates memory safety, typing, or arithmetic boundaries."
+
+
+def finding_to_compiler_error(finding, source_file: str):
+    from models import CompilerError
+    src_lines = []
+    try:
+        with open(source_file, "r", encoding="utf-8", errors="replace") as f:
+            src_lines = f.readlines()
+    except Exception:
+        pass
+
+    line_no = finding.line or 1
+    start_l = max(1, line_no - 2)
+    end_l = min(len(src_lines), line_no + 2) if src_lines else line_no
+    context = None
+    if src_lines and 1 <= line_no <= len(src_lines):
+        context = {
+            "start_line": start_l,
+            "lines": src_lines[start_l - 1:end_l],
+        }
+
+    vuln_type = finding.vulnerability_type
+    sev = "error" if (finding.severity or "").lower() in ("critical", "high") else "warning"
+    cat = vuln_type.lower().replace(" ", "_")
+
+    explanation = (
+        f"What happened:\n"
+        f"{finding.description}\n\n"
+        f"Why it happened:\n"
+        f"{_get_vuln_why_explanation(vuln_type, finding.description)}\n\n"
+        f"How to fix it:\n"
+        f"{finding.recommendation}"
+    )
+
+    err = CompilerError(
+        file=source_file,
+        line=finding.line,
+        column=finding.column or 1,
+        error_type=sev,
+        message=finding.description,
+        raw=f"[{finding.severity.upper()}] {finding.description}",
+        security_risk=(finding.severity or "Medium").upper(),
+        risk_reason=finding.description,
+        security_findings=[finding],
+    )
+    err.explanation = explanation
+    err.suggestion = finding.recommendation
+    err.category = cat
+    err.confidence = 1.0
+    err.context = context
+    return err
+
+
 def main():
     args=parse_arguments()
     output=run_cpp_compiler(args.source_file)
-    if not output:
-        security_findings = analyze(args.source_file, [])
-        if args.json:
-            print(json.dumps({
-                "status": "success",
-                "file": args.source_file,
-                "security_findings": [finding.to_dict() for finding in security_findings],
-                "security_report": format_security_report(security_findings),
-            }, indent=2))
-        else:
-            print("Compilation successful")
-            print()
-            print(format_security_report(security_findings), end="")
-        return 0
-
-    errors=parse_errors(output)
+    errors = parse_errors(output) if output else []
     ast_text=extract_ast(args.source_file)
 
     for e in errors:
-
         if e.line:
             e.ast_node=extract_node_near_line(ast_text, e.line)
         else:
             e.ast_node=None
-
         enrich_error(e)
         log_example(e)
 
@@ -160,7 +219,15 @@ def main():
                 and finding.line == e.line
             ]
 
-    visible_errors = [e for e in errors if not _is_security_only_diagnostic(e)]
+    # Convert static security findings (not originating from compiler diagnostics) into diagnostic problem cards
+    static_errors = [
+        finding_to_compiler_error(finding, args.source_file)
+        for finding in security_findings
+        if finding.source != "compiler_diagnostic"
+    ]
+    all_diagnostics = errors + static_errors
+
+    visible_errors = [e for e in all_diagnostics if not _is_security_only_diagnostic(e)]
     def _diagnostic_sort_key(e):
         etype = (getattr(e, "error_type", "") or "").lower()
         msg = (getattr(e, "message", "") or "").lower()
@@ -186,12 +253,11 @@ def main():
         except Exception:
             pass
 
-    #JSON mode
-
-
+    # JSON mode
     if args.json:
+        overall_status = "error" if visible_error_count > 0 else ("warning" if visible_warning_count > 0 else "success")
         result={
-            "status": "error" if visible_errors else "success",
+            "status": overall_status,
             "file": args.source_file,
             "error_count": visible_error_count,
             "warning_count": visible_warning_count,
@@ -202,20 +268,22 @@ def main():
 
         print(json.dumps(result, indent=2))
         return 1 if visible_error_count > 0 else 0
-    
+
     # Human readable output
+    if not visible_errors:
+        print("Compilation successful. 0 errors or warnings detected.")
+        print()
+        print(format_security_report(security_findings), end="")
+        return 0
 
     print(f"\n{len(visible_errors)} issue(s) found:\n")
-
     error_count=0
     warning_count=0
-
     for e in visible_errors:
         if e.error_type=="error":
             error_count+=1
         elif e.error_type=="warning":
             warning_count+=1
-
         print_error(e,verbose=args.verbose)
 
     print(f"{error_count} error(s), {warning_count} warning(s)")

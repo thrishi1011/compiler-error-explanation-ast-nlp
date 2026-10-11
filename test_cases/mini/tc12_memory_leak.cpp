@@ -6,6 +6,7 @@
 
 #include <cstdlib>
 #include <cstdio>
+using namespace std;
 
 void processRecord(int id) {
     char* buffer = (char*)malloc(256);  // Allocated but never freed

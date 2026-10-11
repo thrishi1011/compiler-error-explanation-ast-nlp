@@ -7,6 +7,7 @@
 // Extra error: #include <cstring> is missing (strlen used without it).
 
 #include <cstdio>
+using namespace std;
 
 int main() {
     char userInput[128];

@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import warnings
 from collections import Counter
 from typing import Optional, Tuple, List
@@ -230,6 +231,82 @@ class ErrorClassifier:
             "-wunused-variable",
         )):
             return "unused_variable", 0.98
+
+        # ── Deterministic rules for real compiler diagnostics ──
+        # Missing headers
+        if "no such file or directory" in lowered:
+            return "missing_include", 0.99
+
+        # Standard library missing headers vs local undeclared identifier
+        if "was not declared in this scope" in lowered or "undeclared identifier" in lowered:
+            # Extract identifier name in quotes
+            sym_match = re.search(r"['‘]([a-zA-Z_]\w*)['’]", message)
+            if sym_match:
+                sym = sym_match.group(1)
+                std_syms = {
+                    "cout", "cin", "cerr", "endl", "string", "vector", "map", "set",
+                    "unordered_map", "unordered_set", "list", "queue", "stack", "deque", "array",
+                    "pair", "tuple", "sort", "find", "max", "min", "reverse", "count",
+                    "fill", "copy", "abs", "sqrt", "pow", "ceil", "floor",
+                    "unique_ptr", "shared_ptr", "make_unique", "make_shared",
+                    "strlen", "strcpy", "strcmp", "strcat", "memset", "memcpy", "memmove",
+                    "printf", "scanf", "fprintf", "puts", "fopen", "fclose", "sprintf", "snprintf",
+                    "INT_MAX", "INT_MIN", "size_t"
+                }
+                if sym in std_syms or sym.startswith("std::"):
+                    return "missing_include", 0.99
+            if any(f"'{s}'" in lowered for s in ("cout", "cin", "vector", "string", "endl", "sort", "printf", "strlen")):
+                return "missing_include", 0.99
+            return "name_resolution", 0.99
+
+        if any(phrase in lowered for phrase in ("has not been declared", "does not name a type")):
+            return "name_resolution", 0.95
+
+        # Syntax / control-flow / conditionals
+        if any(phrase in lowered for phrase in (
+            "expected ';'", "expected ')'", "expected '}'", "expected '{'", "expected ']'",
+            "expected primary-expression", "expected unqualified-id", "expected initializer",
+            "stray ", "missing terminating", "break statement not within", "continue statement not within",
+            "assignment used as truth value", "suggest parentheses around assignment", "parentheses around assignment"
+        )):
+            return "syntax_error", 0.99
+
+        # Unused variables / parameters
+        if any(phrase in lowered for phrase in (
+            "unused variable", "unused parameter", "set but not used", "unused but set"
+        )):
+            return "unused_variable", 0.99
+
+        # Type errors, casts, operands, arrays, sizeof
+        if any(phrase in lowered for phrase in (
+            "array subscript is not an integer", "subscripted value is not an array",
+            "invalid operands of types", "invalid cast from type", "cannot convert",
+            "invalid conversion", "incompatible types", "static_cast", "reinterpret_cast",
+            "invalid use of void", "sizeof' to a function", "no matching function for call",
+            "no matching constructor", "template deduction", "cannot bind non-const lvalue"
+        )):
+            return "type_error", 0.99
+
+        # Access / Const
+        if any(phrase in lowered for phrase in (
+            "assignment of read-only", "is private within this context", "is protected"
+        )):
+            return "access_error", 0.99
+
+        # Redefinition / multiple definition
+        if any(phrase in lowered for phrase in (
+            "redefinition of", "multiple definition of", "previous definition of", "conflicting declaration"
+        )):
+            return "redefinition", 0.99
+
+        # Return type
+        if any(phrase in lowered for phrase in (
+            "return-statement with a value, in function returning 'void'",
+            "return-statement with no value, in function returning",
+            "no return statement in function returning non-void",
+            "control reaches end of non-void function"
+        )):
+            return "return_type_error", 0.99
 
         if not self.load():
             if os.path.exists(self.training_data_file):

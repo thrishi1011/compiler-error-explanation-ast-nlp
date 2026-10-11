@@ -13,7 +13,7 @@ int main() {
 
     // OUT OF BOUNDS — vector has 3 elements, index 5 is invalid
     cout << "Element 5: " << nums[5] << endl;   // undefined behavior
-    cout << "Element at(): " << nums.at(5) << endl;  // throws std::out_of_range
+    cout << "Element at(): " << nums.at(5) << endl;  // throws out_of_range
 
     return 0;
 }

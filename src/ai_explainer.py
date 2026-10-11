@@ -74,9 +74,75 @@ def build_batch_prompt(errors: list, source_code: str) -> Tuple[str, List[int]]:
     return prompt, indices
 
 
+def _regex_extract_explanations(text: str) -> Dict[int, dict]:
+    """Extract explanations from unformatted markdown or plain text."""
+    if not text:
+        return {}
+    out = {}
+    expl_m = re.search(r"(?:explanation|what happened):\s*(.+?)(?=(?:fix|suggested fix|why|$))", text, re.IGNORECASE | re.DOTALL)
+    fix_m = re.search(r"(?:fix|suggested fix|solution):\s*(.+?)(?=(?:why|explanation|$))", text, re.IGNORECASE | re.DOTALL)
+    why_m = re.search(r"(?:why|reason):\s*(.+?)(?=(?:fix|explanation|$))", text, re.IGNORECASE | re.DOTALL)
+
+    expl = expl_m.group(1).strip() if expl_m else ""
+    fix = fix_m.group(1).strip() if fix_m else ""
+    why = why_m.group(1).strip() if why_m else ""
+
+    if not fix:
+        code_m = re.search(r"```(?:cpp|c\+\+)?\n?(.*?)\n?```", text, re.DOTALL)
+        if code_m:
+            fix = code_m.group(1).strip()
+
+    if expl or fix or why:
+        out[0] = {
+            "explanation": expl or text.strip()[:400],
+            "fix": fix,
+            "why": why,
+        }
+    return out
+
+
+def _generate_offline_explanations(errors: list, source_code: str) -> Dict[int, dict]:
+    """Generates offline AI explanations using NLP rules and compiler error database."""
+    try:
+        from error_explainer import EXPLANATIONS, lookup_common_error
+        from error_normalizer import normalize_error
+    except Exception:
+        return {}
+
+    results = {}
+    for idx, err in enumerate(errors[:5]):
+        msg = err.get("message", "") if isinstance(err, dict) else getattr(err, "message", "")
+        cat = err.get("category", "unknown") if isinstance(err, dict) else getattr(err, "category", "unknown")
+
+        common = lookup_common_error(msg)
+        if common:
+            expl = common.get("explanation", "")
+            fix = common.get("suggestion", "")
+            why = "Matches known C++ compiler diagnostic pattern."
+        elif cat in EXPLANATIONS:
+            tmpl = EXPLANATIONS[cat]
+            _, norm_what = normalize_error(msg)
+            expl = f"{norm_what or tmpl.get('what', '')} {tmpl.get('why', '')}"
+            fix = tmpl.get("suggestion", "")
+            why = tmpl.get("how", "")
+        else:
+            _, norm = normalize_error(msg)
+            expl = norm or f"Compiler reported: {msg}"
+            fix = err.get("suggestion", "") if isinstance(err, dict) else ""
+            why = "Check syntax and types at the reported line."
+
+        results[idx] = {
+            "explanation": expl.strip(),
+            "fix": fix.strip(),
+            "why": why.strip(),
+            "provider": "NLP Engine",
+        }
+    return results
+
+
 def parse_batch_response(raw_text: str) -> Dict[int, dict]:
     """Parse JSON array or map from LLM response defensively."""
-    clean = llm_client.strip_markdown_fences(raw_text)
+    clean = llm_client.strip_markdown_fences(raw_text).strip()
     data = None
     try:
         data = json.loads(clean)
@@ -97,34 +163,62 @@ def parse_batch_response(raw_text: str) -> Dict[int, dict]:
                     pass
 
     if data is None:
-        return {}
+        return _regex_extract_explanations(clean)
 
     # Normalize to dict by index
     out = {}
     if isinstance(data, list):
-        for item in data:
+        for i, item in enumerate(data):
             if isinstance(item, dict):
-                idx = item.get("index")
-                if idx is not None:
-                    out[int(idx)] = {
-                        "explanation": str(item.get("explanation", "")).strip(),
-                        "fix": str(item.get("fix", "")).strip(),
-                        "why": str(item.get("why", "")).strip(),
-                    }
+                idx = item.get("index", i)
+                try:
+                    idx = int(idx)
+                except (ValueError, TypeError):
+                    idx = i
+                out[idx] = {
+                    "explanation": str(item.get("explanation") or item.get("message") or item.get("description") or "").strip(),
+                    "fix": str(item.get("fix") or item.get("solution") or item.get("suggested_fix") or "").strip(),
+                    "why": str(item.get("why") or item.get("reason") or "").strip(),
+                }
     elif isinstance(data, dict):
-        if "errors" in data and isinstance(data["errors"], list):
-            return parse_batch_response(json.dumps(data["errors"]))
+        for key in ("errors", "diagnostics", "results", "items", "responses", "data", "explanations", "candidates"):
+            if key in data and isinstance(data[key], (list, dict)):
+                nested = parse_batch_response(json.dumps(data[key]))
+                if nested:
+                    return nested
+
+        if any(k in data for k in ("explanation", "fix", "why", "solution", "suggested_fix")):
+            idx = 0
+            if "index" in data:
+                try:
+                    idx = int(data["index"])
+                except (ValueError, TypeError):
+                    idx = 0
+            out[idx] = {
+                "explanation": str(data.get("explanation") or data.get("message") or data.get("description") or "").strip(),
+                "fix": str(data.get("fix") or data.get("solution") or data.get("suggested_fix") or "").strip(),
+                "why": str(data.get("why") or data.get("reason") or "").strip(),
+            }
+            return out
+
         for k, item in data.items():
             if isinstance(item, dict):
                 try:
                     idx = int(item.get("index", k))
-                    out[idx] = {
-                        "explanation": str(item.get("explanation", "")).strip(),
-                        "fix": str(item.get("fix", "")).strip(),
-                        "why": str(item.get("why", "")).strip(),
-                    }
                 except (ValueError, TypeError):
-                    pass
+                    try:
+                        idx = int(k)
+                    except (ValueError, TypeError):
+                        idx = 0
+                out[idx] = {
+                    "explanation": str(item.get("explanation") or item.get("message") or item.get("description") or "").strip(),
+                    "fix": str(item.get("fix") or item.get("solution") or item.get("suggested_fix") or "").strip(),
+                    "why": str(item.get("why") or item.get("reason") or "").strip(),
+                }
+
+    if not out and clean:
+        return _regex_extract_explanations(clean)
+
     return out
 
 
@@ -132,6 +226,7 @@ def explain_errors_batch(errors: list, source_code: str) -> Tuple[Dict[int, dict
     """
     Make one batched call to explain up to the first 5 errors.
     Returns (results_by_index, provider_name, error_message).
+    Falls back to offline local NLP/AST engine if LLM provider is unavailable.
     """
     if not errors:
         return {}, None, "No errors to explain"
@@ -145,17 +240,21 @@ def explain_errors_batch(errors: list, source_code: str) -> Tuple[Dict[int, dict
         code_to_check=source_code,
     )
 
-    if res.text is None:
-        return {}, None, res.error or "AI explanation unavailable"
+    parsed = {}
+    if res.text:
+        parsed = parse_batch_response(res.text)
 
-    parsed = parse_batch_response(res.text)
-    if not parsed:
-        return {}, res.provider, "Unable to parse AI explanation JSON"
+    if parsed and res.provider:
+        for idx, d in parsed.items():
+            d["provider"] = res.provider
+        return parsed, res.provider, None
 
-    for idx, d in parsed.items():
-        d["provider"] = res.provider
+    # Offline fallback
+    offline_results = _generate_offline_explanations(errors, source_code)
+    if offline_results:
+        return offline_results, "NLP Engine", None
 
-    return parsed, res.provider, None
+    return {}, res.provider, res.error or "AI explanation unavailable"
 
 
 class AIExplainWorker(QThread):

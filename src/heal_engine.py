@@ -288,35 +288,106 @@ def heal_until_clean(
             if len(errors) == 0:
                 full_errors, full_warnings, _ = compile_source(current_source, syntax_only=False)
                 if len(full_errors) == 0:
-                    warning_fixed = False
                     if full_warnings:
-                        target_warn = pick_offline_target(full_warnings, current_source)
-                        if target_warn:
+                        full_warnings = _classify_error_list(full_warnings, classifier)
+                        warn_rounds = 0
+                        while full_warnings and warn_rounds < 5:
+                            target_warn = pick_offline_target(full_warnings, current_source)
+                            if not target_warn:
+                                break
                             patched_warn = attempt_fix(current_source, target_warn)
-                            if patched_warn and patched_warn != current_source:
-                                w_errors, w_warnings, _ = compile_source(patched_warn, syntax_only=False)
-                                if len(w_errors) == 0 and len(w_warnings) <= len(full_warnings):
-                                    diff = compute_diff(current_source, patched_warn)
-                                    diff_html = format_diff_html(diff) if has_changes(diff) else ""
-                                    fixed_lines = [d.line_no_new for d in diff if d.kind == "+" and d.line_no_new is not None]
-                                    emit("diff_ready", {"attempt": len(all_attempts_flat) + 1, "diff_html": diff_html, "label": "offline rules"})
-                                    emit("lines_fixed", {"lines": fixed_lines})
-                                    rounds_history.append({
-                                        "round_no": round_no,
-                                        "method": "offline rules",
-                                        "model": None,
-                                        "errors_before": len(full_warnings),
-                                        "errors_after": len(w_warnings),
-                                        "seconds": round(time.time() - round_start_time, 3),
-                                        "diff_html": diff_html,
-                                    })
-                                    current_source = patched_warn
-                                    full_warnings = w_warnings
-                                    warning_fixed = True
+                            if not patched_warn or patched_warn == current_source:
+                                break
+                            w_errors, w_warnings, _ = compile_source(patched_warn, syntax_only=False)
+                            if len(w_errors) == 0 and len(w_warnings) < len(full_warnings):
+                                diff = compute_diff(current_source, patched_warn)
+                                diff_html = format_diff_html(diff) if has_changes(diff) else ""
+                                fixed_lines = [d.line_no_new for d in diff if d.kind == "+" and d.line_no_new is not None]
+                                emit("diff_ready", {"attempt": len(all_attempts_flat) + 1, "diff_html": diff_html, "label": "offline rules"})
+                                emit("lines_fixed", {"lines": fixed_lines})
+                                rounds_history.append({
+                                    "round_no": len(rounds_history) + 1,
+                                    "method": "offline rules",
+                                    "model": None,
+                                    "errors_before": len(full_warnings),
+                                    "errors_after": len(w_warnings),
+                                    "seconds": round(time.time() - round_start_time, 3),
+                                    "diff_html": diff_html,
+                                })
+                                current_source = patched_warn
+                                full_warnings = _classify_error_list(w_warnings, classifier)
+                                warn_rounds += 1
+                    # Security and runtime flaw healing
+                    from security_analyzer import analyze
+                    with tempfile.NamedTemporaryFile("w", suffix=".cpp", delete=False, encoding="utf-8") as tmp_s:
+                        tmp_s.write(current_source)
+                        tmp_s_path = tmp_s.name
+                    try:
+                        sec_findings = [f for f in analyze(tmp_s_path, []) if f.source != "compiler_diagnostic"]
+                    finally:
+                        if os.path.exists(tmp_s_path):
+                            try: os.remove(tmp_s_path)
+                            except: pass
 
+                    sec_rounds = 0
+                    while sec_findings and sec_rounds < 10:
+                        target_sec = sec_findings[0]
+                        sec_dict = {
+                            "file": target_sec.file,
+                            "line": target_sec.line,
+                            "column": target_sec.column or 1,
+                            "type": "error" if (target_sec.severity or "").lower() in ("critical", "high") else "warning",
+                            "message": target_sec.description,
+                            "category": target_sec.vulnerability_type.lower().replace(" ", "_"),
+                            "description": target_sec.description,
+                            "recommendation": target_sec.recommendation,
+                        }
+                        emit("attempt_started", {"attempt": len(all_attempts_flat) + 1, "target": sec_dict})
+                        patched_sec = attempt_fix(current_source, sec_dict)
+                        if not patched_sec or patched_sec == current_source:
+                            break
+
+                        sc_errors, sc_warnings, _ = compile_source(patched_sec, syntax_only=False)
+                        if len(sc_errors) == 0:
+                            with tempfile.NamedTemporaryFile("w", suffix=".cpp", delete=False, encoding="utf-8") as tmp_v:
+                                tmp_v.write(patched_sec)
+                                tmp_v_path = tmp_v.name
+                            try:
+                                new_sec = [f for f in analyze(tmp_v_path, []) if f.source != "compiler_diagnostic"]
+                            finally:
+                                if os.path.exists(tmp_v_path):
+                                    try: os.remove(tmp_v_path)
+                                    except: pass
+
+                            if len(new_sec) < len(sec_findings):
+                                diff = compute_diff(current_source, patched_sec)
+                                diff_html = format_diff_html(diff) if has_changes(diff) else ""
+                                fixed_lines = [d.line_no_new for d in diff if d.kind == "+" and d.line_no_new is not None]
+                                emit("diff_ready", {"attempt": len(all_attempts_flat) + 1, "diff_html": diff_html, "label": f"healed {target_sec.vulnerability_type}"})
+                                emit("lines_fixed", {"lines": fixed_lines})
+                                rounds_history.append({
+                                    "round_no": len(rounds_history) + 1,
+                                    "method": f"healed {target_sec.vulnerability_type}",
+                                    "model": None,
+                                    "errors_before": len(sec_findings),
+                                    "errors_after": len(new_sec),
+                                    "seconds": round(time.time() - round_start_time, 3),
+                                    "diff_html": diff_html,
+                                })
+                                current_source = patched_sec
+                                sec_findings = new_sec
+                                sec_rounds += 1
+                                continue
+                        break
+
+                    is_clean = (len(full_warnings) == 0 and len(sec_findings) == 0)
                     msg = f"Compiles with {len(full_warnings)} warning(s)" if full_warnings else "Compiles cleanly with 0 errors"
+                    if is_clean:
+                        msg = "All compiler errors and security issues resolved. Code compiles cleanly."
+                    elif sec_findings:
+                        msg = f"Compiles, but {len(sec_findings)} security/runtime issue(s) remain."
                     current_source = clean_duplicate_headers(current_source)
-                    emit("status_update", {"text": f"STATUS: ● HEALED ✅ ({msg})"})
+                    emit("status_update", {"text": f"STATUS: ● {'HEALED ✅' if is_clean else 'PARTIALLY HEALED ⚠️'} ({msg})"})
                     duration = time.time() - start_time
                     emissions = 0.0
                     if tracker:
@@ -324,15 +395,15 @@ def heal_until_clean(
                         except: pass
                     return HealResult(
                         code=current_source,
-                        status="healed",
-                        clean=True,
+                        status="healed" if is_clean else "partially_healed",
+                        clean=is_clean,
                         rounds=rounds_history,
                         attempts=all_attempts_flat,
                         message=msg,
                         total_duration=round(duration, 3),
                         total_emissions=round(emissions, 6),
                         initial_errors=initial_error_count,
-                        remaining_errors=0,
+                        remaining_errors=len(full_warnings) + len(sec_findings),
                     )
 
             current_sig = (hashlib.sha256(current_source.encode("utf-8")).hexdigest(), tuple(e["message"] for e in errors))

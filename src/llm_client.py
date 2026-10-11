@@ -816,10 +816,13 @@ def ask(
     gr_key = get_groq_key()
     gr_avail, gr_reason = _GROQ_STATE.is_available()
     if gr_key and gr_avail:
-        elapsed_so_far = time.time() - start_time
-        remaining_timeout = max_call_sec - elapsed_so_far
-        if remaining_timeout >= 1.0:
-            text, err, _, _ = _call_groq(system, prompt, kind, max_tokens, call_timeout=remaining_timeout)
+        if kind == "heal":
+            budget_rem = get_heal_ai_budget_remaining()
+            groq_timeout = min(float(os.environ.get("HEAL_AI_CALL_MAX_SEC", "4.5")), budget_rem)
+        else:
+            groq_timeout = 6.0
+        if groq_timeout >= 1.0:
+            text, err, _, _ = _call_groq(system, prompt, kind, max_tokens, call_timeout=groq_timeout)
             if text is not None:
                 res = LLMResult(text, "groq", None)
                 if cache_key is not None:

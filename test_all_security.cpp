@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
+using namespace std;
 
 // ─────────────────────────────────────────────────────────────
 // CRITICAL: Buffer Overflow — gets() has no bounds checking

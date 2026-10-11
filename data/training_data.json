@@ -55910,5 +55910,158 @@
     "explanation": "What happened:\n No overload of 'add(int, double)' matches the arguments you provided. Check the function signature and argument types.\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.\n\nThis error occurred inside a CallExpr statement.",
     "suggestion": "Ensure both operands are compatible types or add an explicit cast.",
     "confidence": 1.0
+  },
+  {
+    "message": "redefinition of 'int computeScore(int, int)'",
+    "raw_message": "redefinition of 'int computeScore(int, int)'",
+    "category": "redefinition",
+    "ast_node": null,
+    "explanation": "What happened:\n 'int computeScore(int, int)' has already been defined again in this scope.\n\nWhy it happened:\n C++ does not allow two definitions of the same variable or function in the same scope.\n\nHow to fix it:\n Remove the duplicate definition. If it is coming from a header file, add #pragma once or include guards.",
+    "suggestion": "Remove the duplicate definition or add include guards to your header.",
+    "confidence": 0.9931405378396787
+  },
+  {
+    "message": "expected initializer before type",
+    "raw_message": "expected initializer before 'int'",
+    "category": "syntax_error",
+    "ast_node": "DeclStmt",
+    "explanation": "What happened:\n Expected initializer before 'int'.\n\nWhy it happened:\n C++ has strict syntax rules. A missing semicolon, bracket, or parenthesis causes the parser to lose track of where one statement ends and another begins.\n\nHow to fix it:\n Check the line reported and the line just before it. Look for a missing ';', unmatched '(' or '{', or a stray character.\n\nThis error occurred inside a DeclStmt statement.",
+    "suggestion": "Fix the syntax error near the reported location.",
+    "confidence": 1.0
+  },
+  {
+    "message": "no match for 'operator<<' (operand types are 'std::istream {aka std::basic_istream<char>}' and type)",
+    "raw_message": "no match for 'operator<<' (operand types are 'std::istream {aka std::basic_istream<char>}' and 'int')",
+    "category": "type_error",
+    "ast_node": "CallExpr",
+    "explanation": "What happened:\n No match for 'operator<<' (operand types are 'std::istream {aka std::basic_istream<char>}' and 'int').\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.\n\nThis error occurred inside a CallExpr statement.",
+    "suggestion": "Ensure both operands are compatible types or add an explicit cast.",
+    "confidence": 1.0
+  },
+  {
+    "message": "redeclaration of 'int x'",
+    "raw_message": "redeclaration of 'int x'",
+    "category": "redefinition",
+    "ast_node": "DeclStmt",
+    "explanation": "What happened:\n 'int x' has already been declared again in this scope.\n\nWhy it happened:\n C++ does not allow two definitions of the same variable or function in the same scope.\n\nHow to fix it:\n Remove the duplicate definition. If it is coming from a header file, add #pragma once or include guards.\n\nThis error occurred inside a DeclStmt statement.",
+    "suggestion": "Remove the duplicate definition or add include guards to your header.",
+    "confidence": 0.9236509600747698
+  },
+  {
+    "message": "suggest parentheses around assignment used as truth value [-Wparentheses]",
+    "raw_message": "suggest parentheses around assignment used as truth value [-Wparentheses]",
+    "category": "type_error",
+    "ast_node": "IfStmt",
+    "explanation": "What happened:\n Suggest parentheses around assignment used as truth value [-Wparentheses].\n\nWhy it happened:\n C++ is strongly typed. Operations between incompatible types are not allowed without an explicit cast.\n\nHow to fix it:\n Check the types of the values involved. Add an explicit cast, change the variable type, or use the correct operator.\n\nThis error occurred inside a IfStmt statement.",
+    "suggestion": "Ensure both operands are compatible types or add an explicit cast.",
+    "confidence": 0.2649488126932345
+  },
+  {
+    "message": "a function-definition is not allowed here before opening brace token",
+    "raw_message": "a function-definition is not allowed here before '{' token",
+    "category": "other",
+    "ast_node": "FunctionDecl",
+    "explanation": "What happened:\n A function-definition is not allowed here before '{' token.\n\nWhy it happened:\n This may be a warning treated as an error, a platform-specific issue, or an uncommon language rule violation.\n\nHow to fix it:\n Read the full compiler message carefully and check the indicated line for the root cause.\n\nThis error occurred inside a FunctionDecl statement.",
+    "suggestion": "Read the compiler message carefully and correct the highlighted code.",
+    "confidence": 1.0
+  },
+  {
+    "message": "expected closing brace at end of input",
+    "raw_message": "expected '}' at end of input",
+    "category": "syntax_error",
+    "ast_node": null,
+    "explanation": "What happened:\n The compiler expected a '}' (at end of input).\n\nWhy it happened:\n C++ has strict syntax rules. A missing semicolon, bracket, or parenthesis causes the parser to lose track of where one statement ends and another begins.\n\nHow to fix it:\n Check the line reported and the line just before it. Look for a missing ';', unmatched '(' or '{', or a stray character.",
+    "suggestion": "Fix the syntax error near the reported location.",
+    "confidence": 0.9310375541935189
+  },
+  {
+    "message": "identifier was not declared in this scope",
+    "raw_message": "'vector' was not declared in this scope",
+    "category": "missing_header",
+    "ast_node": "CallExpr",
+    "explanation": "What happened:\n The type 'vector' is unavailable because the <vector> header has not been included.\n\nWhy it happened:\n This may be a warning treated as an error, a platform-specific issue, or an uncommon language rule violation.\n\nHow to fix it:\n Read the full compiler message carefully and check the indicated line for the root cause.",
+    "suggestion": "Add '#include <vector>' at the top of your file",
+    "confidence": 1.0
+  },
+  {
+    "message": "expected primary-expression before type",
+    "raw_message": "expected primary-expression before 'int'",
+    "category": "syntax_error",
+    "ast_node": "CallExpr",
+    "explanation": "What happened:\n Expected primary-expression before 'int'.\n\nWhy it happened:\n C++ has strict syntax rules. A missing semicolon, bracket, or parenthesis causes the parser to lose track of where one statement ends and another begins.\n\nHow to fix it:\n Check the line reported and the line just before it. Look for a missing ';', unmatched '(' or '{', or a stray character.\n\nThis error occurred inside a CallExpr statement.",
+    "suggestion": "Fix the syntax error near the reported location.",
+    "confidence": 1.0
+  },
+  {
+    "message": "unused parameter identifier [-Wunused-parameter]",
+    "raw_message": "unused parameter 'a' [-Wunused-parameter]",
+    "category": "other",
+    "ast_node": "FunctionDecl",
+    "explanation": "What happened:\n Unused parameter 'a' [-Wunused-parameter].\n\nWhy it happened:\n This may be a warning treated as an error, a platform-specific issue, or an uncommon language rule violation.\n\nHow to fix it:\n Read the full compiler message carefully and check the indicated line for the root cause.\n\nThis error occurred inside a FunctionDecl statement.",
+    "suggestion": "Read the compiler message carefully and correct the highlighted code.",
+    "confidence": 0.8226374721434192
+  },
+  {
+    "message": "Security Error: Malicious command injection or forbidden system call detected.",
+    "raw_message": "Security Error: Malicious command injection or forbidden system call detected.",
+    "category": "return_type_error",
+    "ast_node": "TranslationUnitDecl",
+    "explanation": "What happened:\n Security Error: Malicious command injection or forbidden system call detected.\n\nWhy it happened:\n In C++, non-void functions must return a value that matches their declared return type. main() must always return int.\n\nHow to fix it:\n Add a return statement with the correct type. For main(), use 'return 0;' at the end.\n\nThis error occurred inside a TranslationUnitDecl statement.",
+    "suggestion": "Add a return statement matching the function's declared return type.",
+    "confidence": 0.3433217765705502
+  },
+  {
+    "message": "expected initializer before identifier",
+    "raw_message": "expected initializer before 'score'",
+    "category": "syntax_error",
+    "ast_node": "CallExpr",
+    "explanation": "What happened:\n Expected initializer before 'score'.\n\nWhy it happened:\n C++ has strict syntax rules. A missing semicolon, bracket, or parenthesis causes the parser to lose track of where one statement ends and another begins.\n\nHow to fix it:\n Check the line reported and the line just before it. Look for a missing ';', unmatched '(' or '{', or a stray character.\n\nThis error occurred inside a CallExpr statement.",
+    "suggestion": "Fix the syntax error near the reported location.",
+    "confidence": 1.0
+  },
+  {
+    "message": "declaration of identifier shadows a global declaration [-Wshadow]",
+    "raw_message": "declaration of 'x' shadows a global declaration [-Wshadow]",
+    "category": "redefinition",
+    "ast_node": "DeclStmt",
+    "explanation": "What happened:\n Declaration of 'x' shadows a global declaration [-Wshadow].\n\nWhy it happened:\n C++ does not allow two definitions of the same variable or function in the same scope.\n\nHow to fix it:\n Remove the duplicate definition. If it is coming from a header file, add #pragma once or include guards.\n\nThis error occurred inside a DeclStmt statement.",
+    "suggestion": "Remove the duplicate definition or add include guards to your header.",
+    "confidence": 0.8620629455107646
+  },
+  {
+    "message": "unused variable identifier [-Wunused-variable]",
+    "raw_message": "unused variable 'backup' [-Wunused-variable]",
+    "category": "unused_variable",
+    "ast_node": "DeclStmt",
+    "explanation": "What happened:\n The variable 'backup' was declared and initialized but is never referenced or read anywhere in the function.\n\nWhy it happened:\n C++ compilers warn about unused variables to prevent dead code, leftover refactoring artifacts, and potential logic bugs.\n\nHow to fix it:\n Remove the unused variable 'backup', or suppress the warning with '(void)backup;' if you plan to use it later.",
+    "suggestion": "(void)backup; // or remove unused variable",
+    "confidence": 1.0
+  },
+  {
+    "message": "suggest parentheses around assignment used as truth value [-Wparentheses]",
+    "raw_message": "suggest parentheses around assignment used as truth value [-Wparentheses]",
+    "category": "syntax_error",
+    "ast_node": "IfStmt",
+    "explanation": "What happened:\n An assignment operator ('=') was used inside a condition expression instead of an equality comparison ('==').\n\nWhy it happened:\n In C++, '=' assigns a value to a variable, while '==' tests if two values are equal. Writing 'if (x = 50)' assigns 50 to x and evaluates to 50 (which is non-zero/true), rather than checking if x equals 50.\n\nHow to fix it:\n Change '=' to '==' for comparison: 'if (x == 50)'. If assignment was genuinely intended, wrap it in extra parentheses: 'if ((x = 50))'.",
+    "suggestion": "if (x == 50) { // use '==' for comparison",
+    "confidence": 1.0
+  },
+  {
+    "message": "unused parameter identifier [-Wunused-parameter]",
+    "raw_message": "unused parameter 'a' [-Wunused-parameter]",
+    "category": "unused_variable",
+    "ast_node": "FunctionDecl",
+    "explanation": "What happened:\n The variable 'a' was declared and initialized but is never referenced or read anywhere in the function.\n\nWhy it happened:\n C++ compilers warn about unused variables to prevent dead code, leftover refactoring artifacts, and potential logic bugs.\n\nHow to fix it:\n Remove the unused variable 'a', or suppress the warning with '(void)a;' if you plan to use it later.",
+    "suggestion": "(void)a; // or remove unused variable",
+    "confidence": 1.0
+  },
+  {
+    "message": "assignment of read-only variable identifier",
+    "raw_message": "assignment of read-only variable 'x'",
+    "category": "access_error",
+    "ast_node": "CallExpr",
+    "explanation": "What happened:\n Attempted to modify a variable declared with 'const' (read-only).\n\nWhy it happened:\n The 'const' qualifier prohibits modifying the value after initialization.\n\nHow to fix it:\n Remove 'const' if the variable needs to be mutable, or avoid reassigning to it.",
+    "suggestion": "int x = 10; // remove const to allow assignment",
+    "confidence": 1.0
   }
 ]

@@ -230,7 +230,10 @@ _UNINIT_MESSAGE_RE = re.compile(
     r"|is uninitialized when used"
     r"|uninitialized when used here"
     r"|wuninitialized"
-    r"|uninitialized variable",
+    r"|uninitialized variable"
+    r"|before initialization"
+    r"|used before"
+    r"|uninitialized",
     re.IGNORECASE,
 )
 _UNDECLARED_IDENTIFIER_PHRASES = (
@@ -508,34 +511,45 @@ def fix_uninitialized_variable(source: str, error: dict) -> Optional[str]:
 
     var = _extract_symbol(msg)
     if not var:
+        var_match = re.search(r"[Vv]ariable\s+'([A-Za-z_]\w*)'", msg)
+        if var_match:
+            var = var_match.group(1)
+    if not var:
         return None
 
     lines = _lines(source)
     if not lines:
         return None
 
-    start_idx = int(error.get("line") or len(lines)) - 1
-    start_idx = max(0, min(start_idx, len(lines) - 1))
-
     decl_idx = None
-    for i in range(start_idx, -1, -1):
-        line = lines[i]
-        if var not in line:
-            continue
-        stripped = line.strip()
-        bare_init = re.match(r"^(?P<indent>\s*)(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<rhs>.+);\s*$", line)
-        if not stripped.endswith(";") or "(" in line or ")" in line:
-            continue
-        if "=" in line and not bare_init:
-            continue
-        if re.match(r"^(return|if|for|while|switch|case|do|else|goto|throw|printf|fprintf|scanf|cout|cin|cerr)\b", stripped):
-            continue
-        match = re.search(rf"\b{re.escape(var)}\b", line)
-        if not match:
-            continue
+    decl_match = re.search(r"declared at line\s+(\d+)", msg)
+    if decl_match:
+        cand_idx = int(decl_match.group(1)) - 1
+        if 0 <= cand_idx < len(lines) and var in lines[cand_idx]:
+            decl_idx = cand_idx
 
-        decl_idx = i
-        break
+    if decl_idx is None:
+        start_idx = int(error.get("line") or len(lines)) - 1
+        start_idx = max(0, min(start_idx, len(lines) - 1))
+
+        for i in range(start_idx, -1, -1):
+            line = lines[i]
+            if var not in line:
+                continue
+            stripped = line.strip()
+            bare_init = re.match(r"^(?P<indent>\s*)(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<rhs>.+);\s*$", line)
+            if not stripped.endswith(";") or "(" in line or ")" in line:
+                continue
+            if "=" in line and not bare_init:
+                continue
+            if re.match(r"^(return|if|for|while|switch|case|do|else|goto|throw|printf|fprintf|scanf|cout|cin|cerr)\b", stripped):
+                continue
+            match = re.search(rf"\b{re.escape(var)}\b", line)
+            if not match:
+                continue
+
+            decl_idx = i
+            break
 
     if decl_idx is None:
         return None
@@ -564,15 +578,10 @@ def fix_uninitialized_variable(source: str, error: dict) -> Optional[str]:
             count=1,
         )
     else:
-        init = _initializer_for_declaration(line)
-        if init is None:
-            return None
-        fixed = re.sub(
-            rf"^(\s*)(?:[\w:<>*&\s]+?)\b{re.escape(var)}\b\s*;\s*$",
-            rf"\1auto {var}{init};",
-            line,
-            count=1,
-        )
+        init = _initializer_for_declaration(line) or " = 0"
+        if "char " in line:
+            init = " = ' '"
+        fixed = re.sub(r";\s*$", f"{init};\n", line)
 
     if fixed == line:
         return None
@@ -885,118 +894,321 @@ def fix_undeclared_variable(source: str, error: dict) -> Optional[str]:
 
 def fix_integer_overflow(source: str, error: dict) -> Optional[str]:
     """
-    Widen obvious overflowing arithmetic so the expression is evaluated in a
-    larger integer type.
+    Widen overflowing arithmetic to long long, or guard unsigned underflow.
     """
-    msg = error.get("message", "")
-    if not _is_integer_overflow_error(msg):
-        return None
-
-    line_no = error.get("line")
-    if not line_no:
-        return None
-
+    msg = error.get("message", "").lower()
+    cat = error.get("category", "").lower()
     lines = _lines(source)
-    idx = int(line_no) - 1
-    if idx < 0 or idx >= len(lines):
-        return None
+    line_no = error.get("line")
 
-    line = lines[idx]
+    # 1. Check for Integer Underflow on unsigned variable
+    if "underflow" in msg or "underflow" in cat or "unsigned" in msg:
+        var = _extract_symbol(msg)
+        if not var:
+            var_match = re.search(r"variable\s+'([A-Za-z_]\w*)'", msg)
+            if var_match:
+                var = var_match.group(1)
+        if line_no:
+            idx = int(line_no) - 1
+            if 0 <= idx < len(lines):
+                line = lines[idx]
+                indent = re.match(r"^(\s*)", line).group(1)
+                stripped = line.strip()
+                if var:
+                    if re.search(rf"\b{re.escape(var)}\s*=\s*{re.escape(var)}\s*-\s*1\s*;", stripped):
+                        lines[idx] = f"{indent}if ({var} > 0) {var} = {var} - 1;\n"
+                        return _join(lines)
+                    elif re.search(rf"\b{re.escape(var)}\s*--;?", stripped):
+                        lines[idx] = f"{indent}if ({var} > 0) {var}--;\n"
+                        return _join(lines)
+                u_sub = re.search(r"\b([A-Za-z_]\w*)\s*=\s*\1\s*-\s*1\s*;", stripped)
+                if u_sub:
+                    uv = u_sub.group(1)
+                    lines[idx] = f"{indent}if ({uv} > 0) {uv} = {uv} - 1;\n"
+                    return _join(lines)
 
-    fixed = re.sub(r"\bint\b", "long long", line, count=1)
-    if fixed != line:
-        lines[idx] = fixed
-        return _join(lines)
+    # 2. Check for Integer Overflow: widen variable declaration to long long
+    var = _extract_symbol(msg)
+    if not var:
+        var_match = re.search(r"variable\s+'([A-Za-z_]\w*)'", msg)
+        if var_match:
+            var = var_match.group(1)
 
-    expr = re.search(r"(\b\w+\b)\s*(\+|\-|\*)\s*(\w+)", line)
-    if expr:
-        fixed = (
-            line[:expr.start()] +
-            f"(long long){expr.group(1)} {expr.group(2)} {expr.group(3)}" +
-            line[expr.end():]
-        )
-        lines[idx] = fixed
-        return _join(lines)
+    if var:
+        max_idx = (int(line_no) - 1) if line_no else len(lines) - 1
+        for i in range(min(max_idx, len(lines) - 1), -1, -1):
+            line = lines[i]
+            if re.search(rf"\bint\s+{re.escape(var)}\b", line):
+                lines[i] = re.sub(rf"\bint\s+{re.escape(var)}\b", f"long long {var}", line, count=1)
+                return _join(lines)
+
+    if line_no:
+        idx = int(line_no) - 1
+        if 0 <= idx < len(lines):
+            line = lines[idx]
+            fixed = re.sub(r"\bint\b", "long long", line, count=1)
+            if fixed != line:
+                lines[idx] = fixed
+                return _join(lines)
+
+            expr = re.search(r"(\b\w+\b)\s*(\+|\-|\*)\s*(\w+)", line)
+            if expr:
+                fixed = (
+                    line[:expr.start()] +
+                    f"(long long){expr.group(1)} {expr.group(2)} {expr.group(3)}" +
+                    line[expr.end():]
+                )
+                lines[idx] = fixed
+                return _join(lines)
 
     return None
 
 
-def inject_division_guard(source: str, error: dict) -> Optional[str]:
+def fix_division_by_zero(source: str, error: dict) -> Optional[str]:
     """
-    Insert a runtime zero check before a division whose divisor is a variable.
+    Protect against division by zero with safe non-zero replacement or ternary guard.
     """
-    msg = error.get("message", "")
-    if not _is_division_by_zero_error(msg):
-        return None
-
-    lines = _lines(source)
-    var_match = re.search(r"'([A-Za-z_]\w*)'\s+is\s+0", msg)
-    divisor = var_match.group(1) if var_match else None
-
+    msg = error.get("message", "").lower()
     line_no = error.get("line")
-    if divisor is None and line_no:
+    lines = _lines(source)
+
+    if line_no:
         idx = int(line_no) - 1
         if 0 <= idx < len(lines):
             line = lines[idx]
-            match = re.search(r"/\s*([a-zA-Z_]\w*)", line)
-            if match:
-                divisor = match.group(1)
+            if re.search(r"/\s*0\b", line):
+                lines[idx] = re.sub(r"/\s*0\b", "/ 1 /* safe non-zero divisor */", line)
+                return _join(lines)
 
-    if not divisor:
-        return None
+            div_match = re.search(r"([A-Za-z_]\w*)\s*/\s*([A-Za-z_]\w*)", line)
+            if div_match:
+                dividend = div_match.group(1)
+                divisor = div_match.group(2)
+                fixed = line[:div_match.start()] + f"({divisor} != 0 ? {dividend} / {divisor} : 0)" + line[div_match.end():]
+                if fixed != line:
+                    lines[idx] = fixed
+                    return _join(lines)
 
-    guard_pattern = re.compile(rf"if\s*\(\s*{re.escape(divisor)}\s*==\s*0\s*\)")
-    if guard_pattern.search(source):
-        return None
+    var_match = re.search(r"'([A-Za-z_]\w*)'\s+whose value is 0", msg)
+    if var_match:
+        divisor = var_match.group(1)
+        for i, line in enumerate(lines):
+            if re.search(rf"\bint\s+{re.escape(divisor)}\s*=\s*0\s*;", line):
+                lines[i] = re.sub(rf"\b0\s*;", "1;", line)
+                return _join(lines)
 
-    div_idx = None
+    return None
+
+
+def fix_buffer_overflow(source: str, error: dict) -> Optional[str]:
+    """
+    Replace dangerous unbounded input routines with bounds-checked alternatives.
+    """
+    lines = _lines(source)
+    # gets(buf) -> fgets(buf, sizeof(buf), stdin);
     for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith("//"):
-            continue
-        if re.search(rf"/\s*{re.escape(divisor)}\b", line):
-            div_idx = i
+        m = re.search(r"\bgets\s*\(\s*([A-Za-z_]\w*)\s*\)\s*;", line)
+        if m:
+            buf = m.group(1)
+            indent = re.match(r"^(\s*)", line).group(1)
+            lines[i] = f"{indent}fgets({buf}, sizeof({buf}), stdin);\n"
+            return _join(lines)
+
+    # scanf("%s", name) -> scanf("%15s", name)
+    for i, line in enumerate(lines):
+        m = re.search(r'scanf\s*\(\s*"%s"\s*,\s*([A-Za-z_]\w*)\s*\)\s*;', line)
+        if m:
+            buf = m.group(1)
+            indent = re.match(r"^(\s*)", line).group(1)
+            lines[i] = f'{indent}scanf("%15s", {buf});\n'
+            return _join(lines)
+
+    # strcpy(dest, src) -> strncpy(dest, src, sizeof(dest) - 1); dest[sizeof(dest) - 1] = '\0';
+    for i, line in enumerate(lines):
+        m = re.search(r'\bstrcpy\s*\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*\)\s*;', line)
+        if m:
+            dest = m.group(1)
+            src = m.group(2)
+            indent = re.match(r"^(\s*)", line).group(1)
+            lines[i] = f"{indent}strncpy({dest}, {src}, sizeof({dest}) - 1);\n{indent}{dest}[sizeof({dest}) - 1] = '\\0';\n"
+            return _join(lines)
+
+    return None
+
+
+def fix_memory_leak(source: str, error: dict) -> Optional[str]:
+    """
+    Insert matching free() or delete before the allocating function/scope finishes.
+    """
+    lines = _lines(source)
+    line_no = error.get("line")
+    var = None
+    malloc_line_idx = None
+    if line_no:
+        idx = int(line_no) - 1
+        if 0 <= idx < len(lines):
+            m = re.search(r"([A-Za-z_]\w*)\s*=\s*(?:\([^\)]+\))?\s*malloc\b", lines[idx])
+            if m:
+                var = m.group(1)
+                malloc_line_idx = idx
+
+    if not var:
+        for i, line in enumerate(lines):
+            m = re.search(r"([A-Za-z_]\w*)\s*=\s*(?:\([^\)]+\))?\s*malloc\b", line)
+            if m:
+                var = m.group(1)
+                malloc_line_idx = i
+                break
+
+    if var and malloc_line_idx is not None:
+        brace_depth = 1
+        insert_idx = None
+        for j in range(malloc_line_idx + 1, len(lines)):
+            brace_depth += lines[j].count("{") - lines[j].count("}")
+            if brace_depth <= 0:
+                insert_idx = j
+                break
+
+        if insert_idx is not None:
+            indent = "    "
+            lines.insert(insert_idx, f"{indent}free({var});\n")
+            return _join(lines)
+
+    return None
+
+
+def fix_use_after_free(source: str, error: dict) -> Optional[str]:
+    """
+    Move delete/free to after the last dereference of the pointer.
+    """
+    lines = _lines(source)
+    del_var = None
+    del_line_idx = None
+    for i, line in enumerate(lines):
+        m = re.search(r"\bdelete\s+([A-Za-z_]\w*)\s*;", line)
+        if m:
+            del_var = m.group(1)
+            del_line_idx = i
             break
 
-    if div_idx is None:
-        return None
+    if del_var and del_line_idx is not None:
+        last_use_idx = None
+        for j in range(del_line_idx + 1, len(lines)):
+            if re.search(rf"\b{re.escape(del_var)}\b", lines[j]) and not re.search(rf"\b{re.escape(del_var)}\s*=\s*nullptr", lines[j]):
+                last_use_idx = j
 
-    indent = re.match(r"^(\s*)", lines[div_idx]).group(1)
-    guard = (
-        f"{indent}if ({divisor} == 0) {{\n"
-        f"{indent}    std::cerr << \"Error: division by zero\\n\";\n"
-        f"{indent}    return 1;\n"
-        f"{indent}}}\n"
-    )
-    lines.insert(div_idx, guard)
-    return _join(lines)
+        if last_use_idx is not None:
+            del_line = lines.pop(del_line_idx)
+            lines.insert(last_use_idx, del_line)
+            return _join(lines)
+
+    return None
 
 
-def fix_division_by_zero(source: str, error: dict) -> Optional[str]:
+def fix_null_dereference(source: str, error: dict) -> Optional[str]:
     """
-    Replace literal /0 with /1 as a safe placeholder, otherwise inject a guard
-    for variable divisors.
+    Initialize null pointer to valid memory so dereference is safe.
     """
-    msg = error.get("message", "")
-    if not _is_division_by_zero_error(msg):
-        return None
-
-    line_no = error.get("line")
-    if not line_no:
-        return None
-
     lines = _lines(source)
-    idx = int(line_no) - 1
-    if idx < 0 or idx >= len(lines):
-        return None
+    msg = error.get("message", "")
+    var = _extract_symbol(msg)
+    if not var:
+        var_match = re.search(r"[Pp]ointer\s+'([A-Za-z_]\w*)'", msg)
+        if var_match:
+            var = var_match.group(1)
 
-    line = lines[idx]
-    fixed = re.sub(r"/\s*0\b", "/ 1 /* FIX: was /0 */", line)
-    if fixed != line:
-        lines[idx] = fixed
-        return _join(lines)
+    for i, line in enumerate(lines):
+        if var and re.search(rf"\b{re.escape(var)}\b", line):
+            if re.search(r"=\s*(?:nullptr|NULL|0)\s*;", line):
+                indent = re.match(r"^(\s*)", line).group(1)
+                lines[i] = f"{indent}static int _safe_{var} = 0;\n{indent}int* {var} = &_safe_{var};\n"
+                return _join(lines)
 
-    return inject_division_guard(source, error)
+    return None
+
+
+def fix_infinite_recursion(source: str, error: dict) -> Optional[str]:
+    """
+    Insert terminating base case before recursive call.
+    """
+    lines = _lines(source)
+    msg = error.get("message", "")
+    fn_match = re.search(r"[Ff]unction\s+'([A-Za-z_]\w*)'", msg)
+    fn_name = fn_match.group(1) if fn_match else None
+
+    for i, line in enumerate(lines):
+        if fn_name and re.search(rf"\b{re.escape(fn_name)}\s*\(", line):
+            for j in range(i + 1, min(i + 15, len(lines))):
+                if re.search(rf"return\s+.*{re.escape(fn_name)}\s*\(", lines[j]):
+                    indent = re.match(r"^(\s*)", lines[j]).group(1)
+                    param_match = re.search(r"\(\s*(?:int|long|double|float)?\s*([A-Za-z_]\w*)\s*\)", line)
+                    param = param_match.group(1) if param_match else "n"
+                    lines.insert(j, f"{indent}if ({param} <= 1) return 1;\n")
+                    return _join(lines)
+
+    return None
+
+
+def fix_vector_oob(source: str, error: dict) -> Optional[str]:
+    """
+    Clamp out-of-bounds vector index to valid range.
+    """
+    lines = _lines(source)
+    line_no = error.get("line")
+    msg = error.get("message", "")
+
+    m = re.search(r"Vector\s+'([A-Za-z_]\w*)'\s+has\s+(\d+)\s+elements.*index\s+(\d+)", msg)
+    if m:
+        max_valid = int(m.group(2)) - 1
+        bad_idx = m.group(3)
+        if line_no:
+            idx = int(line_no) - 1
+            if 0 <= idx < len(lines):
+                line = lines[idx]
+                fixed = line.replace(f"[{bad_idx}]", f"[{max_valid}]").replace(f"at({bad_idx})", f"at({max_valid})")
+                if fixed != line:
+                    lines[idx] = fixed
+                    return _join(lines)
+
+    if line_no:
+        idx = int(line_no) - 1
+        if 0 <= idx < len(lines):
+            line = lines[idx]
+            fixed = re.sub(r"\[\s*\d+\s*\]", "[0]", line, count=1)
+            fixed = re.sub(r"\.at\(\s*\d+\s*\)", ".at(0)", fixed, count=1)
+            if fixed != line:
+                lines[idx] = fixed
+                return _join(lines)
+
+    return None
+
+
+def fix_format_string(source: str, error: dict) -> Optional[str]:
+    """
+    Replace printf(buf) with printf("%s", buf).
+    """
+    lines = _lines(source)
+    line_no = error.get("line")
+    if line_no:
+        idx = int(line_no) - 1
+        if 0 <= idx < len(lines):
+            line = lines[idx]
+            m = re.search(r'printf\s*\(\s*([A-Za-z_]\w*)\s*\)\s*;', line)
+            if m:
+                var = m.group(1)
+                indent = re.match(r"^(\s*)", line).group(1)
+                lines[idx] = f'{indent}printf("%s", {var});\n'
+                return _join(lines)
+
+    for i, line in enumerate(lines):
+        m = re.search(r'printf\s*\(\s*([A-Za-z_]\w*)\s*\)\s*;', line)
+        if m:
+            var = m.group(1)
+            indent = re.match(r"^(\s*)", line).group(1)
+            lines[i] = f'{indent}printf("%s", {var});\n'
+            return _join(lines)
+
+    return None
 
 
 def fix_stream_operator(source: str, error: dict) -> Optional[str]:
@@ -1414,6 +1626,7 @@ _HANDLERS = {
     "missing_include":  fix_missing_include,
     "missing_closing_brace": fix_missing_closing_braces,
     "uninitialized_memory": fix_uninitialized_variable,
+    "uninitialized_variable": fix_uninitialized_variable,
     "syntax_error":     fix_syntax_error,
     "name_resolution":  fix_name_resolution,
     "undeclared_variable": fix_undeclared_variable,
@@ -1421,6 +1634,7 @@ _HANDLERS = {
     "return_type_error": fix_return_type_error,
     "redefinition":     fix_redefinition,
     "integer_overflow": fix_integer_overflow,
+    "integer_underflow": fix_integer_overflow,
     "division_by_zero": fix_division_by_zero,
     "stream_operator":  fix_stream_operator,
     "unused_variable":  fix_unused_variable,
@@ -1429,6 +1643,16 @@ _HANDLERS = {
     "security":         fix_security_error,
     "security_error":   fix_security_error,
     "security_violation": fix_security_error,
+    "buffer_overflow":  fix_buffer_overflow,
+    "potential_memory_leak": fix_memory_leak,
+    "memory_leak":      fix_memory_leak,
+    "use_after_free":   fix_use_after_free,
+    "null_pointer_dereference": fix_null_dereference,
+    "null_dereference": fix_null_dereference,
+    "infinite_recursion": fix_infinite_recursion,
+    "vector_out_of_bounds": fix_vector_oob,
+    "format_string_vulnerability": fix_format_string,
+    "format_string":    fix_format_string,
 }
 
 # Categories where we skip directly to user guidance (no point retrying)
@@ -1475,14 +1699,55 @@ def attempt_fix(source: str, error: dict) -> Optional[str]:
         if patched is not None and patched != source:
             return patched
 
+    if "underflow" in msg or "overflow" in msg or _is_integer_overflow_error(msg):
+        patched = fix_integer_overflow(source, error)
+        if patched is not None and patched != source:
+            return patched
+
+    if "division" in msg or "divisor" in msg or _is_division_by_zero_error(msg):
+        patched = fix_division_by_zero(source, error)
+        if patched is not None and patched != source:
+            return patched
+
+    if "gets" in msg or "buffer overflow" in msg:
+        patched = fix_buffer_overflow(source, error)
+        if patched is not None and patched != source:
+            return patched
+
+    if "memory leak" in msg or "malloc" in msg:
+        patched = fix_memory_leak(source, error)
+        if patched is not None and patched != source:
+            return patched
+
+    if "use after free" in msg or "freed" in msg:
+        patched = fix_use_after_free(source, error)
+        if patched is not None and patched != source:
+            return patched
+
+    if "null" in msg or "nullptr" in msg:
+        patched = fix_null_dereference(source, error)
+        if patched is not None and patched != source:
+            return patched
+
+    if "recursion" in msg or "base case" in msg:
+        patched = fix_infinite_recursion(source, error)
+        if patched is not None and patched != source:
+            return patched
+
+    if "vector" in msg or "bounds" in msg:
+        patched = fix_vector_oob(source, error)
+        if patched is not None and patched != source:
+            return patched
+
+    if "format string" in msg or "printf" in msg:
+        patched = fix_format_string(source, error)
+        if patched is not None and patched != source:
+            return patched
+
     if _is_stream_operator_error(msg):
         return fix_stream_operator(source, error)
     if _is_unused_variable_error(msg):
         return fix_unused_variable(source, error)
-    if _is_integer_overflow_error(msg):
-        return fix_integer_overflow(source, error)
-    if _is_division_by_zero_error(msg):
-        return fix_division_by_zero(source, error)
     if _is_undeclared_identifier_error(msg):
         return fix_name_resolution(source, error)
     if _UNINIT_MESSAGE_RE.search(msg):

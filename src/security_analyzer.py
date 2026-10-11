@@ -263,17 +263,26 @@ def _string_literal_value(text: str) -> Optional[str]:
     return match.group(1)
 
 
-def _diagnostic_findings(error: CompilerError) -> list[SecurityFinding]:
-    message = (error.message or "").lower()
+def _diagnostic_findings(error) -> list[SecurityFinding]:
+    if isinstance(error, dict):
+        message = (error.get("message") or "").lower()
+        err_file = error.get("file") or ""
+        err_line = error.get("line")
+        err_col = error.get("column")
+    else:
+        message = (getattr(error, "message", "") or "").lower()
+        err_file = getattr(error, "file", "") or ""
+        err_line = getattr(error, "line", None)
+        err_col = getattr(error, "column", None)
     findings: list[SecurityFinding] = []
 
     for pattern, severity, vuln_type, description, recommendation in _DIAGNOSTIC_RULES:
         if pattern.search(message):
             findings.append(
                 _make_finding(
-                    error.file or "",
-                    error.line,
-                    error.column,
+                    err_file,
+                    err_line,
+                    err_col,
                     severity,  # type: ignore[arg-type]
                     vuln_type,
                     description,
@@ -317,6 +326,7 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
         re.search(r"#\s*(?:if|ifdef|ifndef)\s+.*NDEBUG", line, re.IGNORECASE)
         for line in lines
     )
+    full_source = "".join(lines)
 
     def current_scope() -> dict[str, object]:
         return scope_stack[-1]
@@ -349,6 +359,16 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
             )
         )
 
+    max_int_vars: set[str] = set()
+    unsigned_zero_vars: set[str] = set()
+    zero_divisors: set[str] = set()
+    uninit_vars: dict[str, int] = {}
+    null_ptrs: dict[str, int] = {}
+    vector_sizes: dict[str, int] = {}
+    current_fn: str | None = None
+    fn_has_base_case = False
+    fn_recursive_lines: list[int] = []
+
     for line_no, raw_line in enumerate(lines, start=1):
         code_line = _strip_code(raw_line, state).strip()
         raw_lower = raw_line.lower()
@@ -358,6 +378,154 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
         if sensitive_here:
             recent_sensitive_lines.append(line_no)
             recent_sensitive_lines = recent_sensitive_lines[-3:]
+
+        # ── 1. Infinite Recursion ─────────────────────────────────────────────
+        fn_start = re.search(r"^\s*(?:int|void|bool|double|float|long|auto)\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*\{", code_line)
+        if fn_start:
+            current_fn = fn_start.group(1)
+            fn_has_base_case = False
+            fn_recursive_lines = []
+
+        if current_fn:
+            if re.search(r"\bif\s*\(", code_line) or (re.search(r"\breturn\b", code_line) and not re.search(rf"\b{re.escape(current_fn)}\s*\(", code_line)):
+                fn_has_base_case = True
+            if re.search(rf"\b{re.escape(current_fn)}\s*\(", code_line) and not fn_start:
+                fn_recursive_lines.append(line_no)
+
+        if code_line == "}" and current_fn:
+            if fn_recursive_lines and not fn_has_base_case:
+                for r_line in fn_recursive_lines:
+                    emit(
+                        r_line,
+                        "Infinite Recursion",
+                        "Critical",
+                        f"Function '{current_fn}' calls itself recursively without a terminating base case.",
+                        f"Add a base case check (e.g. 'if (n <= 1) return 1;') before the recursive call.",
+                    )
+            current_fn = None
+            fn_has_base_case = False
+            fn_recursive_lines = []
+
+        # ── 2. Integer Overflow / Underflow ───────────────────────────────────
+        int_max_init = re.search(r"\b(?<!long\s)(?:int|short)\s+([A-Za-z_]\w*)\s*=\s*(?:INT_MAX|2147483647)\b", code_line)
+        if int_max_init and int_max_init.group(1) != "long":
+            max_int_vars.add(int_max_init.group(1))
+
+        for v in list(max_int_vars):
+            if re.search(rf"\b{re.escape(v)}\s*(?:\+\+|\+=|\+)|(?:\+\+|\+)\s*{re.escape(v)}\b", code_line) and not int_max_init:
+                emit(
+                    line_no,
+                    "Integer Overflow",
+                    "High",
+                    f"Variable '{v}' initialized near maximum capacity is incremented, leading to integer overflow.",
+                    f"Use a wider integer type such as 'long long' for '{v}' or validate bounds before arithmetic.",
+                )
+
+        u_zero_init = re.search(r"\bunsigned\s+(?:int\s+)?([A-Za-z_]\w*)\s*=\s*0\b", code_line)
+        if u_zero_init:
+            unsigned_zero_vars.add(u_zero_init.group(1))
+
+        for u in list(unsigned_zero_vars):
+            if re.search(rf"\b{re.escape(u)}\s*(?:--|-=|-)|(?:--|-)\s*{re.escape(u)}\b", code_line) and not u_zero_init:
+                if not (re.search(rf"\b{re.escape(u)}\s*>\s*0\b", code_line) or re.search(rf"if\s*\(\s*{re.escape(u)}\s*>\s*0", full_source)):
+                    emit(
+                        line_no,
+                        "Integer Underflow",
+                        "High",
+                        f"Unsigned variable '{u}' initialized to 0 is decremented, causing underflow wrapping to UINT_MAX.",
+                        f"Validate that '{u} > 0' before decrementing an unsigned integer.",
+                    )
+
+        # ── 3. Division by Zero ───────────────────────────────────────────────
+        z_init = re.search(r"\b(?:int|double|float)\s+([A-Za-z_]\w*)\s*=\s*0\b", code_line)
+        if z_init:
+            zero_divisors.add(z_init.group(1))
+
+        if re.search(r"/\s*0\b", code_line):
+            emit(
+                line_no,
+                "Division by Zero",
+                "High",
+                "Literal division by zero results in undefined behavior or immediate hardware crash.",
+                "Ensure divisor is non-zero before division.",
+            )
+
+        for zd in list(zero_divisors):
+            if re.search(rf"/\s*{re.escape(zd)}\b", code_line) and not z_init:
+                if not (
+                    re.search(rf"{re.escape(zd)}\s*!=\s*0", code_line)
+                    or re.search(rf"if\s*\(\s*{re.escape(zd)}\s*==\s*0\s*\)\s*{re.escape(zd)}\s*=", full_source)
+                    or re.search(rf"if\s*\(\s*{re.escape(zd)}\s*!=\s*0", full_source)
+                ):
+                    emit(
+                        line_no,
+                        "Division by Zero",
+                        "High",
+                        f"Division by variable '{zd}' whose value is 0 causes runtime crash.",
+                        f"Check 'if ({zd} != 0)' before division.",
+                    )
+
+        # ── 4. Uninitialized Variables ────────────────────────────────────────
+        uninit_match = re.search(r"^\s*(?:int|float|double|char|long)\s+([A-Za-z_]\w*)\s*;\s*$", code_line)
+        if uninit_match:
+            u_name = uninit_match.group(1)
+            if u_name not in ("main", "return"):
+                uninit_vars[u_name] = line_no
+
+        for uv, u_decl in list(uninit_vars.items()):
+            if line_no > u_decl and re.search(rf"\b{re.escape(uv)}\b", code_line):
+                if (
+                    re.search(rf"^\s*{re.escape(uv)}\s*=", code_line)
+                    or re.search(rf"cin\s*>>.*?\b{re.escape(uv)}\b", code_line)
+                    or re.search(rf"scanf\s*\(.*&{re.escape(uv)}\b", code_line)
+                    or re.search(rf"getline\s*\([^,]+,\s*{re.escape(uv)}\b", code_line)
+                ):
+                    del uninit_vars[uv]
+                else:
+                    emit(
+                        line_no,
+                        "Uninitialized Variable",
+                        "High",
+                        f"Variable '{uv}' declared at line {u_decl} is used before initialization.",
+                        f"Initialize '{uv} = 0;' at declaration.",
+                    )
+                    del uninit_vars[uv]
+
+        # ── 5. Null Pointer Dereference ───────────────────────────────────────
+        null_match = re.search(r"\b(?:int|char|void|double|float)\s*\*\s*([A-Za-z_]\w*)\s*=\s*(?:nullptr|NULL|0)\s*;", code_line)
+        if null_match:
+            null_ptrs[null_match.group(1)] = line_no
+
+        for np, n_decl in list(null_ptrs.items()):
+            if line_no > n_decl and re.search(rf"\*\s*{re.escape(np)}\b|{re.escape(np)}\s*->", code_line):
+                emit(
+                    line_no,
+                    "Null Pointer Dereference",
+                    "Critical",
+                    f"Pointer '{np}' initialized to nullptr at line {n_decl} is dereferenced.",
+                    f"Allocate memory or check 'if ({np} != nullptr)' before dereferencing.",
+                )
+                del null_ptrs[np]
+
+        # ── 6. Vector Out of Bounds ───────────────────────────────────────────
+        vec_init = re.search(r"\bvector\s*<[^>]+>\s*([A-Za-z_]\w*)\s*=\s*\{([^}]+)\}", code_line)
+        if vec_init:
+            v_name = vec_init.group(1)
+            v_count = len([x for x in vec_init.group(2).split(",") if x.strip()])
+            vector_sizes[v_name] = v_count
+
+        for vn, vs in list(vector_sizes.items()):
+            v_idx = re.search(rf"\b{re.escape(vn)}\s*(?:\[|\.at\()\s*(\d+)\s*(?:\]|\))", code_line)
+            if v_idx:
+                accessed_idx = int(v_idx.group(1))
+                if accessed_idx >= vs:
+                    emit(
+                        line_no,
+                        "Vector Out of Bounds",
+                        "High",
+                        f"Vector '{vn}' has {vs} elements (indices 0..{vs-1}), but is accessed at out-of-bounds index {accessed_idx}.",
+                        f"Ensure index is within bounds: 'if ({accessed_idx} < {vn}.size())'.",
+                    )
 
         if re.search(r"\bgets\s*\(", code_line):
             emit(
@@ -455,7 +623,7 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
 
         if re.search(r"\b(?:[A-Za-z_]\w*\s*[\+\-\*/]\s*[A-Za-z_0-9()]+)\b", code_line) and (
             "INT_MAX" in code_line or "SIZE_MAX" in code_line or "sizeof" in code_line or re.search(r"\b(?:alloc|size|len|count|capacity)\b", code_line)
-        ):
+        ) and not (re.search(r">\s*0\b", code_line) or re.search(r"!=\s*0\b", code_line) or "sizeof" in code_line):
             emit(
                 line_no,
                 "Integer Overflow",

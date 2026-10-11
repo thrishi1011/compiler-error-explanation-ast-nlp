@@ -2,7 +2,7 @@
 using namespace std;
 
 int addnum(int a, int b) {
-    a + b;
+         a + b;
 }
 
 int main() {

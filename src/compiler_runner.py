@@ -57,17 +57,20 @@ def run_cpp_compiler(file_path, permissions=None):
         )
 
         errors=[]
-        pattern=r"(.+):(\d+):(\d+):\s+(error|warning):\s+(.*)"
+        pattern=r"^(.+?):(\d+):(\d+):\s*(fatal error|error|warning):\s*(.*)$"
 
         for line in res.stderr.splitlines():
-            match=re.match(pattern, line)
+            match=re.match(pattern, line.strip())
             if match:
+                etype = match.group(4).strip()
+                if etype == "fatal error":
+                    etype = "error"
                 errors.append({
                     "file": match.group(1),
                     "line": int(match.group(2)),
                     "column": int(match.group(3)),
-                    "type": match.group(4),
-                    "message": match.group(5),
+                    "type": etype,
+                    "message": match.group(5).strip(),
                     "raw": line
                 })
         return errors
