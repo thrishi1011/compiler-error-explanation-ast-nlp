@@ -92,6 +92,10 @@ except ImportError:
 
 from ast_extractor import extract_ast, extract_node_near_line, parse_ast_to_tree
 from security_analyzer import analyze as analyze_security, format_security_report
+from energy_monitor import (
+    get_energy_monitor, ActionRecord,
+    CPU_TDP_W, RAM_W, GRID_INTENSITY_G_PER_KWH, HAS_PSUTIL
+)
 
 import theme
 from ui_components import (
@@ -355,12 +359,12 @@ class SparklineGraph(QWidget):
     def update_fluctuation(self):
         if HAS_PSUTIL:
             try:
+                import psutil
                 self.add_value(psutil.cpu_percent())
                 return
             except Exception:
                 pass
-        import random
-        self.add_value(random.uniform(0.5, 3.5))
+        self.add_value(0.0)
 
     def add_value(self, val):
         self.values.pop(0)
@@ -368,8 +372,7 @@ class SparklineGraph(QWidget):
         self.update()
 
     def trigger_spike(self):
-        import random
-        self.add_value(random.uniform(20.0, 35.0))
+        self.add_value(15.0)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -411,24 +414,20 @@ class SparklineGraph(QWidget):
         painter.fillPath(fill_path, grad)
 
 
-class MetricsGraph(QWidget):
+class PowerLineChart(QWidget):
+    """
+    Real-time line chart showing estimated Power in mW over the last 2 minutes (~120s).
+    Drawn with QPainter, theme-aware, properly scaled with labeled axes.
+    Never pins flat lines to the top.
+    """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumHeight(220)
-        self.series = {"Power mW": [], "Carbon mg/Wh": [], "Time s": []}
+        self.setMinimumHeight(210)
+        self.samples = []  # (timestamp_str, power_mw, energy_mwh, co2_mg, action_label)
         theme.on_change(lambda m, t: self.update())
 
-    def add_sample(self, power_mw, carbon_mg_per_wh, execution_time):
-        values = {
-            "Power mW": power_mw,
-            "Carbon mg/Wh": carbon_mg_per_wh,
-            "Time s": execution_time,
-        }
-        for name, value in values.items():
-            data = self.series[name]
-            data.append(max(0.0, float(value or 0.0)))
-            if len(data) > 80:
-                data.pop(0)
+    def set_samples(self, samples):
+        self.samples = list(samples)
         self.update()
 
     def paintEvent(self, event):
@@ -436,51 +435,176 @@ class MetricsGraph(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), theme.qcolor("surface"))
 
-        colors = {
-            "Power mW": theme.qcolor("accent"),
-            "Carbon mg/Wh": theme.qcolor("ok"),
-            "Time s": theme.qcolor("warn"),
-        }
-
-        left, top, right, bottom = 52, 20, 18, 42
-        width = max(1, self.width() - left - right)
-        height = max(1, self.height() - top - bottom)
-        graph_rect = QRect(left, top, width, height)
+        w, h = self.width(), self.height()
+        left, top, right, bottom = 72, 22, 24, 32
+        pw = max(10, w - left - right)
+        ph = max(10, h - top - bottom)
+        plot_rect = QRect(left, top, pw, ph)
 
         painter.setPen(QPen(theme.qcolor("border"), 1))
-        painter.drawRect(graph_rect)
-        for i in range(1, 4):
-            y = top + int(height * i / 4)
-            painter.drawLine(left, y, left + width, y)
+        painter.drawRect(plot_rect)
+
+        # Subtle dashed grid lines
+        grid_pen = QPen(theme.qcolor("border"), 1, Qt.PenStyle.DashLine)
+        painter.setPen(grid_pen)
+        painter.drawLine(left, top + ph // 2, left + pw, top + ph // 2)
+
+        if not self.samples:
+            painter.setFont(theme.ui_font(11))
+            painter.setPen(theme.qcolor("muted"))
+            empty_msg = "Install psutil to enable energy estimates" if not HAS_PSUTIL else "No power data yet (sampling in progress...)"
+            painter.drawText(plot_rect, Qt.AlignmentFlag.AlignCenter, empty_msg)
+            return
+
+        vals = [s[1] for s in self.samples]
+        min_v = min(vals)
+        max_v = max(vals)
 
         painter.setFont(theme.ui_font(10))
         painter.setPen(theme.qcolor("muted"))
-        painter.drawText(8, top + 8, "High")
-        painter.drawText(12, top + height, "Low")
 
-        legend_x = left
-        for name, col in colors.items():
-            painter.setPen(QPen(col, 2))
-            painter.drawLine(legend_x, self.height() - 18, legend_x + 20, self.height() - 18)
+        # Time X-axis labels
+        painter.drawText(left, top + ph + 18, "-120s")
+        painter.drawText(left + pw // 2 - 14, top + ph + 18, "-60s")
+        painter.drawText(left + pw - 50, top + ph + 18, "0s (Now)")
+
+        # Constant data case: flat mid-line, never pinned to top
+        if abs(max_v - min_v) < 1e-4:
+            y_mid = top + ph // 2
+            painter.setPen(QPen(theme.qcolor("accent"), 2.0))
+            painter.drawLine(left, y_mid, left + pw, y_mid)
+
             painter.setPen(theme.qcolor("muted"))
-            painter.drawText(legend_x + 26, self.height() - 14, name)
-            legend_x += 140
+            painter.drawText(8, y_mid + 4, f"{min_v:.0f} mW")
+            return
 
-        for name, data in self.series.items():
-            if len(data) < 2:
-                continue
-            max_value = max(max(data), 1e-9)
-            step = width / max(1, len(data) - 1)
-            path = QPainterPath()
-            for i, val in enumerate(data):
-                x = left + i * step
-                y = top + height - ((val / max_value) * height)
-                if i == 0:
-                    path.moveTo(x, y)
-                else:
-                    path.lineTo(x, y)
-            painter.setPen(QPen(colors[name], 2))
-            painter.drawPath(path)
+        # Variable data: scale with 10% headroom
+        span = max_v - min_v
+        y_min = max(0.0, min_v - 0.1 * span)
+        y_max = max_v + 0.1 * span
+        y_span = max(1e-6, y_max - y_min)
+
+        # Y-axis labels with units
+        painter.setPen(theme.qcolor("muted"))
+        painter.drawText(8, top + 10, f"{max_v:.0f} mW")
+        painter.drawText(8, top + ph // 2 + 4, f"{(min_v + max_v) / 2:.0f} mW")
+        painter.drawText(8, top + ph, f"{min_v:.0f} mW")
+
+        # Build path
+        step = pw / max(1, len(vals) - 1)
+        path = QPainterPath()
+        for i, v in enumerate(vals):
+            x = left + i * step
+            norm = (v - y_min) / y_span
+            y = top + ph - (norm * ph)
+            if i == 0:
+                path.moveTo(x, y)
+            else:
+                path.lineTo(x, y)
+
+        # Gradient fill under line
+        fill_path = QPainterPath(path)
+        fill_path.lineTo(left + (len(vals) - 1) * step, top + ph)
+        fill_path.lineTo(left, top + ph)
+        fill_path.closeSubpath()
+
+        acc_col = theme.qcolor("accent")
+        c_top = QColor(acc_col.red(), acc_col.green(), acc_col.blue(), 45)
+        c_bot = QColor(acc_col.red(), acc_col.green(), acc_col.blue(), 0)
+        grad = QLinearGradient(0, top, 0, top + ph)
+        grad.setColorAt(0, c_top)
+        grad.setColorAt(1, c_bot)
+        painter.fillPath(fill_path, grad)
+
+        # Line stroke
+        painter.setPen(QPen(theme.qcolor("accent"), 2.0))
+        painter.drawPath(path)
+
+
+class ActionEnergyBarChart(QWidget):
+    """
+    Bar chart showing energy per action in mWh for the last 10 actions
+    (Compile, Run, Auto-Heal). Theme-aware with separate Y-axis.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(210)
+        self.actions = []  # list of ActionRecord
+        theme.on_change(lambda m, t: self.update())
+
+    def set_actions(self, actions):
+        self.actions = list(actions)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), theme.qcolor("surface"))
+
+        w, h = self.width(), self.height()
+        left, top, right, bottom = 68, 22, 24, 38
+        pw = max(10, w - left - right)
+        ph = max(10, h - top - bottom)
+        plot_rect = QRect(left, top, pw, ph)
+
+        painter.setPen(QPen(theme.qcolor("border"), 1))
+        painter.drawRect(plot_rect)
+
+        grid_pen = QPen(theme.qcolor("border"), 1, Qt.PenStyle.DashLine)
+        painter.setPen(grid_pen)
+        painter.drawLine(left, top + ph // 2, left + pw, top + ph // 2)
+
+        if not self.actions:
+            painter.setFont(theme.ui_font(11))
+            painter.setPen(theme.qcolor("muted"))
+            painter.drawText(plot_rect, Qt.AlignmentFlag.AlignCenter, "No actions recorded yet. Run Compile, Run, or Auto-Heal.")
+            return
+
+        max_e = max(max(a.energy_mwh for a in self.actions), 0.05)
+        max_y = max_e * 1.15
+
+        painter.setFont(theme.ui_font(10))
+        painter.setPen(theme.qcolor("muted"))
+        painter.drawText(6, top + 10, f"{max_e:.2f} mWh")
+        painter.drawText(6, top + ph // 2 + 4, f"{max_e / 2:.2f} mWh")
+        painter.drawText(6, top + ph, "0.00 mWh")
+
+        n = len(self.actions)
+        slot_w = pw / max(1, n)
+        bar_w = max(10, min(42, slot_w * 0.60))
+
+        color_map = {
+            "Compile": theme.qcolor("accent"),
+            "Run": theme.qcolor("ok"),
+            "Auto-Heal": theme.qcolor("warn"),
+        }
+
+        for i, act in enumerate(self.actions):
+            cx = left + i * slot_w + slot_w / 2
+            bx = cx - bar_w / 2
+            norm = min(1.0, max(0.0, act.energy_mwh / max_y))
+            bh = max(3.0, norm * ph)
+            by = top + ph - bh
+
+            col = color_map.get(act.label, theme.qcolor("info"))
+            painter.setPen(QPen(col, 1))
+            painter.setBrush(col)
+            painter.drawRoundedRect(QRect(int(bx), int(by), int(bar_w), int(bh)), 3, 3)
+
+            # Value text above bar
+            painter.setFont(theme.ui_font(9))
+            painter.setPen(theme.qcolor("text"))
+            val_txt = f"{act.energy_mwh:.2f}"
+            painter.drawText(int(cx - 24), int(by - 5), 48, 14, Qt.AlignmentFlag.AlignCenter, val_txt)
+
+            # Action label and duration below bar
+            painter.setFont(theme.ui_font(9))
+            painter.setPen(theme.qcolor("muted"))
+            lbl_txt = f"{act.label}\n{act.seconds:.1f}s"
+            painter.drawText(int(cx - 30), top + ph + 4, 60, 30, Qt.AlignmentFlag.AlignHCenter, lbl_txt)
+
+
+MetricsGraph = PowerLineChart
 
 
 class GraphNode(QGraphicsRectItem):
@@ -1311,55 +1435,345 @@ class ASTPage(CustomFrame):
                 self._populate(n["children"], item)
 
 
-class EnergyPage(CustomFrame):
+class ThisFileConfidenceChart(QWidget):
+    """
+    Horizontal bar chart displaying per-error ML confidence and regex score
+    for every diagnostic in the current file. Rows are colored by classifier agreement.
+    """
     def __init__(self, parent=None):
-        super().__init__("CODECARBON INDEX :: ENERGY TELEMETRY", left_padding=True)
+        super().__init__(parent)
+        self.setMinimumHeight(130)
+        self.rows = []
+        theme.on_change(lambda m, t: self.update())
 
-        self.desc = QLabel("Real-time power usage, carbon emissions, execution duration, and Linux RAPL readings.")
-        self.desc.setObjectName("Muted")
-        self.content_layout.addWidget(self.desc)
+    def set_diagnostics(self, diagnostics, metrics_data=None):
+        self.rows = []
+        if not diagnostics:
+            self.setMinimumHeight(130)
+            self.update()
+            return
 
-        self.metric_row = QWidget()
-        metric_layout = QHBoxLayout(self.metric_row)
-        metric_layout.setContentsMargins(0, 0, 0, 0)
-        metric_layout.setSpacing(12)
+        from second_opinion import get_second_opinion
+        per_class_ml = (metrics_data or {}).get("ml_only", {}).get("per_class", {})
 
-        self.power_card, self.power_title, self.power_value = self._create_card("POWER USAGE", "0.000 mW")
-        self.carbon_card, self.carbon_title, self.carbon_value = self._create_card("CARBON INTENSITY", "0.000 mgCO2/Wh")
-        self.time_card, self.time_title, self.time_value = self._create_card("EXECUTION TIME", "0.000 s")
-        self.rapl_card, self.rapl_title, self.rapl_value = self._create_card("RAPL STATUS", "Unavailable")
+        for d in diagnostics:
+            line_no = d.get("line", 1)
+            msg = d.get("message", "")
+            ast_node = d.get("ast_node", "")
+            try:
+                op = get_second_opinion(msg, ast_node)
+                cat = op.final_category or "other"
+                ml_score = float(op.ml_score)
+                regex_score = float(op.regex_score)
+                agreed = bool(op.agreed)
+            except Exception:
+                cat = d.get("category", "other")
+                ml_score = 0.5
+                regex_score = 0.5
+                agreed = True
 
-        for c in [self.power_card, self.carbon_card, self.time_card, self.rapl_card]:
-            metric_layout.addWidget(c)
-        self.content_layout.addWidget(self.metric_row)
+            cat_prec = per_class_ml.get(cat, {}).get("precision", 1.0)
+            self.rows.append({
+                "line": line_no,
+                "message": msg,
+                "cat": cat,
+                "ml_score": ml_score,
+                "regex_score": regex_score,
+                "agreed": agreed,
+                "cat_precision": cat_prec,
+            })
 
-        self.graph = MetricsGraph()
-        self.content_layout.addWidget(self.graph, 1)
+        self.setMinimumHeight(max(140, len(self.rows) * 52 + 24))
+        self.update()
 
-        self.notes = QTextBrowser()
-        self.notes.setObjectName("Console")
-        self.notes.setFont(theme.mono_font(12))
-        self.notes.setMaximumHeight(110)
-        self.content_layout.addWidget(self.notes)
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), theme.qcolor("surface"))
 
-        self.btn_download_csv = QPushButton("📥 Download CSV Report")
-        self.btn_download_csv.setProperty("variant", "ghost")
-        self.btn_download_csv.clicked.connect(self._download_csv)
-        self.content_layout.addWidget(self.btn_download_csv, 0, Qt.AlignmentFlag.AlignRight)
+        w, h = self.width(), self.height()
+        if not self.rows:
+            painter.setFont(theme.ui_font(12))
+            painter.setPen(theme.qcolor("muted"))
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
+                             "Compile a file to see how sure the model is about each error.")
+            return
 
-        self.update_metrics(0, 0, 0, "Unavailable", "CodeCarbon has not produced a sample yet.")
+        row_h = 50
+        y_cursor = 10
+        left_margin = 14
+        label_col_w = min(260, int(w * 0.30))
+        bar_col_w = min(220, int(w * 0.28))
+        right_start = left_margin + label_col_w + bar_col_w + 14
 
-        self.csv_path = "emissions.csv"
-        self.poll_timer = QTimer(self)
-        self.poll_timer.setInterval(1000)
-        self.poll_timer.timeout.connect(self._poll_csv)
-        self.poll_timer.start()
+        for r in self.rows:
+            # 1. Error location and shortened message
+            short_msg = r["message"]
+            if len(short_msg) > 34:
+                short_msg = short_msg[:32] + ".."
+            lbl = f"Line {r['line']} | {short_msg}"
+
+            painter.setFont(theme.ui_font(11, bold=True))
+            painter.setPen(theme.qcolor("text"))
+            painter.drawText(left_margin, y_cursor + 4, label_col_w - 8, 38,
+                             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, lbl)
+
+            # 2. Horizontal Bars
+            bar_x = left_margin + label_col_w
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(theme.qcolor("surface_alt"))
+            painter.drawRoundedRect(QRect(bar_x, y_cursor + 8, bar_col_w, 14), 3, 3)
+            painter.drawRoundedRect(QRect(bar_x, y_cursor + 25, bar_col_w, 6), 2, 2)
+
+            bar_col = theme.qcolor("ok") if r["agreed"] else theme.qcolor("warn")
+
+            # ML Confidence Bar
+            ml_w = max(2, int(bar_col_w * min(1.0, max(0.0, r["ml_score"]))))
+            painter.setBrush(bar_col)
+            painter.drawRoundedRect(QRect(bar_x, y_cursor + 8, ml_w, 14), 3, 3)
+
+            # Regex Score Bar
+            reg_w = max(2, int(bar_col_w * min(1.0, max(0.0, r["regex_score"]))))
+            reg_col = QColor(bar_col.red(), bar_col.green(), bar_col.blue(), 170)
+            painter.setBrush(reg_col)
+            painter.drawRoundedRect(QRect(bar_x, y_cursor + 25, reg_w, 6), 2, 2)
+
+            # 3. Right detail text:
+            # predicted return_type_error, ML confidence 98 %, category precision 100 % (test)
+            ml_pct = int(round(r["ml_score"] * 100))
+            prec_pct = int(round(r["cat_precision"] * 100))
+            detail_txt = f"predicted {r['cat']}, ML confidence {ml_pct} %, category precision {prec_pct} % (test)"
+
+            painter.setFont(theme.ui_font(10))
+            painter.setPen(theme.qcolor("muted"))
+            avail_w = max(50, w - right_start - 12)
+            painter.drawText(right_start, y_cursor + 4, avail_w, 38,
+                             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, detail_txt)
+
+            y_cursor += row_h
+
+
+class ModelQualityBarChart(QWidget):
+    """
+    Grouped bar chart showing per-category Precision and Recall with an F1 marker,
+    evaluated on held-out test data.
+    """
+    CATEGORIES = [
+        "syntax_error", "name_resolution", "missing_include",
+        "type_error", "return_type_error", "redefinition",
+        "access_error", "linker_error", "other"
+    ]
+    SHORT_LABELS = [
+        "Syntax", "Name Res", "Include",
+        "Type", "Return Type", "Redef",
+        "Access", "Linker", "Other"
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(240)
+        self.metrics_data = {}
+        self.variant = "ml_only"
+        theme.on_change(lambda m, t: self.update())
+
+    def set_data(self, metrics_data, variant="ml_only"):
+        self.metrics_data = metrics_data or {}
+        self.variant = variant
+        self.update()
+
+    def set_variant(self, variant):
+        self.variant = variant
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), theme.qcolor("surface"))
+
+        w, h = self.width(), self.height()
+        left, top, right, bottom = 52, 34, 24, 38
+        pw = max(10, w - left - right)
+        ph = max(10, h - top - bottom)
+        plot_rect = QRect(left, top, pw, ph)
+
+        painter.setPen(QPen(theme.qcolor("border"), 1))
+        painter.drawRect(plot_rect)
+
+        # 4 Horizontal grid lines at 25%, 50%, 75%
+        grid_pen = QPen(theme.qcolor("border"), 1, Qt.PenStyle.DashLine)
+        painter.setPen(grid_pen)
+        for pct in [0.25, 0.50, 0.75]:
+            gy = top + int(ph * (1.0 - pct))
+            painter.drawLine(left, gy, left + pw, gy)
+
+        # Y-axis labels
+        painter.setFont(theme.ui_font(10))
+        painter.setPen(theme.qcolor("muted"))
+        painter.drawText(8, top + 8, "100%")
+        painter.drawText(8, top + int(ph * 0.5) + 4, " 50%")
+        painter.drawText(8, top + ph, "  0%")
+
+        # Legend at top right
+        legend_x = max(left + 20, left + pw - 250)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(theme.qcolor("accent"))
+        painter.drawRect(legend_x, top - 20, 10, 10)
+        painter.setPen(theme.qcolor("muted"))
+        painter.drawText(legend_x + 14, top - 11, "Precision")
+
+        painter.setBrush(theme.qcolor("ok"))
+        painter.drawRect(legend_x + 80, top - 20, 10, 10)
+        painter.setPen(theme.qcolor("muted"))
+        painter.drawText(legend_x + 94, top - 11, "Recall")
+
+        painter.setBrush(theme.qcolor("warn"))
+        painter.drawEllipse(legend_x + 145, top - 20, 10, 10)
+        painter.setPen(theme.qcolor("muted"))
+        painter.drawText(legend_x + 159, top - 11, "F1 Marker")
+
+        per_class = self.metrics_data.get(self.variant, {}).get("per_class", {})
+        if not per_class:
+            painter.setFont(theme.ui_font(11))
+            painter.setPen(theme.qcolor("muted"))
+            painter.drawText(plot_rect, Qt.AlignmentFlag.AlignCenter, "Run python tools/eval_model_metrics.py to generate model metrics")
+            return
+
+        n_cats = len(self.CATEGORIES)
+        slot_w = pw / max(1, n_cats)
+        bar_w = max(6, min(20, slot_w * 0.32))
+
+        for i, (cat, short_name) in enumerate(zip(self.CATEGORIES, self.SHORT_LABELS)):
+            cx = left + i * slot_w + slot_w / 2
+            data = per_class.get(cat, {"precision": 0.0, "recall": 0.0, "f1": 0.0})
+            prec = float(data.get("precision", 0.0))
+            rec = float(data.get("recall", 0.0))
+            f1 = float(data.get("f1", 0.0))
+
+            # Precision bar (left of center)
+            bx1 = cx - bar_w - 1
+            bh1 = max(1.0, prec * ph)
+            by1 = top + ph - bh1
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(theme.qcolor("accent"))
+            painter.drawRoundedRect(QRect(int(bx1), int(by1), int(bar_w), int(bh1)), 2, 2)
+
+            # Recall bar (right of center)
+            bx2 = cx + 1
+            bh2 = max(1.0, rec * ph)
+            by2 = top + ph - bh2
+            painter.setBrush(theme.qcolor("ok"))
+            painter.drawRoundedRect(QRect(int(bx2), int(by2), int(bar_w), int(bh2)), 2, 2)
+
+            # F1 Marker: dot at f1 height
+            fy = top + ph - (f1 * ph)
+            painter.setBrush(theme.qcolor("warn"))
+            painter.drawEllipse(int(cx - 3), int(fy - 3), 6, 6)
+
+            # Category label below
+            painter.setFont(theme.ui_font(9))
+            painter.setPen(theme.qcolor("muted"))
+            painter.drawText(int(cx - slot_w / 2), top + ph + 4, int(slot_w), 24,
+                             Qt.AlignmentFlag.AlignHCenter, short_name)
+
+
+class ModelAccuracyTab(QWidget):
+    """
+    Second tab on the Energy Metrics page displaying per-error prediction
+    confidence for the current file and measured held-out model quality.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.metrics_json_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "data", "model_metrics.json"
+        )
+        self.metrics_data = {}
+        self.current_variant = "ml_only"
+
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+        host = QWidget()
+        lay = QVBoxLayout(host)
+        lay.setContentsMargins(14, 14, 14, 14)
+        lay.setSpacing(14)
+
+        # ── Section 1: This file ──
+        s1_title = section_label("THIS FILE :: ERROR PREDICTION CONFIDENCE")
+        lay.addWidget(s1_title)
+
+        self.file_chart = ThisFileConfidenceChart()
+        lay.addWidget(self.file_chart)
+
+        # Divider
+        div = QFrame()
+        div.setObjectName("Divider")
+        lay.addWidget(div)
+
+        # ── Section 2: Model quality (held-out test) ──
+        s2_header = QHBoxLayout()
+        s2_title = section_label("MODEL QUALITY :: HELD-OUT TEST EVALUATION")
+        s2_header.addWidget(s2_title)
+        s2_header.addStretch(1)
+
+        self.btn_ml = QPushButton("ML only")
+        self.btn_ml.setProperty("variant", "primary")
+        self.btn_ml.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_ml.clicked.connect(lambda: self.set_variant("ml_only"))
+        s2_header.addWidget(self.btn_ml)
+
+        self.btn_pipe = QPushButton("Full pipeline")
+        self.btn_pipe.setProperty("variant", "ghost")
+        self.btn_pipe.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_pipe.clicked.connect(lambda: self.set_variant("full_pipeline"))
+        s2_header.addWidget(self.btn_pipe)
+
+        self.btn_reeval = QPushButton("🔄 Re-evaluate")
+        self.btn_reeval.setProperty("variant", "ghost")
+        self.btn_reeval.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_reeval.clicked.connect(self._run_reeval)
+        s2_header.addWidget(self.btn_reeval)
+
+        lay.addLayout(s2_header)
+
+        # 4 Headline Cards
+        self.cards_row = QWidget()
+        cards_lay = QHBoxLayout(self.cards_row)
+        cards_lay.setContentsMargins(0, 0, 0, 0)
+        cards_lay.setSpacing(10)
+
+        self.c_acc, _, self.val_acc = self._create_card("ACCURACY", "--")
+        self.c_prec, _, self.val_prec = self._create_card("MACRO PRECISION", "--")
+        self.c_rec, _, self.val_rec = self._create_card("MACRO RECALL", "--")
+        self.c_f1, _, self.val_f1 = self._create_card("MACRO F1", "--")
+
+        for c in [self.c_acc, self.c_prec, self.c_rec, self.c_f1]:
+            cards_lay.addWidget(c)
+        lay.addWidget(self.cards_row)
+
+        # Grouped bar chart
+        self.quality_chart = ModelQualityBarChart()
+        lay.addWidget(self.quality_chart)
+
+        # Footnote
+        self.footnote_lbl = QLabel()
+        self.footnote_lbl.setObjectName("Muted")
+        self.footnote_lbl.setWordWrap(True)
+        lay.addWidget(self.footnote_lbl)
+
+        scroll.setWidget(host)
+        main_lay = QVBoxLayout(self)
+        main_lay.setContentsMargins(0, 0, 0, 0)
+        main_lay.addWidget(scroll)
+
+        self.load_metrics()
 
     def _create_card(self, title_text: str, value_text: str):
         card = QFrame()
         card.setObjectName("Card")
         lay = QVBoxLayout(card)
-        lay.setContentsMargins(14, 12, 14, 12)
+        lay.setContentsMargins(14, 10, 14, 10)
         lay.setSpacing(4)
         sec = section_label(title_text)
         val = QLabel(value_text)
@@ -1368,50 +1782,237 @@ class EnergyPage(CustomFrame):
         lay.addWidget(val)
         return card, sec, val
 
-    def _download_csv(self):
-        if not os.path.exists(self.csv_path):
-            QMessageBox.information(self, "No Data", "CodeCarbon has not produced a report yet.")
-            return
-        save_path, _ = QFileDialog.getSaveFileName(self, "Save CSV Report", "codecarbon_emissions.csv", "CSV Files (*.csv)")
-        if save_path:
-            import shutil
-            try:
-                shutil.copy2(self.csv_path, save_path)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to save CSV:\n{e}")
-
-    def _poll_csv(self):
-        if not os.path.exists(self.csv_path):
+    def load_metrics(self):
+        if not os.path.exists(self.metrics_json_path):
+            self.footnote_lbl.setText("Run python tools/eval_model_metrics.py to generate model metrics")
             return
         try:
-            import csv
-            with open(self.csv_path, "r", encoding="utf-8") as f:
-                rows = list(csv.DictReader(f))
-            if not rows:
-                return
-            latest = rows[-1]
-            energy_kwh = float(latest.get("energy_consumed", 0))
-            power_mw = energy_kwh * 1_000_000
-            emissions_kg = float(latest.get("emissions", 0))
-            carbon_mg = emissions_kg * 1_000_000
-            duration = float(latest.get("duration", 0))
-            intensity = carbon_mg / power_mw if power_mw > 0 else 0.0
-            rapl_j = _read_rapl_energy_joules()
-            rapl_str = f"{rapl_j:.2f} J" if rapl_j is not None else "Linux RAPL Unavailable"
-            self.update_metrics(power_mw, intensity, duration, rapl_str, f"CodeCarbon poll #{len(rows)} | {latest.get('timestamp')}")
-        except Exception:
-            pass
+            with open(self.metrics_json_path, "r", encoding="utf-8") as f:
+                self.metrics_data = json.load(f)
+            self._update_views()
+        except Exception as e:
+            self.footnote_lbl.setText(f"Error loading metrics: {e}")
+
+    def set_variant(self, variant: str):
+        self.current_variant = variant
+        theme.set_prop(self.btn_ml, "variant", "primary" if variant == "ml_only" else "ghost")
+        theme.set_prop(self.btn_pipe, "variant", "primary" if variant == "full_pipeline" else "ghost")
+        self._update_views()
+
+    def _update_views(self):
+        var_data = self.metrics_data.get(self.current_variant, {})
+        acc = var_data.get("accuracy", 0.0)
+        prec = var_data.get("macro_precision", 0.0)
+        rec = var_data.get("macro_recall", 0.0)
+        f1 = var_data.get("macro_f1", 0.0)
+
+        self.val_acc.setText(f"{acc * 100:.1f} %")
+        self.val_prec.setText(f"{prec * 100:.1f} %")
+        self.val_rec.setText(f"{rec * 100:.1f} %")
+        self.val_f1.setText(f"{f1 * 100:.1f} %")
+
+        self.quality_chart.set_data(self.metrics_data, self.current_variant)
+
+        ds = self.metrics_data.get("datasets", {})
+        test_n = ds.get("test", {}).get("n", 0)
+        gold_n = ds.get("gold", {}).get("n", 0)
+        bm = ds.get("benchmark23", {})
+        bm_corr = bm.get("correct", 21)
+        bm_tot = bm.get("total", 23)
+        gen_at = self.metrics_data.get("generated_at", "")[:19]
+
+        self.footnote_lbl.setText(
+            f"Held-out dataset: {test_n} test samples, {gold_n} gold candidates • Generated: {gen_at}\n"
+            f"Gold labels were drafted from rules and are not fully independent. The 23-file benchmark is the stricter check: {bm_corr}/{bm_tot}."
+        )
+
+    def set_file_diagnostics(self, diagnostics):
+        self.file_chart.set_diagnostics(diagnostics, self.metrics_data)
+
+    def _run_reeval(self):
+        self.btn_reeval.setEnabled(False)
+        self.btn_reeval.setText("Evaluating...")
+
+        from PyQt6.QtCore import QThread, pyqtSignal
+        class Worker(QThread):
+            done = pyqtSignal(dict)
+            def run(self):
+                try:
+                    tools_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools")
+                    if tools_dir not in sys.path:
+                        sys.path.insert(0, tools_dir)
+                    from eval_model_metrics import run_eval
+                    res = run_eval(with_benchmark=False)
+                    self.done.emit(res or {})
+                except Exception:
+                    self.done.emit({})
+
+        self.worker = Worker()
+        def on_done(data):
+            if data:
+                self.metrics_data = data
+                self._update_views()
+            self.btn_reeval.setEnabled(True)
+            self.btn_reeval.setText("🔄 Re-evaluate")
+        self.worker.done.connect(on_done)
+        self.worker.start()
+
+
+class EnergyPage(CustomFrame):
+    """
+    Two-tab view:
+      Tab 1: Real-time Energy Telemetry (offline, psutil load-based power modeling)
+      Tab 2: Model Accuracy (per-file error confidence & held-out test metrics)
+    """
+    def __init__(self, parent=None):
+        super().__init__("ENERGY TELEMETRY & MODEL ACCURACY", left_padding=True)
+
+        self.tabs = QTabWidget()
+        self.content_layout.addWidget(self.tabs, 1)
+
+        # ── Tab 1: Energy Telemetry ──
+        self.energy_tab = QWidget()
+        e_lay = QVBoxLayout(self.energy_tab)
+        e_lay.setContentsMargins(14, 14, 14, 14)
+        e_lay.setSpacing(12)
+
+        self.desc = QLabel("Real-time system power, session energy, carbon emissions, and per-action resource telemetry.")
+        self.desc.setObjectName("Muted")
+        e_lay.addWidget(self.desc)
+
+        # Metrics cards row
+        self.metric_row = QWidget()
+        metric_layout = QHBoxLayout(self.metric_row)
+        metric_layout.setContentsMargins(0, 0, 0, 0)
+        metric_layout.setSpacing(10)
+
+        self.power_card, self.power_title, self.power_value = self._create_card("POWER USAGE", "0 mW")
+        self.energy_card, self.energy_title, self.energy_value = self._create_card("SESSION ENERGY", "0.000 mWh")
+        self.carbon_card, self.carbon_title, self.carbon_value = self._create_card("SESSION CO2", "0.000 mg")
+        self.action_card, self.action_title, self.action_value = self._create_card("LAST ACTION", "None • 0.0s")
+        self.rapl_card, self.rapl_title, self.rapl_value = self._create_card("RAPL STATUS", "Unavailable")
+
+        for c in [self.power_card, self.energy_card, self.carbon_card, self.action_card, self.rapl_card]:
+            metric_layout.addWidget(c)
+        e_lay.addWidget(self.metric_row)
+
+        # Charts row: Power line chart & Action energy bar chart side by side
+        charts_row = QWidget()
+        c_lay = QHBoxLayout(charts_row)
+        c_lay.setContentsMargins(0, 0, 0, 0)
+        c_lay.setSpacing(12)
+
+        p_card = QFrame()
+        p_card.setObjectName("Card")
+        p_lay = QVBoxLayout(p_card)
+        p_lay.setContentsMargins(12, 10, 12, 10)
+        p_lay.setSpacing(4)
+        p_lay.addWidget(section_label("POWER (LAST 2 MINUTES) :: mW"))
+        self.power_chart = PowerLineChart()
+        p_lay.addWidget(self.power_chart, 1)
+        c_lay.addWidget(p_card, 1)
+
+        a_card = QFrame()
+        a_card.setObjectName("Card")
+        a_lay = QVBoxLayout(a_card)
+        a_lay.setContentsMargins(12, 10, 12, 10)
+        a_lay.setSpacing(4)
+        a_lay.addWidget(section_label("ENERGY PER ACTION (LAST 10) :: mWh"))
+        self.action_chart = ActionEnergyBarChart()
+        a_lay.addWidget(self.action_chart, 1)
+        c_lay.addWidget(a_card, 1)
+
+        e_lay.addWidget(charts_row, 1)
+
+        # Notes / methodology
+        self.notes = QTextBrowser()
+        self.notes.setObjectName("Console")
+        self.notes.setFont(theme.mono_font(12))
+        self.notes.setMaximumHeight(85)
+        self.notes.setPlainText(
+            f"Estimated power: P = RAM_W + CPU_TDP_W * cpu_load_fraction (12.0W CPU TDP + 3.0W RAM).\n"
+            f"Carbon emissions: grid intensity {GRID_INTENSITY_G_PER_KWH:.0f} gCO2/kWh. Same load-based model CodeCarbon uses when no hardware counter exists.\n"
+            f"RAPL: Hardware counter reading from /sys/class/powercap (Linux only)."
+        )
+        e_lay.addWidget(self.notes)
+
+        # CSV Download button
+        btn_bar = QHBoxLayout()
+        btn_bar.addStretch(1)
+        self.btn_download_csv = QPushButton("📥 Download CSV Report")
+        self.btn_download_csv.setProperty("variant", "ghost")
+        self.btn_download_csv.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_download_csv.clicked.connect(self._download_csv)
+        btn_bar.addWidget(self.btn_download_csv)
+        e_lay.addLayout(btn_bar)
+
+        self.tabs.addTab(self.energy_tab, "⚡ Energy")
+
+        # ── Tab 2: Model Accuracy ──
+        self.accuracy_tab = ModelAccuracyTab()
+        self.tabs.addTab(self.accuracy_tab, "📊 Model Accuracy")
+
+        # Connect EnergyMonitor signal
+        self.monitor = get_energy_monitor()
+        self.monitor.updated.connect(self._on_monitor_update)
+        self._on_monitor_update()
+
+    def _create_card(self, title_text: str, value_text: str):
+        card = QFrame()
+        card.setObjectName("Card")
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(14, 10, 14, 10)
+        lay.setSpacing(4)
+        sec = section_label(title_text)
+        val = QLabel(value_text)
+        val.setObjectName("Title")
+        lay.addWidget(sec)
+        lay.addWidget(val)
+        return card, sec, val
+
+    def _on_monitor_update(self):
+        if not self.monitor.has_psutil:
+            self.power_value.setText("Install psutil")
+            self.energy_value.setText("Install psutil")
+            self.carbon_value.setText("Install psutil")
+            self.action_value.setText("Install psutil")
+            self.desc.setText("Install psutil to enable energy estimates")
+            self.power_chart.set_samples([])
+            return
+
+        self.power_value.setText(f"{self.monitor.current_power_mw:.0f} mW")
+        self.energy_value.setText(f"{self.monitor.session_wh * 1000.0:.3f} mWh")
+        self.carbon_value.setText(f"{self.monitor.session_co2_mg:.3f} mg")
+
+        last_act = self.monitor.get_last_action()
+        if last_act:
+            self.action_value.setText(f"{last_act.label} • {last_act.seconds:.2f} s")
+        else:
+            self.action_value.setText("None • 0.0 s")
+
+        rapl_j = _read_rapl_energy_joules()
+        self.rapl_value.setText(f"{rapl_j:.2f} J" if rapl_j is not None else "Linux RAPL Unavailable")
+
+        self.power_chart.set_samples(self.monitor.samples)
+        self.action_chart.set_actions(self.monitor.actions)
+
+    def _download_csv(self):
+        save_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Energy Telemetry CSV", "energy_telemetry.csv", "CSV Files (*.csv)"
+        )
+        if save_path:
+            ok = self.monitor.export_csv(save_path)
+            if ok:
+                QMessageBox.information(self, "Export Complete", f"Saved energy telemetry to:\n{save_path}")
+            else:
+                QMessageBox.critical(self, "Export Error", "Failed to export energy telemetry CSV.")
+
+    def update_file_errors(self, errors):
+        self.accuracy_tab.set_file_diagnostics(errors)
 
     def update_metrics(self, power_mw, carbon_mg_per_wh, execution_time, rapl_text, note):
-        self.power_value.setText(f"{power_mw:.3f} mW")
-        self.carbon_value.setText(f"{carbon_mg_per_wh:.3f} mgCO2/Wh")
-        self.time_value.setText(f"{execution_time:.3f} s")
-        self.rapl_value.setText(str(rapl_text))
-        self.graph.add_sample(power_mw, carbon_mg_per_wh, execution_time)
-        self.notes.setPlainText(
-            f"Telemetry Source: {note}\n"
-            f"RAPL: Reads Linux powercap energy counters when available (/sys/class/powercap)."
-        )
+        # Backward compatibility method if invoked elsewhere
+        pass
 
 
 class CallGraphPage(CustomFrame):
@@ -2196,6 +2797,7 @@ class AppGUI(QMainWindow):
         )
 
         def on_worker_finished():
+            get_energy_monitor().end_action("Auto-Heal")
             self._cleanup_heal_loading()
             self.btn_heal.setEnabled(True)
             self.btn_heal.setText("Auto-Heal")
@@ -2212,6 +2814,7 @@ class AppGUI(QMainWindow):
         self.heal_worker.telemetry_ready.connect(self._on_telemetry_ready)
         self.heal_worker.status_update.connect(lambda t: self.status_label.setText(t))
         self.heal_worker.info_message.connect(self._on_heal_info)
+        get_energy_monitor().start_action("Auto-Heal")
         self.heal_worker.start()
 
     def _on_heal_backup_created(self, backup_path: str):
@@ -2487,11 +3090,13 @@ class AppGUI(QMainWindow):
         main_script = os.path.join(script_dir, "main.py")
         cmd = [sys.executable, main_script, self.file_path, "-j", "-v"]
 
+        get_energy_monitor().start_action("Compile")
         self.compile_worker = CompilerWorker(cmd)
         self.compile_worker.finished.connect(self._on_analysis_finished)
         self.compile_worker.start()
 
     def _on_analysis_finished(self, stdout: str, stderr: str, returncode: int):
+        get_energy_monitor().end_action("Compile")
         data = {}
         try:
             data = json.loads(stdout)
@@ -2509,6 +3114,8 @@ class AppGUI(QMainWindow):
             data = {"status": "error" if returncode != 0 else "success", "errors": []}
 
         self.render_json(data, stderr)
+        if hasattr(self, "energy_page") and hasattr(self.energy_page, "update_file_errors"):
+            self.energy_page.update_file_errors(data.get("errors", []))
 
         # Background generation of AST, Call Graph, and CFG
         try:
@@ -2699,6 +3306,7 @@ class AppGUI(QMainWindow):
 
         stdin_input = self.input_terminal.toPlainText()
         try:
+            get_energy_monitor().start_action("Run")
             res = subprocess.run(
                 [exe],
                 input=stdin_input,
@@ -2715,6 +3323,8 @@ class AppGUI(QMainWindow):
             self.terminal.append_output("\n[Execution timed out after 5 seconds]\n")
         except Exception as e:
             self.terminal.append_output(f"\n[Execution error: {e}]\n")
+        finally:
+            get_energy_monitor().end_action("Run")
 
 
 # ── Application Entry Point ───────────────────────────────────────────────────
