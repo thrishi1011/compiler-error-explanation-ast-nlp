@@ -1,6 +1,8 @@
 import os
 import re
 import subprocess
+import threading
+import time
 
 
 ANSI_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
@@ -187,6 +189,28 @@ def build_source_ast(code: str, file_path: str = "file.cpp") -> list:
 
 def extract_ast(file_path, code=None):
     """Return a compact clang AST dump containing only user-file subtrees, with fallback."""
+    # Compile-time security check
+    source_to_check = code
+    if source_to_check is None and file_path and os.path.exists(file_path):
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                source_to_check = f.read()
+        except Exception:
+            source_to_check = None
+
+    if source_to_check:
+        try:
+            from guard.gates import check_compile
+            verdict = check_compile(
+                source_to_check,
+                source_dir=os.path.dirname(file_path) if file_path else None,
+                file_name=os.path.basename(file_path) if file_path else None,
+            )
+            if verdict.blocked:
+                return None
+        except ImportError:
+            pass
+
     filtered = []
     if file_path:
         cmd = [
@@ -201,39 +225,95 @@ def extract_ast(file_path, code=None):
         active_depth = None
         user_file_context = False
 
+        from guard.config import get_timeout_for_kind
+        from guard.safe_run import _kill_process_tree
+        from guard.attack_log import log_event
+        from guard.envscrub import scrubbed_env
+
+        timeout = get_timeout_for_kind("ast", 20.0)
+        timed_out = False
+        truncated = False
+        t_start = time.perf_counter()
+
+        popen_kwargs = {
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.DEVNULL,
+            "text": True,
+            "bufsize": 1,
+            "env": scrubbed_env(),
+            "shell": False,
+        }
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            popen_kwargs["start_new_session"] = True
+
         try:
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                bufsize=1,
-            )
-            for raw_line in process.stdout:
-                line = ANSI_RE.sub("", raw_line.rstrip("\n"))
-                if not line.strip():
-                    continue
+            process = subprocess.Popen(cmd, **popen_kwargs)
 
-                depth = _ast_depth(line)
-                if active_depth is not None and depth <= active_depth:
-                    active_depth = None
+            def watchdog_kill():
+                nonlocal timed_out
+                timed_out = True
+                _kill_process_tree(process)
 
-                if _has_explicit_external_location(line, file_path):
-                    user_file_context = False
+            timer = threading.Timer(timeout, watchdog_kill)
+            timer.daemon = True
+            timer.start()
 
-                if _is_user_location(line, file_path):
-                    user_file_context = True
+            total_bytes = 0
+            MAX_AST_BYTES = 5 * 1024 * 1024
 
-                starts_user_subtree = _is_user_location(line, file_path) or (
-                    user_file_context and _has_relative_location(line)
+            try:
+                for raw_line in process.stdout:
+                    total_bytes += len(raw_line.encode("utf-8", errors="replace"))
+                    if total_bytes > MAX_AST_BYTES:
+                        truncated = True
+                        _kill_process_tree(process)
+                        break
+
+                    line = ANSI_RE.sub("", raw_line.rstrip("\n"))
+                    if not line.strip():
+                        continue
+
+                    depth = _ast_depth(line)
+                    if active_depth is not None and depth <= active_depth:
+                        active_depth = None
+
+                    if _has_explicit_external_location(line, file_path):
+                        user_file_context = False
+
+                    if _is_user_location(line, file_path):
+                        user_file_context = True
+
+                    starts_user_subtree = _is_user_location(line, file_path) or (
+                        user_file_context and _has_relative_location(line)
+                    )
+
+                    if active_depth is None and starts_user_subtree:
+                        active_depth = depth
+
+                    if active_depth is not None:
+                        filtered.append(line)
+            finally:
+                timer.cancel()
+                try:
+                    process.stdout.close()
+                except Exception:
+                    pass
+                process.wait()
+
+            duration_s = time.perf_counter() - t_start
+            if timed_out or truncated:
+                log_event(
+                    "resource_limit",
+                    {
+                        "kind": "ast",
+                        "cmd0": cmd[0],
+                        "timeout": timeout,
+                        "truncated": truncated,
+                        "duration_s": round(duration_s, 4),
+                    },
                 )
-
-                if active_depth is None and starts_user_subtree:
-                    active_depth = depth
-
-                if active_depth is not None:
-                    filtered.append(line)
-            process.wait()
         except (OSError, Exception):
             filtered = []
 

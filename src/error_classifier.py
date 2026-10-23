@@ -130,6 +130,7 @@ class ErrorClassifier:
         self.model_file         = model_file
         self.training_data_file = training_data_file
         self._pipeline: Optional[Pipeline] = None
+        self.last_load_error: Optional[str] = None
 
     def is_trained(self) -> bool:
         return self._pipeline is not None or os.path.exists(self.model_file)
@@ -197,8 +198,35 @@ class ErrorClassifier:
         if self._pipeline is not None:
             return True
         if not os.path.exists(self.model_file):
+            self.last_load_error = f"Model file not found: {self.model_file}"
             return False
+
+        try:
+            from guard.models import InputKind
+            from guard.supervisor import review
+            from guard.attack_log import log_event
+            verdict = review(InputKind.MODEL_FILE, self.model_file, purpose="model_load")
+            if verdict.blocked:
+                blocked_findings = [
+                    f for f in verdict.findings
+                    if f.action == "block" or (f.blocks_on and "model_load" in f.blocks_on)
+                ]
+                cat = blocked_findings[0].category if blocked_findings else "integrity_error"
+                desc = blocked_findings[0].description if blocked_findings else "Integrity check failed"
+                self.last_load_error = f"Model file rejected: {cat}. {desc}"
+                print(f"Model file rejected: {cat}. If you replaced the model on purpose, run: python tools/sign_model.py")
+                log_event("model_rejected", {
+                    "category": cat,
+                    "model_file": self.model_file,
+                    "findings": [f.to_dict() for f in verdict.findings],
+                })
+                return False
+        except Exception as e:
+            self.last_load_error = f"Guard check failed: {e}"
+            return False
+
         self._pipeline = joblib.load(self.model_file)
+        self.last_load_error = None
         return True
 
     def train_and_save(self) -> None:
@@ -309,13 +337,23 @@ class ErrorClassifier:
             return "return_type_error", 0.99
 
         if not self.load():
-            if os.path.exists(self.training_data_file):
-                try:
-                    self.train_and_save()
-                except Exception:
+            if os.environ.get("ALLOW_AUTO_TRAIN") == "1":
+                if os.path.exists(self.training_data_file):
+                    try:
+                        self.train_and_save()
+                    except Exception:
+                        return None, 0.0
+                if not self.load():
                     return None, 0.0
-
-            if not self.load():
+            else:
+                try:
+                    from guard.attack_log import log_event
+                    log_event("model_unavailable", {
+                        "model_file": self.model_file,
+                        "error": self.last_load_error or "Model not loaded",
+                    })
+                except Exception:
+                    pass
                 return None, 0.0
 
         assert self._pipeline is not None

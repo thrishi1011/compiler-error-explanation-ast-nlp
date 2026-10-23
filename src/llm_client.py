@@ -26,9 +26,13 @@ except ImportError:
     import urllib.request
     import urllib.error
 
+import sys
+
 # Project paths and environment loading
 _SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_SRC_DIR)
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
 
 
 def load_env_file(filepath: Optional[str] = None):
@@ -232,6 +236,11 @@ def reset_client_state():
     _WORKING_MODELS.clear()
     _STATUS_TRAIL.clear()
     _HEAL_AI_TIME_SPENT = 0.0
+    try:
+        from guard.ai_budget import get_ai_budget
+        get_ai_budget().reset()
+    except Exception:
+        pass
 
 
 def get_cached_heal(code_hash: str) -> Optional[LLMResult]:
@@ -255,10 +264,14 @@ def get_groq_key() -> str:
     return os.environ.get("GROQ_API_KEY", "").strip()
 
 
+_GEMINI_MODEL_RE = re.compile(r"^[A-Za-z0-9._\-]{1,64}$")
+_GROQ_MODEL_RE = re.compile(r"^[A-Za-z0-9._\-]+(?:/[A-Za-z0-9._\-]+)?$")
+
+
 def get_gemini_models(kind: str = "explain") -> List[str]:
     load_env_file()
     custom = os.environ.get("GEMINI_MODEL", "").strip()
-    if custom:
+    if custom and _GEMINI_MODEL_RE.match(custom):
         return [custom]
     base = list(DEFAULT_GEMINI_HEAL_MODELS if kind == "heal" else DEFAULT_GEMINI_EXPLAIN_MODELS)
     working = _WORKING_MODELS.get(f"gemini_{kind}") or _WORKING_MODELS.get("gemini")
@@ -273,7 +286,7 @@ def get_gemini_models(kind: str = "explain") -> List[str]:
 def get_groq_models(kind: str = "explain") -> List[str]:
     load_env_file()
     custom = os.environ.get("GROQ_MODEL", "").strip()
-    if custom:
+    if custom and len(custom) <= 64 and _GROQ_MODEL_RE.match(custom):
         return [custom]
     base = list(DEFAULT_GROQ_HEAL_MODELS if kind == "heal" else DEFAULT_GROQ_EXPLAIN_MODELS)
     working = _WORKING_MODELS.get(f"groq_{kind}") or _WORKING_MODELS.get("groq")
@@ -766,6 +779,33 @@ def ask(
                 return LLMResult(None, None, "Code failed security sanitization (contains forbidden calls)")
         except Exception:
             pass
+
+    # Security Guard: (a) AI budget check; (b) secrets check
+    try:
+        from guard.ai_budget import get_ai_budget
+        from guard.secrets import scan_secrets
+        from guard.attack_log import log_event
+
+        prompt_chars = len(system or "") + len(prompt or "")
+        budget_ok, budget_reason = get_ai_budget().try_consume(kind, prompt_chars)
+        if not budget_ok:
+            refusal_msg = f"AI call refused: {budget_reason}"
+            log_event("ai_refused", {"reason": refusal_msg, "kind": kind})
+            return LLMResult(None, None, refusal_msg)
+
+        hits = scan_secrets((system or "") + (prompt or ""))
+        blocking_hits = [h for h in hits if h.severity in ("High", "Critical")]
+        medium_hits = [h for h in hits if h.severity == "Medium"]
+
+        if medium_hits and not blocking_hits:
+            log_event("ai_warning", {"reason": "potential_credential_assignment", "kind": kind, "count": len(medium_hits)})
+
+        if blocking_hits:
+            refusal_msg = "AI call refused: a secret was found in the prompt"
+            log_event("ai_refused", {"reason": refusal_msg, "kind": kind})
+            return LLMResult(None, None, refusal_msg)
+    except Exception:
+        pass
 
     # 2. Check cache: heal responses only returned from cache if already validated by code_hash and not a retry
     cache_key = None

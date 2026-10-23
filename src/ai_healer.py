@@ -80,17 +80,27 @@ def validate_ai_code(original_source: str, fixed_code: str) -> Tuple[bool, str, 
     if changes > max_allowed:
         return False, f"Too many lines changed ({changes} > {max_allowed} max allowed)", ""
 
-    # 6. Compile validation with g++: accept when 0 errors (warnings allowed)
+    # 6. Check compile gate and compile validation with g++
+    from guard import check_compile, safe_run
+    verdict = check_compile(fixed_code, fast=True)
+    if verdict.blocked:
+        blocking_f = next((f for f in verdict.findings if f.action == "block"), verdict.findings[0] if verdict.findings else None)
+        agents_str = ", ".join(blocking_f.agents) if blocking_f else "ResourceGuard"
+        cat = blocking_f.category if blocking_f else "security_violation"
+        line_no = blocking_f.line if (blocking_f and blocking_f.line) else 1
+        return False, f"Security Error: blocked by {agents_str} ({cat}) at line {line_no}", ""
+
     fd, tmp_path = tempfile.mkstemp(suffix=".cpp")
     try:
         with open(tmp_path, "w", encoding="utf-8") as f:
             f.write(fixed_code)
-        res = subprocess.run(
+        res = safe_run(
             ["g++", "-fsyntax-only", "-std=c++17", "-Wall", tmp_path],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+            kind="ai_validate",
         )
+        if res.timed_out:
+            t_s = int(res.duration_s)
+            return False, f"Compilation timed out after {t_s} s (possible resource-exhaustion input)", res.stderr
         errors = [l.strip() for l in res.stderr.splitlines() if ": error:" in l or ": fatal error:" in l]
         if errors:
             return False, f"Does not compile: {errors[0]}", res.stderr
@@ -140,6 +150,10 @@ def attempt_ai_heal(
     Validates the result and retries ONCE if validation fails.
     Returns (healed_code, provider_name, changes_list, status_or_skip_reason).
     """
+    import secrets
+    from guard.gates import check_ai_send, check_patch
+    from guard.promptsafe import DATA_NOTICE, has_boundary_leak, wrap_untrusted
+
     lines = source.splitlines()
     if len(lines) > 300:
         return None, None, [], f"File too large for AI heal ({len(lines)} lines > 300), using offline fallback"
@@ -147,7 +161,7 @@ def attempt_ai_heal(
     t_start = time.time()
     code_hash = hashlib.sha256(source.encode("utf-8")).hexdigest()
 
-    # Build initial prompt
+    # Build error text
     err_msgs = []
     for e in compiler_errors[:10]:
         line = e.get("line", "?") if isinstance(e, dict) else getattr(e, "line", "?")
@@ -155,19 +169,28 @@ def attempt_ai_heal(
         err_msgs.append(f"Line {line}: {msg}")
     err_text = "\n".join(err_msgs) if err_msgs else "Compilation failed"
 
-    hint_section = f"USER GUIDANCE / HINT: {hint}\n\n" if hint else ""
+    # Pre-flight security check before building prompt or calling LLM
+    ai_send_res = check_ai_send(source=source, hint=hint, errors_text=err_text)
+    if ai_send_res.blocked:
+        return None, None, [], f"AI heal skipped by the security layer: {ai_send_res.reason}"
+
+    # Build initial prompt with untrusted data wrappers and nonce
+    nonce = secrets.token_hex(8)
+    system_prompt = f"{AI_HEAL_SYSTEM_PROMPT}\n\n{DATA_NOTICE(nonce)}"
+
+    hint_section = f"USER GUIDANCE / HINT:\n{wrap_untrusted('hint', hint, nonce=nonce)}\n\n" if hint else ""
 
     prompt = (
         f"{hint_section}"
         "Please repair the compile errors in this C++ program with minimal edits.\n\n"
-        f"COMPILER ERRORS:\n{err_text}\n\n"
-        f"SOURCE CODE:\n{source}\n\n"
+        f"COMPILER ERRORS:\n{wrap_untrusted('errors', err_text, nonce=nonce)}\n\n"
+        f"SOURCE CODE:\n{wrap_untrusted('source', source, nonce=nonce)}\n\n"
         "Return a JSON object with 'code' and 'changes'."
     )
 
     # First attempt (uses cached validated heal if available, bypasses on retry)
     res = llm_client.ask(
-        system=AI_HEAL_SYSTEM_PROMPT,
+        system=system_prompt,
         prompt=prompt,
         kind="heal",
         max_tokens=max_tokens,
@@ -183,6 +206,15 @@ def attempt_ai_heal(
     is_valid, reason, gpp_stderr = validate_ai_code(source, candidate_code) if candidate_code else (False, "Invalid JSON from AI", "")
 
     if is_valid and candidate_code:
+        # Check boundary leak and patch security
+        if has_boundary_leak(candidate_code):
+            return None, None, [], "AI patch rejected by the security layer (PatchGuard: patch_marker_leak)"
+        patch_v = check_patch(source, candidate_code, origin="ai", meta={"provider": res.provider})
+        if patch_v.blocked:
+            block_f = next((f for f in patch_v.findings if f.action == "block" or (f.blocks_on and "patch" in f.blocks_on)), patch_v.findings[0] if patch_v.findings else None)
+            cat = block_f.category if block_f else "security_violation"
+            return None, None, [], f"AI patch rejected by the security layer (PatchGuard: {cat})"
+
         llm_client.cache_validated_heal(code_hash, res)
         return candidate_code, res.provider, changes, f"Healed by AI ({res.provider.capitalize()})"
 
@@ -195,14 +227,14 @@ def attempt_ai_heal(
         f"Your previous fix failed validation: {reason}.\n"
     )
     if gpp_stderr:
-        retry_prompt += f"G++ Compiler diagnostics on your fix:\n{gpp_stderr[:800]}\n"
+        retry_prompt += f"G++ Compiler diagnostics on your fix:\n{wrap_untrusted('errors', gpp_stderr[:800], nonce=nonce)}\n"
     retry_prompt += (
-        f"\nOriginal Source Code:\n{source}\n\n"
+        f"\nOriginal Source Code:\n{wrap_untrusted('source', source, nonce=nonce)}\n\n"
         "Please fix the code cleanly with minimal edits and return valid JSON with 'code' and 'changes'."
     )
 
     retry_res = llm_client.ask(
-        system=AI_HEAL_SYSTEM_PROMPT,
+        system=system_prompt,
         prompt=retry_prompt,
         kind="heal",
         max_tokens=max_tokens,
@@ -216,6 +248,14 @@ def attempt_ai_heal(
         if retry_code:
             r_valid, r_reason, _ = validate_ai_code(source, retry_code)
             if r_valid:
+                if has_boundary_leak(retry_code):
+                    return None, None, [], "AI patch rejected by the security layer (PatchGuard: patch_marker_leak)"
+                retry_patch_v = check_patch(source, retry_code, origin="ai", meta={"provider": retry_res.provider})
+                if retry_patch_v.blocked:
+                    block_f = next((f for f in retry_patch_v.findings if f.action == "block" or (f.blocks_on and "patch" in f.blocks_on)), retry_patch_v.findings[0] if retry_patch_v.findings else None)
+                    cat = block_f.category if block_f else "security_violation"
+                    return None, None, [], f"AI patch rejected by the security layer (PatchGuard: {cat})"
+
                 llm_client.cache_validated_heal(code_hash, retry_res)
                 return retry_code, retry_res.provider, retry_changes, f"Healed by AI ({retry_res.provider.capitalize()})"
             reason = r_reason

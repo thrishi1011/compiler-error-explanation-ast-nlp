@@ -1,0 +1,83 @@
+{
+  "demo_clean.cpp": {
+    "input_kind": "USER_SOURCE",
+    "purpose": "compile",
+    "risk_label": "Clean",
+    "agents": [],
+    "blocked_purposes": [],
+    "quality_level": "Good",
+    "note": "Clean C++ program with zero security findings and Good quality."
+  },
+  "demo_fixable.cpp": {
+    "input_kind": "USER_SOURCE",
+    "purpose": "analyze",
+    "risk_label": "Moderate",
+    "agents": ["VulnGuard"],
+    "blocked_purposes": [],
+    "quality_level": "Good",
+    "note": "Legacy unsafe C string functions (strcpy, gets) detected by VulnGuard; safe to heal."
+  },
+  "demo_exec_blocked.cpp": {
+    "input_kind": "USER_SOURCE",
+    "purpose": "run",
+    "risk_label": "Low Risk",
+    "agents": ["ExecGuard"],
+    "blocked_purposes": ["run"],
+    "quality_level": "Good",
+    "note": "Dangerous execvp process execution detected by ExecGuard; execution blocked."
+  },
+  "demo_env_include.cpp": {
+    "input_kind": "USER_SOURCE",
+    "purpose": "compile",
+    "risk_label": "Low Risk",
+    "agents": ["SecretsGuard"],
+    "blocked_purposes": ["compile", "run"],
+    "quality_level": "Good",
+    "note": "Sensitive .env file inclusion detected by SecretsGuard; compilation blocked."
+  },
+  "demo_display_spoof.cpp": {
+    "input_kind": "COMPILER_OUTPUT",
+    "purpose": "display",
+    "risk_label": "Low Risk",
+    "agents": ["OutputGuard"],
+    "blocked_purposes": [],
+    "quality_level": "Good",
+    "note": "OutputGuard detects display injection and neutralizes spoofed compilation status."
+  },
+  "demo_prompt_injection.cpp": {
+    "input_kind": "USER_SOURCE",
+    "purpose": "ai_send",
+    "risk_label": "Low Risk",
+    "agents": ["PromptGuard"],
+    "blocked_purposes": ["ai_send"],
+    "quality_level": "Good",
+    "note": "Adversarial system prompt injection in comment detected by PromptGuard; AI send blocked."
+  },
+  "demo_nested_loops.cpp": {
+    "input_kind": "USER_SOURCE",
+    "purpose": "compile",
+    "risk_label": "Clean",
+    "agents": [],
+    "blocked_purposes": [],
+    "quality_level": "Needs work",
+    "note": "Non-blocking code quality heuristics detect 3-level nested loops, pass-by-value, and endl in loop."
+  },
+  "demo_macro_bomb.cpp": {
+    "input_kind": "USER_SOURCE",
+    "purpose": "compile",
+    "risk_label": "Low Risk",
+    "agents": ["ResourceGuard"],
+    "blocked_purposes": ["compile", "run"],
+    "quality_level": "Good",
+    "note": "Exponential macro expansion bomb detected statically by ResourceGuard; compilation blocked."
+  },
+  "demo_evasion_missed.cpp": {
+    "input_kind": "USER_SOURCE",
+    "purpose": "run",
+    "risk_label": "Clean",
+    "agents": [],
+    "blocked_purposes": [],
+    "quality_level": "Good",
+    "note": "Honest limitation: function pointer to ::system without direct call is missed by regex scanner."
+  }
+}

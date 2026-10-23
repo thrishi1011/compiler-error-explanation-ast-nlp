@@ -1,0 +1,49 @@
+\documentclass[a4paper]{article}
+\usepackage[margin=0.7in]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xcolor}
+
+\title{\vspace{-1.5cm}\Large\textbf{Compiler Security Layer: Threat Families \& Defence Overview}}
+\author{Automated Security Evaluation Summary}
+\date{\today}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\noindent
+This one-page summary outlines the nine threat families defended by the compiler security subsystem, the specialized guard agents assigned to each, the defensive enforcement mechanism, and empirical detection rates across standard and adversarial hard evasion suites.
+
+\vspace{0.4cm}
+
+\begin{table}[htbp]
+\centering
+\scriptsize
+\begin{tabularx}{\textwidth}{l X l X c c c}
+\toprule
+\textbf{Threat Family} & \textbf{Representative Attack} & \textbf{Agent(s)} & \textbf{Defensive Mechanism} & \textbf{Standard} & \textbf{Hard} & \textbf{ASR $\Delta$} \\
+\midrule
+\textbf{Dangerous Execution} & system("rm -rf /"), execvp, popen & \texttt{ExecGuard} & Block process spawning and syscalls before run gate & 100\% (12/12) & 40\% (2/5) & 76\% $\rightarrow$ 24\% \\
+\textbf{Resource Exhaustion} & Recursive macro bombs, huge allocations & \texttt{ResourceGuard} & Pre-compile token/syntax checks for nesting and limits & 100\% (7/7) & -- & 100\% $\rightarrow$ 0\% \\
+\textbf{Display Injection} & HTML tags in \#error, ANSI color/clear escapes & \texttt{OutputGuard} & Neutralize display text via safe\_text/html\_text sanitizer & 100\% (6/6) & -- & 100\% $\rightarrow$ 0\% \\
+\textbf{Endpoint Abuse} & Cross-origin POST, host spoofing, missing session token & \texttt{EndpointGuard} & Validate Host, Origin, and session tokens on HTTP endpoints & 100\% (14/14) & -- & 57\% $\rightarrow$ 0\% \\
+\textbf{Sensitive Data Access} & Reading .env, /etc/shadow, hardcoded secrets & \texttt{SecretsGuard, ExecGuard} & Detect credential patterns and block sensitive path includes & 100\% (11/11) & 100\% (2/2) & 100\% $\rightarrow$ 0\% \\
+\textbf{Dataset Poisoning} & Directive injection in error logs, log traversal & \texttt{IntegrityGuard} & Quarantine invalid log entries and enforce category schema & 100\% (5/5) & -- & 100\% $\rightarrow$ 0\% \\
+\textbf{Model Tampering} & Corrupted or swapped classifier weight files & \texttt{IntegrityGuard} & SHA-256 digest validation against signed manifest.json & 100\% (3/3) & -- & 100\% $\rightarrow$ 0\% \\
+\textbf{Prompt Injection} & System override delimiters in comments/hints & \texttt{PromptGuard} & Heuristic token filter on outgoing LLM prompt requests & 100\% (8/8) & 50\% (2/4) & 100\% $\rightarrow$ 18\% \\
+\textbf{Malicious Patch} & AI patch removing security checks or re-injecting exec & \texttt{PatchGuard} & Audit patch diff before disk write and rollback on violation & 100\% (11/11) & 100\% (1/1) & 83\% $\rightarrow$ 0\% \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\vspace{0.5cm}
+\noindent
+\textbf{Empirical Baseline}: Across 84 evaluated attack cases, platform defence reduces Attack Success Rate (ASR) from \textbf{85.7\%} (baseline allowed: 72/84) to \textbf{7.1\%} (defended allowed: 6/84), achieving an overall attack prevention rate of \textbf{92.9\%} with \textbf{0.0\%} false alerts on benign student code.
+
+\vspace{0.3cm}
+\noindent
+\textbf{Honest Disclosures \& Limitations}:
+All detectors rely on deterministic regular-expression and lexical text analysis (no AST analysis in guards or healer). Code execution occurs in a scrubbed environment with timeout and output caps, not an isolated filesystem/network sandbox. Hard-set evasions using function pointer aliasing or non-English prompts bypass current heuristic rules. AI features dispatch compiler diagnostics and code to external endpoints when enabled.
+
+\end{document}

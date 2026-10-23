@@ -1,0 +1,177 @@
+\documentclass{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{amsmath}
+
+\title{Security Hardening Benchmark Tables}
+\author{Compiler Security Evaluation Suite}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section*{How to Read These Numbers}
+\noindent
+The standard attack test cases were written after the security detectors existed. Therefore, 100\% detection on the standard set measures coverage of known patterns, not unconstrained generalisation. The hard evasion set provides an empirical estimate of realistic evasion resistance under adversarial obfuscation. With 31 benign evaluation cases, a recorded 0.0\% false-alert rate carries a 95\% Wilson confidence interval upper bound of approximately 11.0\%; zero observed false positives does not imply impossibility under broader inputs. The baseline model reflects only this platform's pre-hardening checks without simulating full compiler execution. Security healing metrics are derived from 8 prepared, compilable test samples exhibiting specific vulnerability patterns.
+
+\section{Overall Platform Performance}
+\begin{table}[htbp]
+\centering
+\caption{Platform Detection and Prevention Metrics with 95\% Confidence Intervals}
+\label{tab:headline}
+\begin{tabularx}{\textwidth}{l X c c}
+\toprule
+\textbf{Metric} & \textbf{Defended Security Layer} & \textbf{95\% Conf. Interval} & \textbf{Baseline} \\
+\midrule
+Overall Detection Rate (TPR) & 94.4\% (84/89) & [87.5\%, 97.6\%] & 13.5\% (12/89) \\
+Standard Attacks Detection & 100.0\% (77/77) & [95.2\%, 100.0\%] & 14.3\% (11/77) \\
+Hard Evasion Detection & 58.3\% (7/12) & [31.9\%, 80.7\%] & 8.3\% (1/12) \\
+Agent Attribution & 94.4\% (84/89) & [87.5\%, 97.6\%] & -- \\
+Prevention Rate & 92.9\% (78/84) & [85.3\%, 96.7\%] & 14.3\% (12/84) \\
+False Alert Rate (FPR) & 0.0\% (0/31) & [0.0\%, 11.0\%] & 0.0\% (0/31) \\
+False Block Rate & 0.0\% (0/31) & [0.0\%, 11.0\%] & 0.0\% (0/31) \\
+Attack Success Rate (ASR) & 7.1\% (6/84) & -- & 85.7\% (72/84) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Performance by Threat Family}
+\begin{table}[htbp]
+\centering
+\caption{Threat Family Attack Success Rate and Detection Performance}
+\label{tab:families}
+\begin{tabularx}{\textwidth}{l c c c c c c}
+\toprule
+\textbf{Threat Family} & \textbf{Attacks (Std/Hard)} & \textbf{ASR Denom} & \textbf{Base ASR} & \textbf{Def ASR} & \textbf{Det} & \textbf{Prev} \\
+\midrule
+\texttt{dangerous\_execution} & 17 (12/5) & 17 & 76.5\% & 23.5\% & 14 & 13 \\
+\texttt{dataset\_poisoning} & 5 (5/0) & 5 & 100.0\% & 0.0\% & 5 & 5 \\
+\texttt{display\_injection} & 6 (6/0) & 6 & 100.0\% & 0.0\% & 6 & 6 \\
+\texttt{endpoint\_abuse} & 14 (14/0) & 14 & 57.1\% & 0.0\% & 14 & 14 \\
+\texttt{malicious\_patch} & 12 (11/1) & 12 & 83.3\% & 0.0\% & 12 & 12 \\
+\texttt{model\_tampering} & 3 (3/0) & 3 & 100.0\% & 0.0\% & 3 & 3 \\
+\texttt{prompt\_injection} & 12 (8/4) & 11 & 100.0\% & 18.2\% & 10 & 9 \\
+\texttt{resource\_exhaustion} & 7 (7/0) & 6 & 100.0\% & 0.0\% & 7 & 6 \\
+\texttt{scanner\_evasion} & 5 (0/5) & 0 & 0.0\% & 0.0\% & 0 & 0 \\
+\texttt{sensitive\_data\_access} & 13 (11/2) & 10 & 100.0\% & 0.0\% & 13 & 10 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Performance by Guard Agent}
+\begin{table}[htbp]
+\centering
+\caption{Individual Security Agent Detection and Attribution Rates}
+\label{tab:agents}
+\begin{tabularx}{\textwidth}{l c c c c c}
+\toprule
+\textbf{Security Agent} & \textbf{Target Attacks} & \textbf{Recall} & \textbf{95\% Conf. Interval} & \textbf{FP} & \textbf{Precision} \\
+\midrule
+\texttt{EndpointGuard} & 14 & 100.0\% (14/14) & [78.5\%, 100.0\%] & 0 & 100.0\% \\
+\texttt{ExecGuard} & 17 & 82.3\% (14/17) & [59.0\%, 93.8\%] & 0 & 100.0\% \\
+\texttt{IntegrityGuard} & 8 & 100.0\% (8/8) & [67.6\%, 100.0\%] & 0 & 100.0\% \\
+\texttt{OutputGuard} & 6 & 100.0\% (6/6) & [61.0\%, 100.0\%] & 0 & 100.0\% \\
+\texttt{PatchGuard} & 12 & 100.0\% (12/12) & [75.8\%, 100.0\%] & 0 & 100.0\% \\
+\texttt{PromptGuard} & 12 & 83.3\% (10/12) & [55.2\%, 95.3\%] & 0 & 100.0\% \\
+\texttt{ResourceGuard} & 7 & 100.0\% (7/7) & [64.6\%, 100.0\%] & 0 & 100.0\% \\
+\texttt{SecretsGuard} & 13 & 100.0\% (13/13) & [77.2\%, 100.0\%] & 0 & 100.0\% \\
+\texttt{VulnGuard} & 5 & 0.0\% (0/5) & [0.0\%, 43.5\%] & 0 & 100.0\% \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Hard Evasion Misses}
+\begin{table}[htbp]
+\centering
+\caption{Documented Blind Spots on the Adversarial Hard Evasion Set}
+\label{tab:misses}
+\begin{tabularx}{\textwidth}{l c l l X}
+\toprule
+\textbf{ID} & \textbf{Set} & \textbf{Threat Family} & \textbf{Expected Category} & \textbf{Reason for Miss} \\
+\midrule
+\texttt{hard\_001} & hard & \texttt{dangerous\_execution} & \texttt{process\_execution} & Function pointer address taken of ::system without direct call \\
+\texttt{hard\_003} & hard & \texttt{dangerous\_execution} & \texttt{process\_execution} & popen alias through typedef function pointer \\
+\texttt{hard\_007} & hard & \texttt{prompt\_injection} & \texttt{prompt\_injection} & Paraphrased semantic prompt injection avoiding exact keyword matches \\
+\texttt{hard\_008} & hard & \texttt{prompt\_injection} & \texttt{prompt\_injection} & Multilingual prompt injection in French \\
+\texttt{hard\_012} & hard & \texttt{dangerous\_execution} & \texttt{process\_execution} & Hex-escaped string literal spelling system \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Detected but Not Prevented Attacks}
+\begin{table}[htbp]
+\centering
+\caption{Threats Detected by Pattern Rules but Not Blocked by Policy}
+\label{tab:dnp}
+\begin{tabularx}{\textwidth}{l l l l c X}
+\toprule
+\textbf{ID} & \textbf{Family} & \textbf{Category} & \textbf{Severity} & \textbf{Purpose} & \textbf{Policy Rationale} \\
+\midrule
+\texttt{exec\_009} & \texttt{dangerous\_execution} & obfuscation & Medium & \texttt{run} & Finding category 'obfuscation' emitted with Medium severity and action 'warn'; ExecGuard does not emit a blocking action for macro token-pasting alone without a resolved dangerous syscall \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Scanner Evasion Limitations}
+\begin{table}[htbp]
+\centering
+\caption{Static Lexical Scanner Blind Spots Evaluated Separately}
+\label{tab:scanner-evasion}
+\begin{tabularx}{\textwidth}{l X l c X}
+\toprule
+\textbf{ID} & \textbf{Pattern / Blind Spot} & \textbf{Expected Cat} & \textbf{Finding} & \textbf{Evasion Mechanism} \\
+\midrule
+\texttt{scan\_001} & Unguarded assert() with \#ifdef NDEBUG in comment & \texttt{disabled\_safety\_check} & Evaded & Comment text matches \#ifdef NDEBUG heuristic \\
+\texttt{scan\_002} & gets() hidden behind macro alias \#define G gets & \texttt{buffer\_overflow} & Evaded & Static regex scanner does not expand macro aliases \\
+\texttt{scan\_003} & malloc() leak hidden by unrelated free(other) & \texttt{potential\_memory\_leak} & Evaded & Scope-level free\_seen flag satisfied by any free call \\
+\texttt{scan\_004} & strcpy() hidden behind macro \#define STR\_COPY strcpy & \texttt{unsafe\_string\_function} & Evaded & Static regex scanner does not expand macro definitions \\
+\texttt{scan\_005} & Double delete with second deletion in macro & \texttt{double\_free} & Evaded & Static deletion regex requires literal delete token \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Automated Security Healing}
+\begin{table}[htbp]
+\centering
+\caption{Deterministic Security Healing on 8 Prepared Test Samples}
+\label{tab:healing}
+\begin{tabularx}{\textwidth}{l c c c c c c c c}
+\toprule
+\textbf{File} & \textbf{Bef} & \textbf{Fix} & \textbf{Sug} & \textbf{Skp} & \textbf{Rej} & \textbf{Risk $\Delta$} & \textbf{Red.} & \textbf{Time} \\
+\midrule
+\texttt{fixable.cpp} & 6 & 6 & 0 & 0 & 0 & 27 $\rightarrow$ 0 & 100.0\% & 1.84s \\
+\texttt{unfixable.cpp} & 3 & 0 & 2 & 1 & 0 & 17 $\rightarrow$ 17 & 0.0\% & 0.04s \\
+\texttt{clean.cpp} & 0 & 0 & 0 & 0 & 0 & 0 $\rightarrow$ 0 & 0.0\% & 0.02s \\
+\texttt{gets\_sample.cpp} & 1 & 1 & 0 & 0 & 0 & 10 $\rightarrow$ 0 & 100.0\% & 0.38s \\
+\texttt{strcat\_sample.cpp} & 1 & 1 & 0 & 0 & 0 & 5 $\rightarrow$ 0 & 100.0\% & 0.45s \\
+\texttt{sprintf\_sample.cpp} & 1 & 1 & 0 & 0 & 0 & 5 $\rightarrow$ 0 & 100.0\% & 0.37s \\
+\texttt{leak\_sample.cpp} & 1 & 1 & 0 & 0 & 0 & 2 $\rightarrow$ 0 & 100.0\% & 0.35s \\
+\texttt{double\_free\_sample.cpp} & 1 & 1 & 0 & 0 & 0 & 5 $\rightarrow$ 0 & 100.0\% & 0.40s \\
+\midrule \textbf{Total} & \textbf{14} & \textbf{11} & \textbf{2} & \textbf{1} & \textbf{0} & \textbf{71} $\rightarrow$ \textbf{17} & \textbf{76.1\%} & -- \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Review Execution Latency}
+\begin{table}[htbp]
+\centering
+\caption{Security Layer Execution Latency across 127 Test Cases (ms)}
+\label{tab:latency}
+\begin{tabularx}{\textwidth}{l c c c c}
+\toprule
+\textbf{Input Kind} & \textbf{Mean (ms)} & \textbf{Median (ms)} & \textbf{P95 (ms)} & \textbf{Max (ms)} \\
+\midrule
+\texttt{COMPILER\_OUTPUT} & 0.47 & 0.42 & 0.94 & 1.12 \\
+\texttt{DATASET\_ENTRY} & 1.12 & 0.88 & 2.04 & 2.36 \\
+\texttt{HTTP\_REQUEST} & 0.28 & 0.17 & 0.74 & 0.88 \\
+\texttt{MODEL\_FILE} & 2.80 & 3.40 & 4.52 & 4.59 \\
+\texttt{PATCH} & 1.40 & 1.07 & 2.79 & 3.60 \\
+\texttt{USER\_HINT} & 0.68 & 0.59 & 1.26 & 1.32 \\
+\texttt{USER\_SOURCE} & 7.55 & 6.73 & 18.42 & 27.16 \\
+\midrule \textbf{Overall} & \textbf{4.17} & \textbf{2.65} & \textbf{12.96} & \textbf{27.16} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\end{document}

@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
+from ui_components import show_message, plain_label
 
 # Import GUI constants from gui.py at runtime (avoids circular import)
 def _c(name):
@@ -486,11 +487,11 @@ class BenchmarkPage(QWidget):
         hl.setContentsMargins(8, 4, 8, 4)
         hl.setSpacing(0)
 
-        fname = QLabel(file_result.filename)
+        fname = plain_label(file_result.filename)
         fname.setStyleSheet(f"color: {_TEXT()}; font-size: 11px;")
         hl.addWidget(fname, 5)
 
-        exp = QLabel(file_result.expected)
+        exp = plain_label(file_result.expected)
         exp.setStyleSheet(f"color: {_DIM()}; font-size: 11px;")
         hl.addWidget(exp, 4)
 
@@ -513,14 +514,14 @@ class BenchmarkPage(QWidget):
         try:
             from accuracy_benchmark import BenchmarkWorker
         except ImportError:
-            QMessageBox.warning(
-                self, "Benchmark",
+            show_message(
+                self, "warning", "Benchmark",
                 "accuracy_benchmark.py not found in the src/ directory."
             )
             return
 
         self._clear_table()
-        placeholder = QLabel("Running benchmark … please wait.")
+        placeholder = plain_label("Running benchmark … please wait.")
         placeholder.setStyleSheet(f"color: {_DIM()}; font-size: 12px; padding: 20px;")
         placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._table_vbox.addWidget(placeholder)

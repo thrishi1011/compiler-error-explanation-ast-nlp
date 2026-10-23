@@ -96,12 +96,18 @@ QFrame#CodeBlock{ background: $editor_bg; border: 1px solid $border; border-radi
 QFrame#AiCard   { background: $accent_soft; border: 1px solid $border; border-radius: 8px; }
 
 /* issue cards: thin severity strip on the left */
-QFrame#IssueCard { background: $surface; border: 1px solid $border;
+QFrame#IssueCard, QFrame#SecurityFindingCard { background: $surface; border: 1px solid $border;
                    border-left: 3px solid $muted; border-radius: 8px; }
-QFrame#IssueCard[sev="error"]   { border-left: 3px solid $error; }
-QFrame#IssueCard[sev="warning"] { border-left: 3px solid $warn; }
-QFrame#IssueCard[sev="note"]    { border-left: 3px solid $info; }
-QFrame#IssueCard[selected="true"] { background: $accent_soft; }
+QFrame#IssueCard[sev="error"], QFrame#SecurityFindingCard[sev="critical"],
+QFrame#SecurityFindingCard[sev="high"], QFrame#SecurityFindingCard[sev="error"] { border-left: 3px solid $error; }
+QFrame#IssueCard[sev="warning"], QFrame#SecurityFindingCard[sev="medium"],
+QFrame#SecurityFindingCard[sev="warn"], QFrame#SecurityFindingCard[sev="warning"] { border-left: 3px solid $warn; }
+QFrame#IssueCard[sev="note"], QFrame#SecurityFindingCard[sev="low"],
+QFrame#SecurityFindingCard[sev="note"], QFrame#SecurityFindingCard[sev="info"] { border-left: 3px solid $info; }
+QFrame#IssueCard[selected="true"], QFrame#SecurityFindingCard[selected="true"] { background: $accent_soft; }
+
+/* blocked banner: error accent border and soft error background */
+QFrame#BlockedBanner { background: $error_soft; border: 1px solid $error; border-radius: 8px; }
 
 /* ---------- text roles ---------- */
 QLabel#Title      { font-size: 15px; font-weight: 600; }

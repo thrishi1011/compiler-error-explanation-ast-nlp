@@ -192,13 +192,59 @@ def finding_to_compiler_error(finding, source_file: str):
     err.category = cat
     err.confidence = 1.0
     err.context = context
+    err.origin = "security"
     return err
+
+
+def _print_guard_cli_report(guard_data: dict) -> None:
+    print(f"\nSecurity level: {guard_data.get('risk_label', 'Clean')} (score {guard_data.get('risk_score', 0)})")
+    for f in guard_data.get("findings", []):
+        sev = (f.get("severity") or "Medium").upper()
+        cat = f.get("category") or ""
+        agents_str = ", ".join(f.get("agents") or [])
+        line_str = f.get("line") if f.get("line") is not None else "?"
+        act_str = "BLOCKED" if (f.get("action") == "block" or any(p in (f.get("blocks_on") or []) for p in ("compile", "run"))) else "WARN"
+        print(f"[{sev}] {cat} | detected by {agents_str} | line {line_str} | {act_str}")
+
+
+def _print_quality_cli_report(quality_data: dict) -> None:
+    lvl = quality_data.get("level", "Good")
+    hints = quality_data.get("hints", [])
+    print(f"\nCode quality: {lvl} ({len(hints)} hints)")
+    for h in hints:
+        print(f"  [line {h.get('line', '?')}] {h.get('title', '')}: {h.get('message', '')} ({h.get('suggestion', '')})")
 
 
 def main():
     args=parse_arguments()
+    try:
+        from guard.pathsafe import set_allowed_roots
+        set_allowed_roots([os.path.dirname(os.path.abspath(args.source_file))])
+    except Exception:
+        pass
+
+    src_text = ""
+    try:
+        with open(args.source_file, "r", encoding="utf-8", errors="replace") as sf:
+            src_text = sf.read()
+    except Exception:
+        pass
+
     output=run_cpp_compiler(args.source_file)
     errors = parse_errors(output) if output else []
+
+    try:
+        from guard import get_supervisor, InputKind
+        messages = [getattr(e, "message", "") or "" for e in errors]
+        get_supervisor().review(
+            InputKind.COMPILER_OUTPUT,
+            "\n".join(messages),
+            purpose="display",
+            meta={"source": "compiler"},
+        )
+    except Exception:
+        pass
+
     ast_text=extract_ast(args.source_file)
 
     for e in errors:
@@ -207,7 +253,7 @@ def main():
         else:
             e.ast_node=None
         enrich_error(e)
-        log_example(e)
+        log_example(e, source_text=src_text)
 
     security_findings = analyze(args.source_file, errors)
     for e in errors:
@@ -253,6 +299,31 @@ def main():
         except Exception:
             pass
 
+    # Build guard block (one source of truth)
+    guard_data = {
+        "risk_score": 0,
+        "risk_label": "Clean",
+        "blocked_purposes": [],
+        "findings": [],
+        "agents_run": [],
+        "total_ms": 0.0,
+    }
+    try:
+        from security_view import review_source_guard
+        src_dir = os.path.dirname(os.path.abspath(args.source_file))
+        fname = os.path.basename(args.source_file)
+        guard_data = review_source_guard(src_text, source_dir=src_dir, file_name=fname)
+    except Exception:
+        pass
+
+    # Build quality block (Phase 8b)
+    quality_data = {"level": "Good", "score": 0, "hints": []}
+    try:
+        from quality_hints import analyze_quality
+        quality_data = analyze_quality(src_text)
+    except Exception:
+        pass
+
     # JSON mode
     if args.json:
         overall_status = "error" if visible_error_count > 0 else ("warning" if visible_warning_count > 0 else "success")
@@ -264,6 +335,8 @@ def main():
             "errors": [e.to_dict() for e in visible_errors],
             "security_findings": [finding.to_dict() for finding in security_findings],
             "security_report": format_security_report(security_findings),
+            "guard": guard_data,
+            "quality": quality_data,
         }
 
         print(json.dumps(result, indent=2))
@@ -274,6 +347,8 @@ def main():
         print("Compilation successful. 0 errors or warnings detected.")
         print()
         print(format_security_report(security_findings), end="")
+        _print_guard_cli_report(guard_data)
+        _print_quality_cli_report(quality_data)
         return 0
 
     print(f"\n{len(visible_errors)} issue(s) found:\n")
@@ -289,6 +364,8 @@ def main():
     print(f"{error_count} error(s), {warning_count} warning(s)")
     print()
     print(format_security_report(security_findings), end="")
+    _print_guard_cli_report(guard_data)
+    _print_quality_cli_report(quality_data)
     return 1 if error_count > 0 else 0
 
 if __name__ == "__main__":

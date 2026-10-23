@@ -538,11 +538,11 @@ def fix_uninitialized_variable(source: str, error: dict) -> Optional[str]:
                 continue
             stripped = line.strip()
             bare_init = re.match(r"^(?P<indent>\s*)(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<rhs>.+);\s*$", line)
-            if not stripped.endswith(";") or "(" in line or ")" in line:
+            if not stripped.endswith(";") or "(" in line or ")" in line or "<<" in line or ">>" in line:
                 continue
             if "=" in line and not bare_init:
                 continue
-            if re.match(r"^(return|if|for|while|switch|case|do|else|goto|throw|printf|fprintf|scanf|cout|cin|cerr)\b", stripped):
+            if re.match(r"^(?:std::)?(?:return|if|for|while|switch|case|do|else|goto|throw|printf|fprintf|scanf|cout|cin|cerr)\b", stripped):
                 continue
             match = re.search(rf"\b{re.escape(var)}\b", line)
             if not match:

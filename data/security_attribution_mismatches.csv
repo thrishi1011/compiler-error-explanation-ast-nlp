@@ -1,0 +1,11 @@
+case_id,set,family,expected_agents,agents_found,expected_category,categories_found
+hard_001,hard,dangerous_execution,ExecGuard,,process_execution,
+hard_003,hard,dangerous_execution,ExecGuard,,process_execution,
+hard_007,hard,prompt_injection,PromptGuard,,prompt_injection,
+hard_008,hard,prompt_injection,PromptGuard,,prompt_injection,
+hard_012,hard,dangerous_execution,ExecGuard,,process_execution,
+scan_001,hard,scanner_evasion,VulnGuard,,disabled_safety_check,
+scan_002,hard,scanner_evasion,VulnGuard,,buffer_overflow,
+scan_003,hard,scanner_evasion,VulnGuard,,potential_memory_leak,
+scan_004,hard,scanner_evasion,VulnGuard,,unsafe_string_function,
+scan_005,hard,scanner_evasion,VulnGuard,,double_free,

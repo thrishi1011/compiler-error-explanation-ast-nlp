@@ -47,3 +47,5 @@ emissions.csv*
 *~
 data/heal_backups/
 data/llm_debug.log
+data/attack_log.jsonl*
+data/pending_training.jsonl*

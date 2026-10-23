@@ -474,9 +474,11 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
 
         for uv, u_decl in list(uninit_vars.items()):
             if line_no > u_decl and re.search(rf"\b{re.escape(uv)}\b", code_line):
-                if (
-                    re.search(rf"^\s*{re.escape(uv)}\s*=", code_line)
-                    or re.search(rf"cin\s*>>.*?\b{re.escape(uv)}\b", code_line)
+                assign_m = re.search(rf"^\s*{re.escape(uv)}\s*=\s*(.+);", code_line)
+                if assign_m and not re.search(rf"\b{re.escape(uv)}\b", assign_m.group(1)):
+                    del uninit_vars[uv]
+                elif (
+                    re.search(rf"cin\s*>>.*?\b{re.escape(uv)}\b", code_line)
                     or re.search(rf"scanf\s*\(.*&{re.escape(uv)}\b", code_line)
                     or re.search(rf"getline\s*\([^,]+,\s*{re.escape(uv)}\b", code_line)
                 ):
@@ -545,7 +547,7 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                 "Use bounded alternatives such as strncpy/strncat/snprintf or switch to std::string.",
             )
 
-        scanf_match = re.search(r"\bscanf\s*\((.+)\)\s*;?\s*$", code_line)
+        scanf_match = re.search(r"\bscanf\s*\((.+)\)\s*;?\s*$", raw_line)
         if scanf_match:
             args = _split_args(scanf_match.group(1))
             if args:
@@ -558,6 +560,20 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                         "scanf() is reading a string with %s and no width limit.",
                         "Add an explicit width specifier or use std::string with bounded parsing.",
                     )
+
+        fmt_m = re.search(r"\b(?:printf|fprintf)\s*\(\s*([^,()]+)\s*\)\s*;", raw_line)
+        if not fmt_m:
+            fmt_m = re.search(r"\bfprintf\s*\(\s*[^,()]+\s*,\s*([^,()]+)\s*\)\s*;", raw_line)
+        if fmt_m:
+            fmt_arg = fmt_m.group(1).strip()
+            if re.match(r"^[A-Za-z_]\w*$", fmt_arg):
+                emit(
+                    line_no,
+                    "Format String Vulnerability",
+                    "High",
+                    "A non-literal format string is being used with printf/fprintf.",
+                    "Use a fixed format string and pass user data as separate arguments.",
+                )
 
         mem_match = re.search(r"\b(memcpy|memmove)\s*\((.+)\)\s*;?\s*$", code_line)
         if mem_match:
@@ -639,11 +655,10 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
             for scope in scope_stack:
                 scope["free_seen"] = True
 
-        delete_match = _DELETE_RE.search(code_line)
-        if delete_match:
-            freed_vars[delete_match.group(1)] = line_no
-
         for freed_name, freed_line in list(freed_vars.items()):
+            if re.search(rf"\b{re.escape(freed_name)}\s*=\s*(?:nullptr|NULL|0|\w+)\s*;", code_line):
+                del freed_vars[freed_name]
+                continue
             if re.search(rf"\bdelete\s*(?:\[\])?\s*{re.escape(freed_name)}\s*;", code_line) and line_no != freed_line:
                 emit(
                     line_no,
@@ -660,6 +675,10 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                     "Memory appears to be accessed after it was freed.",
                     "Do not use the pointer after delete; prefer unique_ptr or reset the pointer to nullptr.",
                 )
+
+        delete_match = _DELETE_RE.search(code_line)
+        if delete_match:
+            freed_vars[delete_match.group(1)] = line_no
 
         open_braces = code_line.count("{")
         close_braces = code_line.count("}")

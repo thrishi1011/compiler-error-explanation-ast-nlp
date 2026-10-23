@@ -33,6 +33,7 @@ from compiler_runner import _sanitize_code
 from error_parser import parse_errors
 from auto_healer import attempt_fix, UNFIXABLE_CATEGORIES, clean_duplicate_headers
 from diff_viewer import compute_diff, format_diff_html, has_changes
+from guard import check_compile, safe_run
 import llm_client
 from ai_healer import attempt_ai_heal
 
@@ -69,6 +70,27 @@ def compile_source(source: str, syntax_only: bool = True) -> Tuple[List[dict], L
         }]
         return sec_err, [], "error: Malicious code blocked"
 
+    from guard import check_compile, safe_run
+    verdict = check_compile(source)
+    if verdict.blocked:
+        blocking_f = next((f for f in verdict.findings if f.action == "block"), verdict.findings[0] if verdict.findings else None)
+        agents_str = ", ".join(blocking_f.agents) if blocking_f else "ResourceGuard"
+        cat = blocking_f.category if blocking_f else "security_violation"
+        line_no = blocking_f.line if (blocking_f and blocking_f.line) else 1
+        col_no = blocking_f.column if (blocking_f and blocking_f.column) else 1
+        msg = f"Security Error: blocked by {agents_str} ({cat}) at line {line_no}"
+        sec_err = [{
+            "file": "<user_code>",
+            "line": line_no,
+            "column": col_no,
+            "type": "error",
+            "message": msg,
+            "raw": f"error: {msg}",
+            "category": "security_violation",
+            "confidence": 1.0,
+        }]
+        return sec_err, [], f"error: {msg}"
+
     with tempfile.NamedTemporaryFile("w", suffix=".cpp", delete=False, encoding="utf-8") as tmp:
         tmp_path = tmp.name
         tmp.write(source)
@@ -77,16 +99,30 @@ def compile_source(source: str, syntax_only: bool = True) -> Tuple[List[dict], L
     try:
         if syntax_only:
             cmd = ["g++", "-fsyntax-only", "-std=c++17", "-Wall", tmp_path]
+            run_kind = "syntax"
         else:
             out_exe = tmp_path + (".exe" if os.name == "nt" else ".out")
             cmd = ["g++", "-std=c++17", "-Wall", tmp_path, "-o", out_exe]
+            run_kind = "compile"
 
-        res = subprocess.run(
+        res = safe_run(
             cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+            kind=run_kind,
         )
+        if res.timed_out:
+            t_s = int(res.duration_s)
+            msg = f"Compilation timed out after {t_s} s (possible resource-exhaustion input)"
+            timeout_err = [{
+                "file": "<user_code>",
+                "line": 1,
+                "column": 1,
+                "type": "error",
+                "message": msg,
+                "raw": f"error: {msg}",
+                "category": "timeout",
+                "confidence": 1.0,
+            }]
+            return timeout_err, [], f"error: {msg}"
         errors = []
         warnings = []
         for line in res.stderr.splitlines():
@@ -172,6 +208,7 @@ class HealResult:
         initial_errors: int = 0,
         remaining_errors: int = 0,
         first_error: Optional[str] = None,
+        security: Optional[dict] = None,
     ):
         self.code = code
         self.status = status          # "healed", "partially_healed", "nothing_changed"
@@ -184,6 +221,7 @@ class HealResult:
         self.initial_errors = initial_errors
         self.remaining_errors = remaining_errors
         self.first_error = first_error
+        self.security = security
 
     def to_dict(self) -> dict:
         return {
@@ -199,6 +237,7 @@ class HealResult:
             "initial_errors": self.initial_errors,
             "remaining_errors": self.remaining_errors,
             "first_error": self.first_error,
+            "security": self.security,
         }
 
 
@@ -241,6 +280,7 @@ def heal_until_clean(
     seen_error_keys = set()
     initial_compile = True
     initial_error_count = 0
+    sec_result = None
 
     # Reset per-heal-run AI time budget (capped by HEAL_AI_BUDGET_SEC, default 20s)
     llm_client.reset_heal_ai_budget()
@@ -298,6 +338,18 @@ def heal_until_clean(
                             patched_warn = attempt_fix(current_source, target_warn)
                             if not patched_warn or patched_warn == current_source:
                                 break
+                            from guard.gates import check_patch
+                            from guard.attack_log import log_event
+                            warn_v = check_patch(current_source, patched_warn, origin="offline_rules")
+                            if warn_v.blocked:
+                                all_attempts_flat.append({
+                                    "attempt_no": len(all_attempts_flat) + 1,
+                                    "target_error": target_warn,
+                                    "diff_html": "",
+                                    "reason": "patch_blocked_by_security",
+                                })
+                                log_event("patch_blocked_by_security", {"origin": "offline_rules", "target": target_warn.get("category")})
+                                continue
                             w_errors, w_warnings, _ = compile_source(patched_warn, syntax_only=False)
                             if len(w_errors) == 0 and len(w_warnings) < len(full_warnings):
                                 diff = compute_diff(current_source, patched_warn)
@@ -317,75 +369,36 @@ def heal_until_clean(
                                 current_source = patched_warn
                                 full_warnings = _classify_error_list(w_warnings, classifier)
                                 warn_rounds += 1
+                            else:
+                                break
                     # Security and runtime flaw healing
-                    from security_analyzer import analyze
-                    with tempfile.NamedTemporaryFile("w", suffix=".cpp", delete=False, encoding="utf-8") as tmp_s:
-                        tmp_s.write(current_source)
-                        tmp_s_path = tmp_s.name
-                    try:
-                        sec_findings = [f for f in analyze(tmp_s_path, []) if f.source != "compiler_diagnostic"]
-                    finally:
-                        if os.path.exists(tmp_s_path):
-                            try: os.remove(tmp_s_path)
-                            except: pass
-
-                    sec_rounds = 0
-                    while sec_findings and sec_rounds < 10:
-                        target_sec = sec_findings[0]
-                        sec_dict = {
-                            "file": target_sec.file,
-                            "line": target_sec.line,
-                            "column": target_sec.column or 1,
-                            "type": "error" if (target_sec.severity or "").lower() in ("critical", "high") else "warning",
-                            "message": target_sec.description,
-                            "category": target_sec.vulnerability_type.lower().replace(" ", "_"),
-                            "description": target_sec.description,
-                            "recommendation": target_sec.recommendation,
-                        }
-                        emit("attempt_started", {"attempt": len(all_attempts_flat) + 1, "target": sec_dict})
-                        patched_sec = attempt_fix(current_source, sec_dict)
-                        if not patched_sec or patched_sec == current_source:
-                            break
-
-                        sc_errors, sc_warnings, _ = compile_source(patched_sec, syntax_only=False)
-                        if len(sc_errors) == 0:
-                            with tempfile.NamedTemporaryFile("w", suffix=".cpp", delete=False, encoding="utf-8") as tmp_v:
-                                tmp_v.write(patched_sec)
-                                tmp_v_path = tmp_v.name
-                            try:
-                                new_sec = [f for f in analyze(tmp_v_path, []) if f.source != "compiler_diagnostic"]
-                            finally:
-                                if os.path.exists(tmp_v_path):
-                                    try: os.remove(tmp_v_path)
-                                    except: pass
-
-                            if len(new_sec) < len(sec_findings):
-                                diff = compute_diff(current_source, patched_sec)
-                                diff_html = format_diff_html(diff) if has_changes(diff) else ""
-                                fixed_lines = [d.line_no_new for d in diff if d.kind == "+" and d.line_no_new is not None]
-                                emit("diff_ready", {"attempt": len(all_attempts_flat) + 1, "diff_html": diff_html, "label": f"healed {target_sec.vulnerability_type}"})
-                                emit("lines_fixed", {"lines": fixed_lines})
-                                rounds_history.append({
-                                    "round_no": len(rounds_history) + 1,
-                                    "method": f"healed {target_sec.vulnerability_type}",
-                                    "model": None,
-                                    "errors_before": len(sec_findings),
-                                    "errors_after": len(new_sec),
-                                    "seconds": round(time.time() - round_start_time, 3),
-                                    "diff_html": diff_html,
-                                })
-                                current_source = patched_sec
-                                sec_findings = new_sec
-                                sec_rounds += 1
-                                continue
-                        break
+                    import security_healer
+                    sec_result = security_healer.heal_security(current_source, source_dir=None)
+                    current_source = sec_result.source_after
+                    for fix in sec_result.applied:
+                        diff = compute_diff(fix.before, fix.after)
+                        diff_html = format_diff_html(diff) if has_changes(diff) else ""
+                        fixed_lines = [fix.line] if fix.line else []
+                        emit("diff_ready", {"attempt": len(all_attempts_flat) + 1, "diff_html": diff_html, "label": f"healed {fix.finding_category}"})
+                        emit("lines_fixed", {"lines": fixed_lines})
+                        rounds_history.append({
+                            "round_no": len(rounds_history) + 1,
+                            "method": f"healed {fix.finding_category}",
+                            "model": None,
+                            "errors_before": sec_result.risk_before,
+                            "errors_after": sec_result.risk_after,
+                            "seconds": round(sec_result.seconds, 3),
+                            "diff_html": diff_html,
+                        })
+                    sec_findings = sec_result.findings_after
 
                     is_clean = (len(full_warnings) == 0 and len(sec_findings) == 0)
                     msg = f"Compiles with {len(full_warnings)} warning(s)" if full_warnings else "Compiles cleanly with 0 errors"
                     if is_clean:
                         msg = "All compiler errors and security issues resolved. Code compiles cleanly."
                     elif sec_findings:
-                        msg = f"Compiles, but {len(sec_findings)} security/runtime issue(s) remain."
+                        manual_count = sum(1 for o in sec_result.outcomes if o.status in ("suggested", "manual", "rejected", "skipped_behavior"))
+                        msg = f"Compiles, but {len(sec_findings)} security/runtime issue(s) remain ({manual_count} need manual fixes)."
                     current_source = clean_duplicate_headers(current_source)
                     emit("status_update", {"text": f"STATUS: ● {'HEALED ✅' if is_clean else 'PARTIALLY HEALED ⚠️'} ({msg})"})
                     duration = time.time() - start_time
@@ -404,6 +417,7 @@ def heal_until_clean(
                         total_emissions=round(emissions, 6),
                         initial_errors=initial_error_count,
                         remaining_errors=len(full_warnings) + len(sec_findings),
+                        security=sec_result.to_dict() if sec_result else None,
                     )
 
             current_sig = (hashlib.sha256(current_source.encode("utf-8")).hexdigest(), tuple(e["message"] for e in errors))
@@ -485,7 +499,20 @@ def heal_until_clean(
                     seen_error_keys.add(error_key)
 
                     emit("attempt_started", {"attempt": len(all_attempts_flat) + 1, "target": target})
-                    patched = attempt_fix(offline_source, target)
+                    patched = None
+                    if target.get("category") in ("security", "security_error", "security_violation"):
+                        from guard import check_compile
+                        import security_healer
+                        verdict = check_compile(offline_source)
+                        blocking = [f for f in verdict.findings if f.action == "block"]
+                        if blocking:
+                            for bf in blocking:
+                                fix = security_healer.apply_recipe(offline_source, bf)
+                                if fix and fix.new_source and fix.new_source != offline_source:
+                                    patched = fix.new_source
+                                    break
+                    if not patched:
+                        patched = attempt_fix(offline_source, target)
                     if patched is None or patched == offline_source:
                         all_attempts_flat.append({
                             "attempt_no": len(all_attempts_flat) + 1,
@@ -493,6 +520,20 @@ def heal_until_clean(
                             "diff_html": "",
                             "reason": "no_patch_available",
                         })
+                        continue
+
+                    from guard.gates import check_patch
+                    from guard.attack_log import log_event
+                    origin_val = "security_fix" if target.get("category") in ("security", "security_error", "security_violation") else "offline_rules"
+                    patch_v = check_patch(offline_source, patched, origin=origin_val)
+                    if patch_v.blocked:
+                        all_attempts_flat.append({
+                            "attempt_no": len(all_attempts_flat) + 1,
+                            "target_error": target,
+                            "diff_html": "",
+                            "reason": "patch_blocked_by_security",
+                        })
+                        log_event("patch_blocked_by_security", {"origin": origin_val, "target": target.get("category")})
                         continue
 
                     # Check that patch didn't make errors worse (syntax check)
@@ -558,29 +599,7 @@ def heal_until_clean(
                 current_source = candidate_code
 
                 if errors_after == 0:
-                    # One full compile to verify
-                    full_errors, full_warnings, _ = compile_source(current_source, syntax_only=False)
-                    if len(full_errors) == 0:
-                        msg = f"Compiles with {len(full_warnings)} warning(s)" if full_warnings else "Compiles cleanly with 0 errors"
-                        current_source = clean_duplicate_headers(current_source)
-                        emit("status_update", {"text": f"STATUS: ● HEALED ✅ ({msg})"})
-                        duration = time.time() - start_time
-                        emissions = 0.0
-                        if tracker:
-                            try: emissions = tracker.stop() or 0.0
-                            except: pass
-                        return HealResult(
-                            code=current_source,
-                            status="healed",
-                            clean=True,
-                            rounds=rounds_history,
-                            attempts=all_attempts_flat,
-                            message=msg,
-                            total_duration=round(duration, 3),
-                            total_emissions=round(emissions, 6),
-                            initial_errors=initial_error_count,
-                            remaining_errors=0,
-                        )
+                    continue
             else:
                 # Neither AI nor offline rules made progress
                 rounds_history.append({
@@ -619,6 +638,16 @@ def heal_until_clean(
 
     emit("status_update", {"text": f"STATUS: ● {status.upper().replace('_', ' ')}"})
 
+    import security_healer
+    if sec_result is None:
+        try:
+            sec_res = security_healer.heal_security(current_source, max_rounds=0)
+            sec_dict = sec_res.to_dict()
+        except Exception:
+            sec_dict = None
+    else:
+        sec_dict = sec_result.to_dict()
+
     return HealResult(
         code=current_source,
         status=status,
@@ -631,4 +660,5 @@ def heal_until_clean(
         initial_errors=initial_error_count,
         remaining_errors=len(final_errors),
         first_error=final_errors[0].get("message") if final_errors else None,
+        security=sec_dict,
     )

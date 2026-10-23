@@ -11,8 +11,15 @@ error_pattern=re.compile(
     r"\s*(?P<message>.*)$"
 )
 
-def get_source_context(path,line_no,context_lines=2):
+def get_source_context(path, line_no, context_lines=2):
     if not path:
+        return None
+
+    try:
+        from guard.pathsafe import is_safe_to_read
+        if not is_safe_to_read(path):
+            return None
+    except Exception:
         return None
 
     if not os.path.exists(path):

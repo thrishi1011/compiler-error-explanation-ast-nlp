@@ -82,6 +82,8 @@ def build_ui_message(raw_message: str) -> str:
         → "The compiler expected a ';' after the expression."
     """
     msg = raw_message.strip()
+    if not msg:
+        return ""
 
     # ── pattern: expected '<token>' [after/before] <context> ──
     m = re.match(
@@ -238,6 +240,14 @@ def normalize_for_classifier(raw_message: str) -> str:
         # Check compound standard types like 'std::vector<int>'
         if any(std_sym in token for std_sym in ["vector", "string", "map", "set", "pair", "tuple", "ostream", "istream"]):
             return f"'{token}'"
+        # Check if composed entirely of preserved tokens/types/pointers (e.g. 'const char*', 'int*')
+        parts = re.findall(r'[a-zA-Z_]\w*|[*&]+', token)
+        if parts and all(p in _PRESERVED_CPP_TOKENS for p in parts):
+            return f"'{token}'"
+        # If composed of type followed by user identifier (e.g. 'int counter')
+        if len(parts) >= 2 and all(p in _PRESERVED_CPP_TOKENS for p in parts[:-1]) and parts[-1] not in _PRESERVED_CPP_TOKENS:
+            type_part = " ".join(parts[:-1])
+            return f"'{type_part} <ID>'"
         # Check if punctuation
         if token in _PRESERVED_CPP_TOKENS:
             return f"'{token}'"

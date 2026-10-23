@@ -33,12 +33,13 @@ from PyQt6.QtWidgets import (
     QTreeWidgetItem, QLineEdit, QScrollArea, QSizePolicy, QTextBrowser,
     QProgressBar, QStackedWidget, QGraphicsView, QGraphicsScene,
     QGraphicsRectItem, QGraphicsLineItem, QGraphicsTextItem, QGraphicsItem,
-    QTabWidget
+    QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QComboBox
 )
-from PyQt6.QtCore import Qt, QRect, QSize, QThread, pyqtSignal, QTimer, QProcess
+from PyQt6.QtCore import Qt, QRect, QSize, QThread, pyqtSignal, QTimer, QProcess, QUrl
 from PyQt6.QtGui import (
     QFont, QColor, QPainter, QTextFormat, QTextCharFormat,
-    QSyntaxHighlighter, QTextCursor, QPainterPath, QPen, QLinearGradient, QBrush
+    QSyntaxHighlighter, QTextCursor, QPainterPath, QPen, QLinearGradient, QBrush,
+    QDesktopServices
 )
 
 # Suppress noisy logs & warnings
@@ -100,8 +101,19 @@ from energy_monitor import (
 import theme
 from ui_components import (
     plain_label, badge, section_label, code_block,
-    split_explanation, CollapsibleSection, IssueCard, AiCard
+    split_explanation, CollapsibleSection, IssueCard, AiCard,
+    show_message, SecuritySummaryCard, SecurityFindingCard,
+    BlockedBanner, SecurityResultCard, SecurityBarChart, QualityHintCard
 )
+from security_view import (
+    build_security_summary, finding_view, sort_findings,
+    heal_security_view, blocked_banner_view,
+    build_agent_rows, load_attack_log, summarize_attack_log, benchmark_view
+)
+from ui_text import build_compiler_html
+from guard.output_safe import safe_text, html_text
+from guard.pathsafe import set_allowed_roots
+from dataclasses import dataclass
 
 # ── Backward compatibility exports for external modules and gui_new_pages ─────
 CURRENT_THEME = dict(theme.tokens("dark"))
@@ -207,7 +219,7 @@ def _extract_cpp_call_graph(code):
     }
     function_re = re.compile(
         r"(?:^|\n)\s*(?:template\s*<[^>{}]+>\s*)?"
-        r"(?:[\w:<>,~*&\s]+\s+)+(?P<name>[A-Za-z_]\w*)\s*"
+        r"(?:[\w:<>,~*&]+\s+)+(?P<name>[A-Za-z_]\w*)\s*"
         r"\([^;{}]*\)\s*(?:const\s*)?(?:noexcept\s*)?\{",
         re.MULTILINE,
     )
@@ -250,7 +262,7 @@ def _extract_cpp_call_graph(code):
 
 def _extract_cpp_cfg(code):
     function_re = re.compile(
-        r"(?:^|\n)\s*(?:[\w:<>,~*&\s]+\s+)+(?P<name>[A-Za-z_]\w*)\s*"
+        r"(?:^|\n)\s*(?:[\w:<>,~*&]+\s+)+(?P<name>[A-Za-z_]\w*)\s*"
         r"\([^;{}]*\)\s*(?:const\s*)?(?:noexcept\s*)?\{",
         re.MULTILINE,
     )
@@ -1054,6 +1066,8 @@ class TerminalDisplay(QTextEdit):
         self.setFont(theme.mono_font(12))
         self.process: Optional[QProcess] = None
         self.prompt_pos = 0
+        self.total_chars_displayed = 0
+        self.timer: Optional[QTimer] = None
 
     def append_output(self, text: str, is_html: bool = False):
         self.setReadOnly(False)
@@ -1063,11 +1077,51 @@ class TerminalDisplay(QTextEdit):
         if is_html:
             self.insertHtml(text)
         else:
-            self.insertPlainText(text)
+            self.insertPlainText(safe_text(text))
         self.prompt_pos = self.document().characterCount() - 1
         self.ensureCursorVisible()
         if not (self.process and self.process.state() == QProcess.ProcessState.Running):
             self.setReadOnly(True)
+
+    def attach_process(self, process: QProcess, timeout_ms: int = 5000, max_chars: int = 1_000_000):
+        self.process = process
+        self.total_chars_displayed = 0
+        self.timer = QTimer(self)
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(lambda: self._kill_attached_process("Execution timed out after 5 s"))
+        self.timer.start(timeout_ms)
+
+        process.readyReadStandardOutput.connect(self._read_process_stdout)
+        process.readyReadStandardError.connect(self._read_process_stderr)
+        process.finished.connect(self.timer.stop)
+
+    def _read_process_stdout(self):
+        if not self.process:
+            return
+        data = bytes(self.process.readAllStandardOutput()).decode("utf-8", errors="replace")
+        self._append_capped(data)
+
+    def _read_process_stderr(self):
+        if not self.process:
+            return
+        data = bytes(self.process.readAllStandardError()).decode("utf-8", errors="replace")
+        self._append_capped(data)
+
+    def _append_capped(self, data: str):
+        if self.total_chars_displayed + len(data) > 1_000_000:
+            allowed = 1_000_000 - self.total_chars_displayed
+            if allowed > 0:
+                self.append_output(data[:allowed])
+            self.append_output("\nOutput truncated at 1 MB\n")
+            self._kill_attached_process("Output truncated at 1 MB")
+        else:
+            self.total_chars_displayed += len(data)
+            self.append_output(data)
+
+    def _kill_attached_process(self, reason: str):
+        if self.process and self.process.state() == QProcess.ProcessState.Running:
+            self.process.kill()
+            self.append_output(f"\n[{reason}]\n")
 
 
 # ── Generic Reusable CustomFrame ──────────────────────────────────────────────
@@ -1085,6 +1139,7 @@ class CustomFrame(QFrame):
         hb_lay = QHBoxLayout(header_bar)
         hb_lay.setContentsMargins(16, 12, 16, 12)
         self.header = QLabel(title)
+        self.header.setTextFormat(Qt.TextFormat.PlainText)
         self.header.setObjectName("Title")
         hb_lay.addWidget(self.header)
         hb_lay.addStretch(1)
@@ -1139,8 +1194,12 @@ class CompilerWorker(QThread):
 
     def run(self):
         try:
-            result = subprocess.run(self.cmd, capture_output=True, text=True)
-            self.finished.emit(result.stdout, result.stderr, result.returncode)
+            from guard.safe_run import safe_run
+            result = safe_run(self.cmd, kind="compile")
+            stderr = result.stderr
+            if result.timed_out:
+                stderr = "Compilation timed out after 20 s (possible resource-exhaustion input)"
+            self.finished.emit(result.stdout, stderr, result.returncode if result.returncode is not None else -1)
         except Exception as e:
             self.finished.emit("", str(e), -1)
 
@@ -1154,10 +1213,12 @@ class RunnerWorker(QThread):
 
     def run(self):
         try:
-            result = subprocess.run(self.cmd, capture_output=True, text=True, timeout=5)
-            self.finished.emit(result.stdout, result.stderr, result.returncode)
-        except subprocess.TimeoutExpired as e:
-            self.finished.emit(e.stdout.decode() if e.stdout else "", "Timeout expired after 5s", -1)
+            from guard.safe_run import safe_run
+            result = safe_run(self.cmd, kind="run", timeout=5)
+            stderr = result.stderr
+            if result.timed_out:
+                stderr = "Timeout expired after 5s"
+            self.finished.emit(result.stdout, stderr, result.returncode if result.returncode is not None else -1)
         except Exception as e:
             self.finished.emit("", str(e), -1)
 
@@ -1182,29 +1243,58 @@ class SyntaxWorker(QThread):
                 }])
                 return
 
+            try:
+                from guard.gates import check_compile
+                verdict = check_compile(
+                    self.code,
+                    source_dir=os.path.dirname(os.path.abspath(self.file_path)) if self.file_path else None,
+                    file_name=os.path.basename(self.file_path) if self.file_path else None,
+                    fast=True,
+                )
+                if verdict.blocked:
+                    block_msgs = []
+                    for f in verdict.findings:
+                        if f.action == "block":
+                            line_str = f" at line {f.line}" if f.line is not None else ""
+                            agents_str = ", ".join(f.agents) if f.agents else "security layer"
+                            block_msgs.append(f"Security Error: blocked by {agents_str} ({f.category}){line_str}")
+                    msg = "\n".join(block_msgs) if block_msgs else "Security Error: blocked by security layer."
+                    self.finished.emit([{
+                        "line": 1,
+                        "column": 1,
+                        "error_type": "error",
+                        "message": msg
+                    }])
+                    return
+            except ImportError:
+                pass
+
             dir_name = os.path.dirname(os.path.abspath(self.file_path)) if self.file_path else tempfile.gettempdir()
             fd, temp_path = tempfile.mkstemp(suffix=".cpp", dir=dir_name)
             with os.fdopen(fd, 'w', encoding="utf-8") as f:
                 f.write(self.code)
 
-            res = subprocess.run(
-                ["g++", "-fsyntax-only", "-std=c++17", temp_path],
-                capture_output=True, text=True
-            )
-            errors = []
-            pattern = r"(.+):(\d+):(\d+):\s+(error|warning):\s+(.*)"
-            for line in res.stderr.splitlines():
-                m = re.match(pattern, line)
-                if m and (temp_path in m.group(1) or os.path.basename(temp_path) in m.group(1)):
-                    errors.append({
-                        "line": int(m.group(2)),
-                        "column": int(m.group(3)),
-                        "error_type": m.group(4),
-                        "message": m.group(5)
-                    })
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-            self.finished.emit(errors)
+            try:
+                from guard.safe_run import safe_run
+                res = safe_run(
+                    ["g++", "-fsyntax-only", "-std=c++17", temp_path],
+                    kind="syntax",
+                )
+                errors = []
+                pattern = r"(.+):(\d+):(\d+):\s+(error|warning):\s+(.*)"
+                for line in res.stderr.splitlines():
+                    m = re.match(pattern, line)
+                    if m and (temp_path in m.group(1) or os.path.basename(temp_path) in m.group(1)):
+                        errors.append({
+                            "line": int(m.group(2)),
+                            "column": int(m.group(3)),
+                            "error_type": m.group(4),
+                            "message": m.group(5)
+                        })
+                self.finished.emit(errors)
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
         except Exception:
             self.finished.emit([])
 
@@ -2003,9 +2093,9 @@ class EnergyPage(CustomFrame):
         if save_path:
             ok = self.monitor.export_csv(save_path)
             if ok:
-                QMessageBox.information(self, "Export Complete", f"Saved energy telemetry to:\n{save_path}")
+                show_message(self, "info", "Export Complete", f"Saved energy telemetry to:\n{save_path}")
             else:
-                QMessageBox.critical(self, "Export Error", "Failed to export energy telemetry CSV.")
+                show_message(self, "critical", "Export Error", "Failed to export energy telemetry CSV.")
 
     def update_file_errors(self, errors):
         self.accuracy_tab.set_file_diagnostics(errors)
@@ -2060,8 +2150,7 @@ class SecurityCard(QFrame):
         line_no = finding.get("line")
         loc_str = finding.get("location") or (f"Line {line_no}" if line_no else "")
         if loc_str:
-            loc_lbl = QLabel(loc_str)
-            loc_lbl.setObjectName("Muted")
+            loc_lbl = plain_label(loc_str, "Muted")
             top.addWidget(loc_lbl)
         lay.addLayout(top)
 
@@ -2079,24 +2168,29 @@ class SecurityCard(QFrame):
             lay.addWidget(section_label("SUGGESTED FIX"))
             lay.addWidget(code_block(fix, copy_button=True))
 
+    def add_ai_explanation(self, ai_data: dict) -> None:
+        """No-op for security cards to guard against attribute errors."""
+        pass
+
 
 class SecurityPage(CustomFrame):
     def __init__(self, parent=None):
         super().__init__("SECURITY ANALYZER :: VULNERABILITY REPORT", left_padding=True)
         self.findings = []
+        self.latest_guard = {}
         self.current_filter = "All"
+        self.current_agent_filter = "All"
+        self.benchmark_worker = None
 
         header_row = QHBoxLayout()
         header_row.setSpacing(12)
 
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
-        self.summary = QLabel("0 findings detected")
-        self.summary.setObjectName("Title")
+        self.summary = plain_label("0 findings detected", "Title")
         title_box.addWidget(self.summary)
 
-        self.subsummary = QLabel("Grouped security findings with exact source lines and secure remediation guidance.")
-        self.subsummary.setObjectName("Muted")
+        self.subsummary = plain_label("Grouped security findings with exact source lines and secure remediation guidance.", "Muted")
         title_box.addWidget(self.subsummary)
         header_row.addLayout(title_box, 1)
 
@@ -2115,8 +2209,12 @@ class SecurityPage(CustomFrame):
         self.perm_system_calls = QCheckBox("Allow System Calls")
         self.perm_assembly = QCheckBox("Allow Inline Assembly")
         self.perm_sys_includes = QCheckBox("Allow <sys/*>")
+        self.perm_external_includes = QCheckBox("Allow external includes")
+        self.perm_external_includes.setToolTip("Allow includes outside the source directory. Increases risk of path traversal.")
+        self.perm_behavior_fixes = QCheckBox("Allow behaviour-changing security fixes")
+        self.perm_behavior_fixes.setToolTip("Allow security healer to apply auto_notice fixes that may alter program behavior.")
 
-        for chk in [self.perm_system_calls, self.perm_assembly, self.perm_sys_includes]:
+        for chk in [self.perm_system_calls, self.perm_assembly, self.perm_sys_includes, self.perm_external_includes, self.perm_behavior_fixes]:
             pbox_lay.addWidget(chk)
             chk.stateChanged.connect(self._update_permissions)
         pbox_lay.addStretch(1)
@@ -2128,31 +2226,36 @@ class SecurityPage(CustomFrame):
         self.risk_bar.setTextVisible(False)
         self.content_layout.addWidget(self.risk_bar)
 
-        # Filter buttons
-        filter_row = QHBoxLayout()
-        filter_row.setSpacing(8)
-        self.filter_buttons = {}
-        for label in ["All", "High", "Medium", "Low"]:
-            btn = QPushButton(label)
-            btn.setProperty("variant", "primary" if label == "All" else "ghost")
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.clicked.connect(lambda _c=False, val=label: self.set_filter(val))
-            self.filter_buttons[label] = btn
-            filter_row.addWidget(btn)
-        filter_row.addStretch(1)
-        self.content_layout.addLayout(filter_row)
+        # ── QTabWidget ─────────────────────────────────────────────────────────
+        self.tabs = QTabWidget()
+        self.tabs.setObjectName("SubTabs")
 
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
-        self.report_host = QWidget()
-        self.report_layout = QVBoxLayout(self.report_host)
-        self.report_layout.setContentsMargins(0, 0, 0, 0)
-        self.report_layout.setSpacing(10)
-        self.report_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.scroll.setWidget(self.report_host)
-        self.content_layout.addWidget(self.scroll, 1)
+        # 1. Findings tab
+        self.tab_findings = self._create_findings_tab()
+        self.tabs.addTab(self.tab_findings, "Findings")
+
+        # 2. Agents tab
+        self.tab_agents = self._create_agents_tab()
+        self.tabs.addTab(self.tab_agents, "Agents")
+
+        # 3. Attack Log tab
+        self.tab_log = self._create_log_tab()
+        self.tabs.addTab(self.tab_log, "Attack Log")
+
+        # 4. Benchmark tab
+        self.tab_benchmark = self._create_benchmark_tab()
+        self.tabs.addTab(self.tab_benchmark, "Benchmark")
+
+        self.content_layout.addWidget(self.tabs, 1)
 
         self.update_report([])
+
+    def _update_permissions(self):
+        os.environ["ALLOW_SYSTEM_CALLS"] = "1" if self.perm_system_calls.isChecked() else "0"
+        os.environ["ALLOW_ASSEMBLY"] = "1" if self.perm_assembly.isChecked() else "0"
+        os.environ["ALLOW_SYS_INCLUDES"] = "1" if self.perm_sys_includes.isChecked() else "0"
+        os.environ["ALLOW_EXTERNAL_INCLUDES"] = "1" if self.perm_external_includes.isChecked() else "0"
+        os.environ["GUARD_ALLOW_BEHAVIOR_FIXES"] = "1" if self.perm_behavior_fixes.isChecked() else "0"
 
     def _normalize_findings(self, findings):
         normalized = []
@@ -2163,61 +2266,621 @@ class SecurityPage(CustomFrame):
                 normalized.append(f)
         return normalized
 
+    # ── 1. Findings Tab ────────────────────────────────────────────────────────
+    def _create_findings_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 8, 0, 0)
+        lay.setSpacing(8)
+
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(8)
+        self.filter_buttons = {}
+        for label in ["All", "High and Critical", "Medium", "Low"]:
+            btn = QPushButton(label)
+            btn.setProperty("variant", "primary" if label == "All" else "ghost")
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda _c=False, val=label: self.set_filter(val))
+            self.filter_buttons[label] = btn
+            filter_row.addWidget(btn)
+
+        filter_row.addSpacing(16)
+        filter_row.addWidget(plain_label("Agent:", "Muted"))
+        self.agent_filter_combo = QComboBox()
+        self.agent_filter_combo.addItem("All")
+        self.agent_filter_combo.currentTextChanged.connect(self._on_agent_filter_changed)
+        filter_row.addWidget(self.agent_filter_combo)
+        filter_row.addStretch(1)
+        lay.addLayout(filter_row)
+
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.report_host = QWidget()
+        self.report_layout = QVBoxLayout(self.report_host)
+        self.report_layout.setContentsMargins(0, 0, 0, 0)
+        self.report_layout.setSpacing(10)
+        self.report_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.scroll.setWidget(self.report_host)
+        lay.addWidget(self.scroll, 1)
+        return w
+
     def set_filter(self, val: str):
         self.current_filter = val
         for label, btn in self.filter_buttons.items():
             theme.set_prop(btn, "variant", "primary" if label == val else "ghost")
-        self._render()
+        self._render_findings()
 
-    def update_report(self, findings):
-        self.findings = self._normalize_findings(findings)
-        self._render()
+    def _on_agent_filter_changed(self, text: str):
+        self.current_agent_filter = text or "All"
+        self._render_findings()
 
-    def _render(self):
+    def _render_findings(self):
         while self.report_layout.count():
             item = self.report_layout.takeAt(0)
             w = item.widget()
             if w:
                 w.deleteLater()
 
-        counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
-        score = 0
-        weights = {"Critical": 10, "High": 5, "Medium": 2, "Low": 1}
-
-        for f in self.findings:
-            sev = str(f.get("severity", "Low")).capitalize()
-            if sev in counts:
-                counts[sev] += 1
-            score += weights.get(sev, 1)
-
-        self.summary.setText(f"{counts['Critical']} critical, {counts['High']} high, {counts['Medium']} medium, {counts['Low']} low findings")
-        risk_text = "Clean" if score == 0 else ("Low Risk" if score <= 10 else ("Moderate" if score <= 30 else "High Risk"))
-        tone = "ok" if score == 0 else ("warn" if score <= 30 else "error")
-        self.risk_badge.setText(f"Risk Score: {score} • {risk_text}")
-        theme.set_prop(self.risk_badge, "tone", tone)
-        self.risk_bar.setValue(min(100, score * 4))
+        # Summary card at top of findings
+        if self.latest_guard:
+            summary_view = build_security_summary(self.latest_guard)
+            self.report_layout.addWidget(SecuritySummaryCard(summary_view))
 
         filtered = []
         for f in self.findings:
             sev = str(f.get("severity", "Low")).capitalize()
             if self.current_filter == "All":
-                filtered.append(f)
-            elif self.current_filter == "High" and sev in ("Critical", "High"):
-                filtered.append(f)
-            elif self.current_filter == sev:
+                sev_match = True
+            elif self.current_filter in ("High and Critical", "High"):
+                sev_match = sev in ("Critical", "High")
+            elif self.current_filter == "Medium":
+                sev_match = (sev == "Medium")
+            elif self.current_filter == "Low":
+                sev_match = (sev == "Low")
+            else:
+                sev_match = (self.current_filter == sev)
+
+            if not sev_match:
+                continue
+
+            if self.current_agent_filter == "All":
+                agent_match = True
+            else:
+                agents = f.get("agents", [])
+                agent_match = self.current_agent_filter in agents
+
+            if agent_match:
                 filtered.append(f)
 
         if not filtered:
-            self.report_layout.addWidget(plain_label("No security findings detected. Code passes sanitizer checks.", "Muted"))
+            msg = "No security findings detected. Code passes sanitizer checks." if not self.findings else "No security findings match the current filter."
+            self.report_layout.addWidget(plain_label(msg, "Muted"))
             return
 
-        for f in filtered:
-            self.report_layout.addWidget(SecurityCard(f))
+        sorted_f = sort_findings(filtered)
+        purposes = self.latest_guard.get("blocked_purposes", ["compile", "run"])
+        for f in sorted_f:
+            f_view = finding_view(f, current_purposes=purposes)
+            card = SecurityFindingCard(f_view)
+            self.report_layout.addWidget(card)
 
-    def _update_permissions(self):
-        os.environ["ALLOW_SYSTEM_CALLS"] = "1" if self.perm_system_calls.isChecked() else "0"
-        os.environ["ALLOW_ASSEMBLY"] = "1" if self.perm_assembly.isChecked() else "0"
-        os.environ["ALLOW_SYS_INCLUDES"] = "1" if self.perm_sys_includes.isChecked() else "0"
+    # ── 2. Agents Tab ──────────────────────────────────────────────────────────
+    def _create_agents_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 8, 0, 0)
+        lay.setSpacing(8)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        self.agents_host = QWidget()
+        self.agents_layout = QVBoxLayout(self.agents_host)
+        self.agents_layout.setContentsMargins(0, 0, 0, 0)
+        self.agents_layout.setSpacing(8)
+        self.agents_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        scroll.setWidget(self.agents_host)
+        lay.addWidget(scroll, 1)
+        return w
+
+    def _render_agents(self):
+        while self.agents_layout.count():
+            item = self.agents_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        from guard import get_supervisor
+        sup = get_supervisor()
+        agents_info = []
+        raw_agents = getattr(sup, "agents", getattr(sup, "_agents", []))
+        if callable(raw_agents):
+            raw_agents = raw_agents()
+        for a in raw_agents:
+            kinds = [k.value if hasattr(k, "value") else str(k) for k in getattr(a, "handles", [])]
+            agents_info.append({
+                "name": a.name,
+                "handles": kinds,
+                "role": getattr(a, "role", ""),
+            })
+
+        rows = build_agent_rows(agents_info, self.latest_guard)
+        for r in rows:
+            card = QFrame()
+            card.setObjectName("Card")
+            c_lay = QVBoxLayout(card)
+            c_lay.setContentsMargins(12, 10, 12, 10)
+            c_lay.setSpacing(6)
+
+            top_row = QHBoxLayout()
+            top_row.addWidget(plain_label(safe_text(r["name"]), "IssueTitle"))
+            status_tone = "accent" if r["status"] == "active" else "muted"
+            top_row.addWidget(badge(safe_text(r["status"]), status_tone))
+            if r.get("blocked"):
+                top_row.addWidget(badge("BLOCKED", "error"))
+            top_row.addStretch(1)
+            ms_txt = f"{r['ms']:.2f} ms" if r.get("ms", 0) > 0 else "0.00 ms"
+            top_row.addWidget(plain_label(ms_txt, "Muted"))
+            c_lay.addLayout(top_row)
+
+            role_lbl = plain_label(safe_text(r["role"]), "Normal")
+            c_lay.addWidget(role_lbl)
+
+            bot_row = QHBoxLayout()
+            handles_str = ", ".join(r.get("handles", [])) or "None"
+            bot_row.addWidget(plain_label(f"Inputs: {safe_text(handles_str)}", "Muted"), 1)
+            bot_row.addWidget(plain_label(f"Findings: {r.get('findings_count', 0)}", "Muted"))
+            c_lay.addLayout(bot_row)
+
+            self.agents_layout.addWidget(card)
+
+    # ── 3. Attack Log Tab ──────────────────────────────────────────────────────
+    def _create_log_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 8, 0, 0)
+        lay.setSpacing(8)
+
+        top_bar = QHBoxLayout()
+        top_bar.setSpacing(10)
+        self.log_summary_lbl = plain_label("Attack log summary loading...", "Normal")
+        top_bar.addWidget(self.log_summary_lbl, 1)
+
+        self.log_filter_combo = QComboBox()
+        self.log_filter_combo.addItems(["All", "Blocked only"])
+        self.log_filter_combo.currentTextChanged.connect(lambda _t: self._render_log())
+        top_bar.addWidget(self.log_filter_combo)
+
+        btn_refresh = QPushButton("Refresh")
+        btn_refresh.setProperty("variant", "ghost")
+        btn_refresh.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_refresh.clicked.connect(self._render_log)
+        top_bar.addWidget(btn_refresh)
+
+        btn_open = QPushButton("Open log folder")
+        btn_open.setProperty("variant", "ghost")
+        btn_open.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_open.clicked.connect(self._open_log_folder)
+        top_bar.addWidget(btn_open)
+
+        lay.addLayout(top_bar)
+
+        self.log_table = QTableWidget()
+        self.log_table.setObjectName("Console")
+        self.log_table.setColumnCount(6)
+        self.log_table.setHorizontalHeaderLabels(["Time", "Kind / Purpose", "Action", "Risk", "Agents", "Categories"])
+        self.log_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.log_table.horizontalHeader().setStretchLastSection(True)
+        self.log_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.log_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        lay.addWidget(self.log_table, 1)
+        return w
+
+    def _render_log(self):
+        rows = load_attack_log(limit=200)
+        summary = summarize_attack_log(rows)
+        top_cats = ", ".join(f"{c} ({n})" for c, n in summary.get("top_categories", [])) or "None"
+        self.log_summary_lbl.setText(
+            f"Total entries: {summary.get('total', 0)} • Blocked: {summary.get('blocked', 0)} • Logged: {summary.get('logged', 0)} • Top: {safe_text(top_cats)}"
+        )
+
+        filter_mode = self.log_filter_combo.currentText()
+        if filter_mode == "Blocked only":
+            display_rows = [r for r in rows if r.get("action") == "block"]
+        else:
+            display_rows = rows
+
+        self.log_table.setRowCount(len(display_rows))
+        for row_idx, r in enumerate(display_rows):
+            ts = r.get("timestamp", "")
+            time_display = safe_text(str(ts)[:19].replace("T", " "))
+            item0 = QTableWidgetItem(time_display)
+
+            kp = f"{r.get('input_kind', '')} / {r.get('purpose', '')}"
+            item1 = QTableWidgetItem(safe_text(kp))
+
+            act = r.get("action", "")
+            item2 = QTableWidgetItem(safe_text(act.upper()))
+
+            risk_str = f"{r.get('risk_label', 'Clean')} ({r.get('risk_score', 0)})"
+            item3 = QTableWidgetItem(safe_text(risk_str))
+
+            ag_str = ", ".join(r.get("agents", []) or [])
+            item4 = QTableWidgetItem(safe_text(ag_str))
+
+            cats_str = ", ".join(r.get("categories", []) or [])
+            item5 = QTableWidgetItem(safe_text(cats_str))
+
+            for col_idx, itm in enumerate([item0, item1, item2, item3, item4, item5]):
+                itm.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+                self.log_table.setItem(row_idx, col_idx, itm)
+
+    def _open_log_folder(self):
+        from guard.logger import get_log_path
+        log_path = get_log_path()
+        folder = os.path.dirname(os.path.abspath(log_path))
+        if not os.path.exists(folder):
+            os.makedirs(folder, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
+
+    # ── 4. Benchmark Tab ───────────────────────────────────────────────────────
+    def _create_benchmark_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 8, 0, 0)
+        lay.setSpacing(8)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        self.bench_host = QWidget()
+        self.bench_layout = QVBoxLayout(self.bench_host)
+        self.bench_layout.setContentsMargins(0, 0, 0, 0)
+        self.bench_layout.setSpacing(12)
+        self.bench_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        scroll.setWidget(self.bench_host)
+        lay.addWidget(scroll, 1)
+
+        self._init_benchmark_ui()
+        return w
+
+    def _init_benchmark_ui(self):
+        bar = QHBoxLayout()
+        self.benchmark_source_lbl = plain_label("Source: loading...", "Muted")
+        bar.addWidget(self.benchmark_source_lbl, 1)
+
+        self.btn_run_benchmark = QPushButton("Run benchmark now")
+        self.btn_run_benchmark.setProperty("variant", "primary")
+        self.btn_run_benchmark.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_run_benchmark.clicked.connect(self._start_benchmark_run)
+        bar.addWidget(self.btn_run_benchmark)
+
+        self.benchmark_progress_lbl = plain_label("", "Muted")
+        bar.addWidget(self.benchmark_progress_lbl)
+        self.bench_layout.addLayout(bar)
+
+        self.bench_headline_card = QFrame()
+        self.bench_headline_card.setObjectName("Card")
+        self.bench_headline_lay = QHBoxLayout(self.bench_headline_card)
+        self.bench_headline_lay.setContentsMargins(8, 8, 8, 8)
+        self.bench_headline_lay.setSpacing(10)
+        self.bench_layout.addWidget(self.bench_headline_card)
+
+        self.bench_layout.addWidget(section_label("THREAT FAMILIES & DEFENDED ATTACK SUCCESS RATE"))
+        self.bench_family_table = QTableWidget()
+        self.bench_family_table.setObjectName("Console")
+        self.bench_family_table.setColumnCount(5)
+        self.bench_family_table.setHorizontalHeaderLabels(["Threat Family", "Attacks", "Baseline ASR", "Defended ASR", "ASR Reduction"])
+        self.bench_family_table.horizontalHeader().setStretchLastSection(True)
+        self.bench_family_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.bench_layout.addWidget(self.bench_family_table)
+
+        self.bench_bar_chart = SecurityBarChart()
+        self.bench_layout.addWidget(self.bench_bar_chart)
+
+        self.bench_layout.addWidget(section_label("AGENT RECALL, PRECISION & FALSE ALERTS"))
+        self.bench_agent_table = QTableWidget()
+        self.bench_agent_table.setObjectName("Console")
+        self.bench_agent_table.setColumnCount(4)
+        self.bench_agent_table.setHorizontalHeaderLabels(["Agent", "Recall", "False Alerts", "Precision"])
+        self.bench_agent_table.horizontalHeader().setStretchLastSection(True)
+        self.bench_agent_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.bench_layout.addWidget(self.bench_agent_table)
+
+        self.bench_details_container = QWidget()
+        self.bench_details_lay = QVBoxLayout(self.bench_details_container)
+        self.bench_details_lay.setContentsMargins(0, 0, 0, 0)
+        self.bench_details_lay.setSpacing(8)
+        self.bench_layout.addWidget(self.bench_details_container)
+
+        caveats_w = QWidget()
+        c_lay = QVBoxLayout(caveats_w)
+        c_lay.setContentsMargins(8, 8, 8, 8)
+        self.bench_caveats_lbl = plain_label("", "Normal")
+        self.bench_caveats_lbl.setTextFormat(Qt.TextFormat.PlainText)
+        c_lay.addWidget(self.bench_caveats_lbl)
+        self.bench_caveats_section = CollapsibleSection("How to read these numbers", caveats_w)
+        self.bench_layout.addWidget(self.bench_caveats_section)
+
+        self._load_committed_metrics()
+
+    def _load_committed_metrics(self):
+        metrics_file = os.path.join(os.path.dirname(_SRC_DIR), "data", "security_metrics.json")
+        if not os.path.exists(metrics_file):
+            metrics_file = os.path.join(_SRC_DIR, "data", "security_metrics.json")
+
+        if os.path.exists(metrics_file):
+            try:
+                with open(metrics_file, "r", encoding="utf-8") as f:
+                    metrics = json.load(f)
+                self._render_benchmark_data(metrics, is_live=False)
+            except Exception as e:
+                self.benchmark_source_lbl.setText(f"Source: error loading committed metrics ({safe_text(str(e))})")
+        else:
+            self.benchmark_source_lbl.setText("Run python tools/security_benchmark.py --with-heal to generate it.")
+
+    def _render_benchmark_data(self, metrics: dict, is_live: bool = False):
+        b_view = benchmark_view(metrics)
+        if is_live:
+            cur_time = time.strftime("%H:%M:%S")
+            self.benchmark_source_lbl.setText(f"Source: Live run {cur_time}")
+        else:
+            self.benchmark_source_lbl.setText(b_view.get("source_line", "Source: committed results"))
+
+        while self.bench_headline_lay.count():
+            it = self.bench_headline_lay.takeAt(0)
+            w = it.widget()
+            if w:
+                w.deleteLater()
+
+        hl = b_view.get("headlines", {})
+
+        def _make_stat_box(title, val):
+            box = QFrame()
+            box.setObjectName("Card")
+            b_lay = QVBoxLayout(box)
+            b_lay.setContentsMargins(10, 8, 10, 8)
+            b_lay.setSpacing(2)
+            b_lay.addWidget(plain_label(title, "Muted"))
+            val_lbl = plain_label(val, "IssueTitle")
+            val_lbl.setFont(theme.ui_font(12, True))
+            b_lay.addWidget(val_lbl)
+            return box
+
+        self.bench_headline_lay.addWidget(_make_stat_box("Standard Detection", hl.get("standard_detection", "N/A")))
+        self.bench_headline_lay.addWidget(_make_stat_box("Hard Detection", hl.get("hard_detection", "N/A")))
+        self.bench_headline_lay.addWidget(_make_stat_box("Attack Success Rate", hl.get("attack_success_rate", "N/A")))
+        self.bench_headline_lay.addWidget(_make_stat_box("False Alerts", hl.get("false_alerts", "N/A")))
+        self.bench_headline_lay.addWidget(_make_stat_box("Median Latency", hl.get("median_latency", "N/A")))
+        self.bench_headline_lay.addWidget(_make_stat_box("Routing Misses", str(hl.get("routing_misses", 0))))
+
+        fam_list = b_view.get("families", [])
+        self.bench_family_table.setRowCount(len(fam_list))
+        for row_idx, item in enumerate(fam_list):
+            b_asr = float(item.get("baseline_asr", 0.0))
+            d_asr = float(item.get("defended_asr", 0.0))
+            red = (b_asr - d_asr) * 100.0
+            it0 = QTableWidgetItem(safe_text(item.get("title", item.get("family", ""))))
+            it1 = QTableWidgetItem(str(item.get("attacks", 0)))
+            it2 = QTableWidgetItem(f"{b_asr * 100:.1f}%")
+            it3 = QTableWidgetItem(f"{d_asr * 100:.1f}%")
+            it4 = QTableWidgetItem(f"{red:+.1f}%")
+            for col_idx, itm in enumerate([it0, it1, it2, it3, it4]):
+                self.bench_family_table.setItem(row_idx, col_idx, itm)
+
+        self.bench_bar_chart.set_data(fam_list)
+
+        agents_list = b_view.get("agents", [])
+        self.bench_agent_table.setRowCount(len(agents_list))
+        for row_idx, ag in enumerate(agents_list):
+            rec = float(ag.get("recall", 0.0))
+            prec = float(ag.get("precision", 0.0))
+            fa_val = ag.get("false_alert")
+            fa_str = f"{float(fa_val)*100:.1f}%" if fa_val is not None else "0.0%"
+            it0 = QTableWidgetItem(safe_text(ag.get("agent", "")))
+            it1 = QTableWidgetItem(f"{rec * 100:.1f}% ({ag.get('recall_count', 0)}/{ag.get('recall_total', 0)})")
+            it2 = QTableWidgetItem(fa_str)
+            it3 = QTableWidgetItem(f"{prec * 100:.1f}%")
+            for col_idx, itm in enumerate([it0, it1, it2, it3]):
+                self.bench_agent_table.setItem(row_idx, col_idx, itm)
+
+        while self.bench_details_lay.count():
+            it = self.bench_details_lay.takeAt(0)
+            w = it.widget()
+            if w:
+                w.deleteLater()
+
+        misses = b_view.get("known_misses", [])
+        if misses:
+            m_card = QFrame()
+            m_card.setObjectName("Card")
+            m_lay = QVBoxLayout(m_card)
+            m_lay.setContentsMargins(10, 8, 10, 8)
+            m_lay.addWidget(plain_label(f"Known Misses ({len(misses)} attacks):", "IssueTitle"))
+            for m in misses:
+                m_lay.addWidget(plain_label(f"• [{safe_text(m.get('category',''))}] {safe_text(m.get('file',''))}: {safe_text(m.get('reason',''))}", "Muted"))
+            self.bench_details_lay.addWidget(m_card)
+
+        prevent_not = b_view.get("detected_not_prevented", [])
+        if prevent_not:
+            p_card = QFrame()
+            p_card.setObjectName("Card")
+            p_lay = QVBoxLayout(p_card)
+            p_lay.setContentsMargins(10, 8, 10, 8)
+            p_lay.addWidget(plain_label(f"Detected But Not Prevented ({len(prevent_not)}):", "IssueTitle"))
+            for p in prevent_not:
+                p_lay.addWidget(plain_label(f"• [{safe_text(p.get('category',''))}] {safe_text(p.get('file',''))}: {safe_text(p.get('reason',''))}", "Muted"))
+            self.bench_details_lay.addWidget(p_card)
+
+        limits = b_view.get("limitations", [])
+        if limits:
+            l_card = QFrame()
+            l_card.setObjectName("Card")
+            l_lay = QVBoxLayout(l_card)
+            l_lay.setContentsMargins(10, 8, 10, 8)
+            l_lay.addWidget(plain_label("Scanner Evasion Limitations:", "IssueTitle"))
+            for lim in limits:
+                l_lay.addWidget(plain_label(f"• {safe_text(lim)}", "Muted"))
+            self.bench_details_lay.addWidget(l_card)
+
+        caveats_txt = b_view.get("how_to_read", "")
+        self.bench_caveats_lbl.setText(safe_text(caveats_txt))
+
+    def _start_benchmark_run(self):
+        if self.benchmark_worker is not None and self.benchmark_worker.isRunning():
+            return
+        self.btn_run_benchmark.setEnabled(False)
+        self.benchmark_progress_lbl.setText("Running benchmark (static review)...")
+        self.benchmark_worker = BenchmarkRunWorker()
+        self.benchmark_worker.finished.connect(self._on_benchmark_finished)
+        self.benchmark_worker.error.connect(self._on_benchmark_error)
+        self.benchmark_worker.start()
+
+    def _on_benchmark_finished(self, metrics: dict):
+        self.btn_run_benchmark.setEnabled(True)
+        self.benchmark_progress_lbl.setText("Completed")
+        self._render_benchmark_data(metrics, is_live=True)
+
+    def _on_benchmark_error(self, err_msg: str):
+        self.btn_run_benchmark.setEnabled(True)
+        self.benchmark_progress_lbl.setText(f"Error: {safe_text(err_msg)}")
+
+    # ── Update & Backwards Compatibility ───────────────────────────────────────
+    def update_guard(self, guard: dict):
+        self.latest_guard = guard or {}
+        findings = self.latest_guard.get("findings", [])
+        self.findings = self._normalize_findings(findings)
+
+        counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
+        score = int(self.latest_guard.get("risk_score", 0))
+        for f in self.findings:
+            sev = str(f.get("severity", "Low")).capitalize()
+            if sev in counts:
+                counts[sev] += 1
+
+        self.summary.setText(f"{counts['Critical']} critical, {counts['High']} high, {counts['Medium']} medium, {counts['Low']} low findings")
+        risk_text = self.latest_guard.get("risk_label", "Clean")
+        tone = "ok" if score == 0 else ("warn" if score <= 30 else "error")
+        self.risk_badge.setText(f"Risk Score: {score} • {risk_text}")
+        theme.set_prop(self.risk_badge, "tone", tone)
+        self.risk_bar.setValue(min(100, score * 4))
+
+        # Update agent filter combo items
+        current_agent = self.agent_filter_combo.currentText()
+        agents_seen = set()
+        for f in self.findings:
+            for a in f.get("agents", []):
+                agents_seen.add(str(a))
+        self.agent_filter_combo.blockSignals(True)
+        self.agent_filter_combo.clear()
+        self.agent_filter_combo.addItem("All")
+        for ag in sorted(agents_seen):
+            self.agent_filter_combo.addItem(ag)
+        if current_agent in agents_seen:
+            self.agent_filter_combo.setCurrentText(current_agent)
+        else:
+            self.agent_filter_combo.setCurrentText("All")
+        self.agent_filter_combo.blockSignals(False)
+
+        self._render_findings()
+        self._render_agents()
+        self._render_log()
+
+    def update_report(self, findings):
+        self.findings = self._normalize_findings(findings)
+        score = 0
+        weights = {"Critical": 10, "High": 5, "Medium": 2, "Low": 1}
+        for f in self.findings:
+            sev = str(f.get("severity", "Low")).capitalize()
+            score += weights.get(sev, 1)
+        risk_label = "Clean" if score == 0 else ("Low Risk" if score <= 10 else ("Moderate" if score <= 30 else "High Risk"))
+        guard = {
+            "risk_score": score,
+            "risk_label": risk_label,
+            "findings": self.findings,
+            "agents_run": [],
+            "blocked_purposes": [],
+            "total_ms": 0.0,
+        }
+        self.update_guard(guard)
+
+
+class BenchmarkRunWorker(QThread):
+    finished = pyqtSignal(dict)
+    error = pyqtSignal(str)
+
+    def run(self):
+        try:
+            from guard.benchmark import run_benchmark
+            metrics = run_benchmark(with_heal=False)
+            self.finished.emit(metrics)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+@dataclass
+class RunnerResult:
+    stdout: str = ""
+    stderr: str = ""
+    returncode: Optional[int] = None
+    timed_out: bool = False
+    truncated: bool = False
+    blocked_message: Optional[str] = None
+    build_timed_out: bool = False
+    build_failed_stderr: Optional[str] = None
+    execution_failed: bool = False
+    error_message: Optional[str] = None
+
+    def __post_init__(self):
+        setattr(self, "blocked-message", self.blocked_message)
+
+
+class RunnerWorker(QThread):
+    finished = pyqtSignal(object)
+
+    def __init__(self, code: str, stdin_input: str = "", timeout: float = 5.0, parent=None):
+        super().__init__(parent)
+        self.code = code
+        self.stdin_input = stdin_input
+        self.timeout = timeout
+
+    def run(self):
+        try:
+            get_energy_monitor().start_action("Run")
+            from guard.runner import build_and_run
+            exec_res = build_and_run(self.code, input_text=self.stdin_input, timeout=self.timeout)
+
+            if not exec_res.compiled_ok:
+                if exec_res.build_result.timed_out:
+                    self.finished.emit(RunnerResult(
+                        build_timed_out=True,
+                        timed_out=True,
+                        returncode=exec_res.build_result.returncode,
+                        stderr=exec_res.build_result.stderr,
+                    ))
+                else:
+                    self.finished.emit(RunnerResult(
+                        build_failed_stderr=exec_res.build_result.stderr,
+                        stderr=exec_res.build_result.stderr,
+                        returncode=exec_res.build_result.returncode,
+                    ))
+                return
+
+            run_res = exec_res.run_result
+            if run_res is None:
+                self.finished.emit(RunnerResult(execution_failed=True))
+                return
+
+            res = RunnerResult(
+                stdout=run_res.stdout,
+                stderr=run_res.stderr,
+                returncode=run_res.returncode,
+                timed_out=run_res.timed_out,
+                truncated=run_res.truncated,
+            )
+            self.finished.emit(res)
+        except Exception as e:
+            self.finished.emit(RunnerResult(error_message=str(e)))
+        finally:
+            get_energy_monitor().end_action("Run")
 
 
 # ── Main Application Window ───────────────────────────────────────────────────
@@ -2234,13 +2897,19 @@ class AppGUI(QMainWindow):
             self.file_path = os.path.abspath(initial_file)
             self.file_name = os.path.basename(self.file_path)
             self.has_cli_file = True
-        elif len(sys.argv) > 1 and os.path.isfile(sys.argv[1]):
+        elif len(sys.argv) > 1 and os.path.isfile(sys.argv[1]) and not sys.argv[1].endswith(".py") and os.path.splitext(sys.argv[1])[1].lower() in (".cpp", ".cc", ".cxx", ".c", ".h", ".hpp"):
             self.file_path = os.path.abspath(sys.argv[1])
             self.file_name = os.path.basename(self.file_path)
             self.has_cli_file = True
         else:
             self.file_name = "untitled.cpp"
             self.file_path = os.path.join(os.getcwd(), self.file_name)
+
+        if self.file_path:
+            try:
+                set_allowed_roots([os.path.dirname(os.path.abspath(self.file_path))])
+            except Exception:
+                pass
 
         self.gcc_version = get_gcc_version()
         self.errors_count = 0
@@ -2271,8 +2940,7 @@ class AppGUI(QMainWindow):
         top_lay.setContentsMargins(16, 10, 16, 10)
         top_lay.setSpacing(10)
 
-        app_title = QLabel("🌿 C++ Compiler Error Explainer & Auto-Healer")
-        app_title.setObjectName("Title")
+        app_title = plain_label("🌿 C++ Compiler Error Explainer & Auto-Healer", "Title")
         top_lay.addWidget(app_title)
         top_lay.addSpacing(16)
 
@@ -2282,10 +2950,11 @@ class AppGUI(QMainWindow):
         btn_compile.clicked.connect(self.analyze)
         top_lay.addWidget(btn_compile)
 
-        btn_run = QPushButton("Run")
-        btn_run.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_run.clicked.connect(self.run_code)
-        top_lay.addWidget(btn_run)
+        self.btn_run = QPushButton("Run")
+        self.btn_run.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_run.clicked.connect(self.run_code)
+        top_lay.addWidget(self.btn_run)
+        self._runner_worker = None
 
         self.btn_heal = QPushButton("Auto-Heal")
         self.btn_heal.setProperty("variant", "success")
@@ -2355,8 +3024,7 @@ class AppGUI(QMainWindow):
         file_tab_bar = QWidget()
         ftb_lay = QHBoxLayout(file_tab_bar)
         ftb_lay.setContentsMargins(14, 8, 14, 8)
-        self.file_tab_label = QLabel(f"📄  {self.file_name}")
-        self.file_tab_label.setObjectName("Muted")
+        self.file_tab_label = plain_label(f"📄  {self.file_name}", "Muted")
         ftb_lay.addWidget(self.file_tab_label)
         ftb_lay.addStretch(1)
         ec_lay.addWidget(file_tab_bar)
@@ -2481,8 +3149,7 @@ class AppGUI(QMainWindow):
         sb_lay.setContentsMargins(16, 6, 16, 6)
         sb_lay.setSpacing(14)
 
-        self.footer_lbl = QLabel()
-        self.footer_lbl.setObjectName("Muted")
+        self.footer_lbl = plain_label("", "Muted")
         sb_lay.addWidget(self.footer_lbl, 1)
 
         has_llm_keys = False
@@ -2499,20 +3166,28 @@ class AppGUI(QMainWindow):
         self.cb_ai_assist = QCheckBox("AI assist")
         self.cb_ai_assist.setChecked(True)
         self.cb_ai_assist.setEnabled(True)
-        self.cb_ai_assist.setToolTip("Sends error messages to Gemini / Groq for explanations with offline fallback")
+        self.cb_ai_assist.setToolTip("Sends your error messages, and for AI heal your source code, to Gemini or Groq. Turn off to stay fully offline.")
         self.cb_ai_assist.stateChanged.connect(self._on_ai_assist_toggled)
         sb_lay.addWidget(self.cb_ai_assist)
 
-        self.ai_status_label = QLabel(self._format_ai_status(ai_status_text))
-        self.ai_status_label.setObjectName("Muted")
+        self.ai_status_label = plain_label(self._format_ai_status(ai_status_text), "Muted")
         self.ai_status_label.setToolTip(trail_tooltip)
         sb_lay.addWidget(self.ai_status_label)
 
-        self.status_label = QLabel("STATUS: ● READY")
-        self.status_label.setObjectName("Muted")
+        self.security_chip = badge("Security: Clean (0)", "ok")
+        sb_lay.addWidget(self.security_chip)
+
+        self.model_chip = badge("Model: OK", "ok")
+        sb_lay.addWidget(self.model_chip)
+
+        self.status_label = plain_label("STATUS: ● READY", "Muted")
         sb_lay.addWidget(self.status_label)
 
         root_layout.addWidget(status_bar)
+
+        self.blocked_banner = None
+        self._update_model_status()
+        self._update_security_status("Clean", 0)
 
         # Initialize classifier
         try:
@@ -2631,21 +3306,25 @@ class AppGUI(QMainWindow):
         if getattr(self, "ai_explain_worker", None) is not None and self.ai_explain_worker.isRunning():
             return
         errors = list(getattr(self.editor, "errors", []))
-        if not errors or not self.issue_cards:
+        compiler_cards = [c for c in self.issue_cards if isinstance(c, IssueCard)]
+        if not errors or not compiler_cards:
             return
         try:
             from ai_explainer import AIExplainWorker
             self.ai_status_label.setText("AI: analyzing...")
             src_code = self.editor.toPlainText()
-            cards_snapshot = list(self.issue_cards)
+            cards_snapshot = list(compiler_cards)
             self.ai_explain_worker = AIExplainWorker(errors[:5], src_code)
 
             def on_ai_batch_ready(results_by_idx: dict, provider: str):
                 prov = (provider or "AI").capitalize()
                 self.ai_status_label.setText(f"AI: {prov} ●")
                 for idx, ai_data in results_by_idx.items():
-                    if 0 <= idx < len(cards_snapshot):
-                        cards_snapshot[idx].add_ai_explanation(ai_data)
+                    if 0 <= idx < len(cards_snapshot) and hasattr(cards_snapshot[idx], "add_ai_explanation"):
+                        try:
+                            cards_snapshot[idx].add_ai_explanation(ai_data)
+                        except Exception:
+                            pass
 
             def on_ai_failed(reason: str):
                 self.ai_status_label.setText("AI: NLP Local ●")
@@ -2653,8 +3332,11 @@ class AppGUI(QMainWindow):
                     from ai_explainer import _generate_offline_explanations
                     off_res = _generate_offline_explanations(errors[:5], src_code)
                     for idx, ai_data in off_res.items():
-                        if 0 <= idx < len(cards_snapshot):
-                            cards_snapshot[idx].add_ai_explanation(ai_data)
+                        if 0 <= idx < len(cards_snapshot) and hasattr(cards_snapshot[idx], "add_ai_explanation"):
+                            try:
+                                cards_snapshot[idx].add_ai_explanation(ai_data)
+                            except Exception:
+                                pass
                 except Exception:
                     pass
 
@@ -2673,6 +3355,49 @@ class AppGUI(QMainWindow):
         self.footer_lbl.setText(
             f"{self.gcc_version}  ·  C++17  ·  {err_str}  ·  {warn_str}  ·  {self.file_name}"
         )
+
+    def _update_security_status(self, level: str, score: int):
+        lvl = level or "Clean"
+        score_val = int(score or 0)
+        if lvl in ("Clean", "Low Risk"):
+            tone = "ok"
+        elif lvl == "Moderate":
+            tone = "warn"
+        else:
+            tone = "error"
+        self.security_chip.setText(f"Security: {lvl} ({score_val})")
+        theme.set_prop(self.security_chip, "tone", tone)
+
+    def _update_model_status(self):
+        try:
+            from guard.integrity import model_status
+            st = model_status()
+            if st.get("ok"):
+                self.model_chip.setText("Model: OK")
+                theme.set_prop(self.model_chip, "tone", "ok")
+                self.model_chip.setToolTip("Model integrity verified (hash matches signature)")
+            else:
+                self.model_chip.setText("Model: rejected")
+                theme.set_prop(self.model_chip, "tone", "error")
+                self.model_chip.setToolTip("Run: python tools/sign_model.py if you replaced the model on purpose")
+        except Exception:
+            self.model_chip.setText("Model: OK")
+            theme.set_prop(self.model_chip, "tone", "ok")
+
+    def _show_blocked_banner(self, findings: list, purpose: str = "run"):
+        if hasattr(self, "blocked_banner") and self.blocked_banner:
+            try:
+                self.error_cards_layout.removeWidget(self.blocked_banner)
+                self.blocked_banner.deleteLater()
+            except Exception:
+                pass
+            self.blocked_banner = None
+
+        b_view = blocked_banner_view(findings, purpose=purpose)
+        banner = BlockedBanner(b_view)
+        banner.fix_clicked.connect(self.start_heal)
+        self.error_cards_layout.insertWidget(0, banner)
+        self.blocked_banner = banner
 
     # ── Page switchers ────────────────────────────────────────────────────────
 
@@ -2731,18 +3456,32 @@ class AppGUI(QMainWindow):
 
     def start_heal(self):
         if not HEALER_AVAILABLE:
-            QMessageBox.warning(self, "Auto-Heal", "Auto-healer engine is not available.")
+            show_message(self, "warning", "Auto-Heal", "Auto-healer engine is not available.")
             return
 
         if not self.editor.toPlainText().strip():
-            QMessageBox.information(self, "Auto-Heal", "The code editor is empty. Please type or load a C++ source file first.")
+            show_message(self, "info", "Auto-Heal", "The code editor is empty. Please type or load a C++ source file first.")
             return
 
         if getattr(self, "heal_worker", None) is not None and self.heal_worker.isRunning():
-            QMessageBox.warning(self, "Auto-Heal", "Auto-heal is already in progress.")
+            show_message(self, "warning", "Auto-Heal", "Auto-heal is already in progress.")
             return
 
-        self.save_file()
+        # Do NOT overwrite present file!
+        # Store original file path so it can be restored on undo
+        self.original_file_path = os.path.abspath(self.file_path) if self.file_path else os.path.abspath("file.cpp")
+        orig_dir = os.path.dirname(self.original_file_path)
+        base = os.path.basename(self.original_file_path)
+        stem, ext = os.path.splitext(base)
+        if not ext:
+            ext = ".cpp"
+        clean_stem = stem[:-7] if stem.endswith("_healed") else stem
+
+        # Create healed folder in the file's directory and prepare healed file path
+        healed_dir = os.path.join(orig_dir, "healed")
+        os.makedirs(healed_dir, exist_ok=True)
+        self.healed_file_path = os.path.join(healed_dir, f"{clean_stem}_healed{ext}")
+
         self.status_label.setText("STATUS: ● AUTO-HEALING IN PROGRESS...")
         self.btn_heal.setEnabled(False)
         self.btn_heal.setText("Healing...")
@@ -2791,9 +3530,11 @@ class AppGUI(QMainWindow):
 
         enable_ai = self.is_ai_enabled()
         self.heal_worker = HealWorker(
-            file_path=self.file_path,
+            file_path=self.original_file_path,
             classifier=classifier,
             enable_ai=enable_ai,
+            output_path=self.healed_file_path,
+            source=self.editor.toPlainText(),
         )
 
         def on_worker_finished():
@@ -2827,24 +3568,36 @@ class AppGUI(QMainWindow):
         self.log_terminal.append(f"[HEAL] {msg}")
 
     def undo_heal(self):
-        if not self.last_heal_backup or not os.path.exists(self.last_heal_backup):
-            QMessageBox.information(self, "Undo Heal", "No backup available to restore.")
+        orig = getattr(self, "original_file_path", None)
+        if not orig and not getattr(self, "last_heal_backup", None):
+            show_message(self, "info", "Undo Heal", "No backup available to restore.")
             return
         try:
-            with open(self.last_heal_backup, "r", encoding="utf-8") as f:
-                content = f.read()
-            with open(self.file_path, "w", encoding="utf-8") as f:
-                f.write(content)
+            if orig and os.path.exists(orig):
+                with open(orig, "r", encoding="utf-8") as f:
+                    content = f.read()
+                self.file_path = orig
+                self.file_name = os.path.basename(orig)
+            elif self.last_heal_backup and os.path.exists(self.last_heal_backup):
+                with open(self.last_heal_backup, "r", encoding="utf-8") as f:
+                    content = f.read()
+                if self.file_path:
+                    with open(self.file_path, "w", encoding="utf-8") as f:
+                        f.write(content)
+            else:
+                return
+
+            self.file_tab_label.setText(f"📄  {self.file_name}")
             self.editor.blockSignals(True)
             self.editor.setPlainText(content)
             self.editor.blockSignals(False)
             self.editor.clear_fixed_lines()
             self.btn_undo_heal.setEnabled(False)
-            self.status_label.setText("STATUS: ● RESTORED BACKUP")
-            self.error_cards_layout.addWidget(plain_label(f"↺ Restored original code from {os.path.basename(self.last_heal_backup)}", "IssueTitle"))
+            self.status_label.setText("STATUS: ● RESTORED ORIGINAL")
+            self.error_cards_layout.addWidget(plain_label(f"↺ Restored original code ({self.file_name})", "IssueTitle"))
             self.analyze()
         except Exception as e:
-            QMessageBox.critical(self, "Undo Heal Error", f"Failed to restore backup: {e}")
+            show_message(self, "critical", "Undo Heal Error", f"Failed to restore backup: {e}")
 
     def _on_telemetry_ready(self, telemetry: list):
         for entry in telemetry:
@@ -2876,8 +3629,10 @@ class AppGUI(QMainWindow):
 
         try:
             self.editor.blockSignals(True)
-            with open(self.file_path, "r", encoding="utf-8") as f:
-                self.editor.setPlainText(f.read())
+            read_path = getattr(self, "healed_file_path", None) or self.file_path
+            if os.path.exists(read_path):
+                with open(read_path, "r", encoding="utf-8") as f:
+                    self.editor.setPlainText(f.read())
             self.editor.blockSignals(False)
         except Exception:
             self.editor.blockSignals(False)
@@ -2926,17 +3681,60 @@ class AppGUI(QMainWindow):
 
         self.error_cards_layout.addWidget(comp_card)
 
+        # ── Security Result Card (Phase 8a) ──────────────────────────────────
+        sec_view = heal_security_view(summary.get("security"))
+        if sec_view is not None:
+            sec_card = SecurityResultCard(sec_view)
+            self.error_cards_layout.addWidget(sec_card)
+            sec_raw = summary.get("security", {})
+            self._update_security_status(sec_raw.get("label_after", "Clean"), sec_raw.get("risk_after", 0))
+            guard_post = {
+                "risk_score": sec_raw.get("risk_after", 0),
+                "risk_label": sec_raw.get("label_after", "Clean"),
+                "findings": sec_raw.get("findings_after", []),
+                "agents_run": [],
+                "blocked_purposes": [],
+                "total_ms": 0.0,
+            }
+            try:
+                self.security_page.update_guard(guard_post)
+            except Exception:
+                pass
+
         # ── 3. Re-analyze healed code and update UI ──
         self._silent_reanalysis_after_heal(summary, c_layout)
         self.terminal.append_output("\n[Auto-Heal] Auto-heal completed!\n")
 
     def _silent_reanalysis_after_heal(self, summary: dict, card_layout=None):
         try:
-            with open(self.file_path, "r", encoding="utf-8") as f:
+            read_path = getattr(self, "healed_file_path", None) or self.file_path
+            with open(read_path, "r", encoding="utf-8") as f:
                 content = f.read()
             self.editor.blockSignals(True)
             self.editor.setPlainText(content)
             self.editor.blockSignals(False)
+
+            if getattr(self, "healed_file_path", None):
+                self.file_path = self.healed_file_path
+                self.file_name = os.path.basename(self.healed_file_path)
+                self.file_tab_label.setText(f"📄  {self.file_name}")
+                try:
+                    set_allowed_roots([
+                        os.path.dirname(self.file_path),
+                        os.path.dirname(self.original_file_path) if hasattr(self, "original_file_path") else os.path.dirname(self.file_path)
+                    ])
+                except Exception:
+                    pass
+
+            if card_layout and getattr(self, "healed_file_path", None):
+                card_layout.addWidget(plain_label(f"💾 Healed code saved to new file: {self.healed_file_path}", "Muted"))
+
+            try:
+                from security_view import review_source_guard
+                re_guard = review_source_guard(content, file_name=self.file_name)
+                self.security_page.update_guard(re_guard)
+            except Exception:
+                pass
 
             from heal_engine import compile_source
             clean_errors, clean_warnings, _ = compile_source(content, syntax_only=False)
@@ -2967,45 +3765,51 @@ class AppGUI(QMainWindow):
                 self.status_label.setText("STATUS: ● AUTO-HEAL COMPLETED" if self.errors_count == 0 and not clean_errors else "STATUS: ● HEALING INCOMPLETE")
 
                 # Show only remaining issues in the healed code
-                from error_parser import CompilerError
-                from error_explainer import enrich_error
-                classifier = self.error_classifier or _KeywordClassifier()
+                has_security = bool(summary and summary.get("security") is not None)
+                compiler_items = clean_errors + clean_warnings
+                items_to_render = compiler_items if has_security else (compiler_items + sec_findings)
 
-                self.error_cards_layout.addWidget(section_label("REMAINING ISSUES IN HEALED CODE"))
-                for item in clean_errors + clean_warnings:
-                    ce = CompilerError(
-                        file=self.file_name,
-                        line=item.get("line", 1),
-                        column=item.get("column", 1),
-                        error_type=item.get("type", "warning"),
-                        message=item.get("message", ""),
-                        raw=item.get("raw", "")
-                    )
-                    cat, _ = classifier.predict(ce.message)
-                    ce.category = cat or "other"
-                    enrich_error(ce)
-                    card = IssueCard(ce, co2_offset=self.manual_co2_offset)
-                    card.clicked.connect(self._on_issue_clicked)
-                    self.issue_cards.append(card)
-                    self.error_cards_layout.addWidget(card)
+                if items_to_render:
+                    self.error_cards_layout.addWidget(section_label("REMAINING ISSUES IN HEALED CODE"))
+                    from error_parser import CompilerError
+                    from error_explainer import enrich_error
+                    classifier = self.error_classifier or _KeywordClassifier()
 
-                for sf in sec_findings:
-                    ce = CompilerError(
-                        file=self.file_name,
-                        line=sf.line or 1,
-                        column=sf.column or 1,
-                        error_type="error" if (sf.severity or "").lower() in ("critical", "high") else "warning",
-                        message=sf.description,
-                        raw=f"[{sf.severity.upper()}] {sf.description}"
-                    )
-                    ce.category = sf.vulnerability_type.lower().replace(" ", "_")
-                    ce.explanation = f"What happened:\n{sf.description}\n\nWhy it happened:\nViolation of C++ runtime safety or undefined behavior.\n\nHow to fix it:\n{sf.recommendation}"
-                    ce.suggestion = sf.recommendation
-                    ce.security_risk = (sf.severity or "Medium").upper()
-                    card = IssueCard(ce, co2_offset=self.manual_co2_offset)
-                    card.clicked.connect(self._on_issue_clicked)
-                    self.issue_cards.append(card)
-                    self.error_cards_layout.addWidget(card)
+                    for item in compiler_items:
+                        ce = CompilerError(
+                            file=self.file_name,
+                            line=item.get("line", 1),
+                            column=item.get("column", 1),
+                            error_type=item.get("type", "warning"),
+                            message=item.get("message", ""),
+                            raw=item.get("raw", "")
+                        )
+                        cat, _ = classifier.predict(ce.message)
+                        ce.category = cat or "other"
+                        enrich_error(ce)
+                        card = IssueCard(ce, co2_offset=self.manual_co2_offset)
+                        card.clicked.connect(self._on_issue_clicked)
+                        self.issue_cards.append(card)
+                        self.error_cards_layout.addWidget(card)
+
+                    if not has_security:
+                        for sf in sec_findings:
+                            ce = CompilerError(
+                                file=self.file_name,
+                                line=sf.line or 1,
+                                column=sf.column or 1,
+                                error_type="error" if (sf.severity or "").lower() in ("critical", "high") else "warning",
+                                message=sf.description,
+                                raw=f"[{sf.severity.upper()}] {sf.description}"
+                            )
+                            ce.category = sf.vulnerability_type.lower().replace(" ", "_")
+                            ce.explanation = f"What happened:\n{sf.description}\n\nWhy it happened:\nViolation of C++ runtime safety or undefined behavior.\n\nHow to fix it:\n{sf.recommendation}"
+                            ce.suggestion = sf.recommendation
+                            ce.security_risk = (sf.severity or "Medium").upper()
+                            card = IssueCard(ce, co2_offset=self.manual_co2_offset)
+                            card.clicked.connect(self._on_issue_clicked)
+                            self.issue_cards.append(card)
+                            self.error_cards_layout.addWidget(card)
 
                 if self.is_ai_enabled():
                     self.request_ai_explanations()
@@ -3042,6 +3846,12 @@ class AppGUI(QMainWindow):
         if file_path and os.path.exists(file_path):
             self.file_path = os.path.abspath(file_path)
             self.file_name = os.path.basename(file_path)
+            self.original_file_path = self.file_path
+            self.healed_file_path = None
+            try:
+                set_allowed_roots([os.path.dirname(self.file_path)])
+            except Exception:
+                pass
             self.file_tab_label.setText(f"📄  {self.file_name}")
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 self.editor.setPlainText(f.read())
@@ -3137,6 +3947,15 @@ class AppGUI(QMainWindow):
     def render_json(self, data: dict, raw_stderr: str):
         self.terminal.clear()
 
+        # Remove any previous blocked banner
+        if hasattr(self, "blocked_banner") and self.blocked_banner:
+            try:
+                self.error_cards_layout.removeWidget(self.blocked_banner)
+                self.blocked_banner.deleteLater()
+            except Exception:
+                pass
+            self.blocked_banner = None
+
         while self.error_cards_layout.count():
             item = self.error_cards_layout.takeAt(0)
             w = item.widget()
@@ -3151,7 +3970,147 @@ class AppGUI(QMainWindow):
 
         self.latest_security_findings = findings
         self.latest_security_report = report_text
-        self.security_page.update_report(findings)
+
+        # ── Guard Block (Phase 8a/8b: one source of truth) ───────────────────
+        guard_data = data.get("guard")
+        if guard_data is not None and isinstance(guard_data, dict):
+            self.security_page.update_guard(guard_data)
+        else:
+            self.security_page.update_report(findings)
+
+        if guard_data is not None and isinstance(guard_data, dict):
+            # Update status bar chips
+            self._update_security_status(guard_data.get("risk_label", "Clean"), guard_data.get("risk_score", 0))
+            self._update_model_status()
+
+            # Skip diagnostics whose origin == "security" so nothing appears twice
+            compiler_errors = [e for e in errors if e.get("origin") != "security"]
+            guard_findings = guard_data.get("findings", [])
+
+            # Footer error and warning counts MUST come from compiler diagnostics only
+            self.errors_count = len([e for e in compiler_errors if e.get("type", e.get("error_type")) == "error"])
+            self.warnings_count = len([e for e in compiler_errors if e.get("type", e.get("error_type")) == "warning"])
+            self._update_footer()
+            self.editor.set_errors(compiler_errors)
+
+            # Problems badge count: compiler issues plus security findings
+            total_problems = len(compiler_errors) + len(guard_findings)
+            self.problems_count_badge.setText(str(total_problems))
+            has_crit = (self.errors_count > 0) or any((f.get("severity") or "").lower() in ("critical", "high") for f in guard_findings)
+            theme.set_prop(self.problems_count_badge, "tone", "error" if has_crit else ("warn" if total_problems > 0 else "ok"))
+
+            # Status label
+            if self.errors_count > 0 and self.warnings_count > 0:
+                self.status_label.setText(f"STATUS: ● {self.errors_count} ERRORS, {self.warnings_count} WARNINGS")
+            elif self.errors_count > 0:
+                self.status_label.setText(f"STATUS: ● {self.errors_count} ERRORS FOUND")
+            elif self.warnings_count > 0:
+                self.status_label.setText(f"STATUS: ● {self.warnings_count} WARNINGS FOUND")
+            elif guard_findings:
+                self.status_label.setText(f"STATUS: ● {len(guard_findings)} SECURITY FINDINGS")
+            else:
+                self.status_label.setText("STATUS: ● COMPILES OK ✅")
+
+            # Quality analysis
+            quality_data = None
+            try:
+                from quality_hints import analyze_quality
+                quality_data = analyze_quality(self.editor.toPlainText())
+            except Exception:
+                quality_data = {"score": 0, "level": "Good", "hints": []}
+
+            # 1. Summary Card at top of Problems panel
+            summary_view = build_security_summary(guard_data)
+            summary_card = SecuritySummaryCard(summary_view, quality=quality_data)
+            self.error_cards_layout.addWidget(summary_card)
+
+            # Collapsible Quality Hints section
+            hints = quality_data.get("hints", []) if quality_data else []
+            if hints:
+                q_container = QWidget()
+                q_lay = QVBoxLayout(q_container)
+                q_lay.setContentsMargins(0, 0, 0, 0)
+                q_lay.setSpacing(6)
+
+                toggle_btn = QPushButton(f"▼ QUALITY HINTS ({len(hints)})")
+                toggle_btn.setProperty("variant", "ghost")
+                toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
+                cards_widget = QWidget()
+                cards_lay = QVBoxLayout(cards_widget)
+                cards_lay.setContentsMargins(0, 0, 0, 0)
+                cards_lay.setSpacing(6)
+                for h in hints:
+                    qcard = QualityHintCard(h)
+                    qcard.clicked.connect(self._on_issue_clicked)
+                    cards_lay.addWidget(qcard)
+                    self.issue_cards.append(qcard)
+
+                def _toggle_q():
+                    vis = cards_widget.isVisible()
+                    cards_widget.setVisible(not vis)
+                    toggle_btn.setText(f"{'▶' if vis else '▼'} QUALITY HINTS ({len(hints)})")
+
+                toggle_btn.clicked.connect(_toggle_q)
+                q_lay.addWidget(toggle_btn)
+                q_lay.addWidget(cards_widget)
+                self.error_cards_layout.addWidget(q_container)
+
+            # 2. Security findings cards
+            if guard_findings:
+                sec_header = section_label(f"SECURITY FINDINGS ({len(guard_findings)})")
+                self.error_cards_layout.addWidget(sec_header)
+                sorted_guard_f = sort_findings(guard_findings)
+                for gf in sorted_guard_f:
+                    f_view = finding_view(gf, current_purposes=guard_data.get("blocked_purposes"))
+                    card = SecurityFindingCard(f_view)
+                    card.clicked.connect(self._on_issue_clicked)
+                    self.issue_cards.append(card)
+                    self.error_cards_layout.addWidget(card)
+
+            # 3. Compiler issues
+            if compiler_errors:
+                comp_header = section_label(f"COMPILER ISSUES ({len(compiler_errors)})")
+                self.error_cards_layout.addWidget(comp_header)
+                for e in compiler_errors:
+                    card = IssueCard(e, co2_offset=self.manual_co2_offset)
+                    card.clicked.connect(self._on_issue_clicked)
+                    self.issue_cards.append(card)
+                    self.error_cards_layout.addWidget(card)
+            elif not guard_findings:
+                empty_lbl = plain_label("No compiler errors or warnings detected. Code compiles cleanly.", "Muted")
+                self.error_cards_layout.addWidget(empty_lbl)
+
+            # Check if compile was blocked by guard
+            if "compile" in guard_data.get("blocked_purposes", []):
+                blocking = [f for f in guard_findings if f.get("action") == "block" or "compile" in (f.get("blocks_on") or [])]
+                self._show_blocked_banner(blocking or guard_findings, purpose="compile")
+
+            # Terminal output
+            if compiler_errors:
+                compiler_html = build_compiler_html(
+                    compiler_errors,
+                    file_name=self.file_name,
+                    colors={"red": RED, "yellow": YELLOW, "text_main": TEXT_MAIN, "text_dim": TEXT_DIM},
+                )
+                self.terminal.append_output(f"<div style='white-space:pre-wrap; font-family:{FONT_FAMILY};'>{compiler_html}</div>", is_html=True)
+            else:
+                self.terminal.append_output("Compilation finished cleanly with 0 errors.\nClick 'Run' to execute binary.\n")
+
+            # Second opinion page update
+            if compiler_errors and NEW_PAGES_AVAILABLE and hasattr(self, "second_opinion_page") and hasattr(self.second_opinion_page, "show_opinion"):
+                try:
+                    first = compiler_errors[0]
+                    self.second_opinion_page.show_opinion(first.get("message", ""), first.get("ast_node", ""))
+                except Exception:
+                    pass
+
+            # Asynchronously fetch AI explanations if enabled
+            if self.is_ai_enabled() and compiler_errors:
+                self.request_ai_explanations()
+            else:
+                self.update_ai_status()
+            return
 
         # Fallback: promote any standalone static findings into diagnostic problems if not already present
         if findings and not errors:
@@ -3222,35 +4181,11 @@ class AppGUI(QMainWindow):
             self.error_cards_layout.addWidget(card)
 
         # Output rich compiler messages into terminal
-        compiler_html = ""
-        for e in errors:
-            etype = (e.get("type") or e.get("error_type") or "error").lower()
-            tag_color = RED if etype == "error" else YELLOW
-            fname = os.path.basename(e.get("file") or self.file_name)
-            line = e.get("line", "?")
-            col = e.get("column", "?")
-            msg = e.get("message", "")
-
-            compiler_html += f"<span style='color:{tag_color}; font-weight:bold;'>[{etype.upper()}]</span> {fname}:{line}:{col}: <span style='color:{tag_color};'>{etype}:</span> {msg}<br>"
-            context = e.get("context", {})
-            lines = context.get("lines", [])
-            start = context.get("start_line", 1)
-            if lines and isinstance(lines, list):
-                for i, lt in enumerate(lines, start=start):
-                    txt = lt.replace('<', '&lt;').replace('>', '&gt;').rstrip('\r\n')
-                    if str(i) == str(line):
-                        compiler_html += f" <span style='color:{tag_color}; font-weight:bold;'>&gt;</span> {i:3} | <b style='color:{TEXT_MAIN}'>{txt}</b><br>"
-                        if col != "?":
-                            try:
-                                c_int = int(col)
-                                compiler_html += f"       {' ' * (len(str(i)) + 2 + c_int)}<span style='color:{tag_color}; font-weight:bold;'>^</span><br>"
-                            except Exception:
-                                pass
-                    else:
-                        compiler_html += f"   {i:3} | <span style='color:{TEXT_DIM}'>{txt}</span><br>"
-            compiler_html += "<br>"
-
-        compiler_html += f"<span style='color:{TEXT_DIM};'>C++_ANALYZER_V2.0.1_READY &gt; _</span>"
+        compiler_html = build_compiler_html(
+            errors,
+            file_name=self.file_name,
+            colors={"red": RED, "yellow": YELLOW, "text_main": TEXT_MAIN, "text_dim": TEXT_DIM},
+        )
         self.terminal.append_output(f"<div style='white-space:pre-wrap; font-family:{FONT_FAMILY};'>{compiler_html}</div>", is_html=True)
 
         # Asynchronously fetch AI explanations if enabled
@@ -3262,7 +4197,9 @@ class AppGUI(QMainWindow):
     def _on_issue_clicked(self, line: int):
         sender = self.sender()
         for card in self.issue_cards:
-            card.set_selected(card is sender)
+            fn = getattr(card, "set_selected", None)
+            if callable(fn):
+                fn(card is sender)
         if line and line > 0:
             cursor = QTextCursor(self.editor.document())
             cursor.movePosition(QTextCursor.MoveOperation.Start)
@@ -3285,46 +4222,77 @@ class AppGUI(QMainWindow):
 
     def run_code(self):
         self.tabs.setCurrentIndex(0)
-        if not self.editor.toPlainText().strip():
+        editor_text = self.editor.toPlainText()
+        if not editor_text.strip():
             self.terminal.clear()
             self.terminal.append_output("Cannot run: Editor is empty. Please type or load C++ code first.\n")
             return
-        exe = self._find_executable()
-        if not exe:
-            # Recompile first
-            self.save_file()
-            self.terminal.append_output("Building binary...\n")
-            out_name = "a.exe" if os.name == "nt" else "a.out"
-            res = subprocess.run(["g++", "-std=c++17", self.file_path, "-o", out_name], capture_output=True, text=True)
-            if res.returncode != 0:
-                self.terminal.append_output(f"Build failed:\n{res.stderr}\n")
-                return
-            exe = os.path.abspath(out_name)
+
+        from guard import get_supervisor, InputKind
+
+        file_dir = os.path.dirname(os.path.abspath(self.file_path)) if self.file_path else os.getcwd()
+        file_name = os.path.basename(self.file_path) if self.file_path else "untitled.cpp"
+
+        verdict = get_supervisor().review(
+            InputKind.USER_SOURCE,
+            editor_text,
+            purpose="run",
+            meta={
+                "source_dir": file_dir,
+                "file_name": file_name,
+                "file_path": self.file_path if self.file_path else None,
+            },
+        )
+        if verdict.blocked:
+            self.terminal.clear()
+            msg_lines = ["Run blocked by the security layer:"]
+            blocking_findings = []
+            for f in verdict.findings:
+                if f.action == "block":
+                    agents_str = ", ".join(f.agents)
+                    line_str = f"line {f.line}" if f.line is not None else "unknown line"
+                    msg_lines.append(f"[{f.severity.upper()}] {f.category} ({agents_str}) {line_str}")
+                    blocking_findings.append(f.to_dict() if hasattr(f, "to_dict") else f)
+            self.terminal.append_output("\n".join(msg_lines) + "\n")
+            self._show_blocked_banner(blocking_findings or [f.to_dict() if hasattr(f, "to_dict") else f for f in verdict.findings], purpose="run")
+            return
 
         self.terminal.clear()
-        self.terminal.append_output(f"Running {os.path.basename(exe)}...\n")
+        self.terminal.append_output("Building and running...\n")
+        if hasattr(self, "btn_run") and self.btn_run:
+            self.btn_run.setEnabled(False)
 
         stdin_input = self.input_terminal.toPlainText()
+        self._runner_worker = RunnerWorker(editor_text, stdin_input=stdin_input, timeout=5, parent=self)
+        self._runner_worker.finished.connect(self._on_run_finished)
+        self._runner_worker.start()
+
+    def _on_run_finished(self, res: RunnerResult):
         try:
-            get_energy_monitor().start_action("Run")
-            res = subprocess.run(
-                [exe],
-                input=stdin_input,
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            if res.stdout:
-                self.terminal.append_output(res.stdout)
-            if res.stderr:
-                self.terminal.append_output(res.stderr)
-            self.terminal.append_output(f"\n[Process exited with code {res.returncode}]\n")
-        except subprocess.TimeoutExpired:
-            self.terminal.append_output("\n[Execution timed out after 5 seconds]\n")
-        except Exception as e:
-            self.terminal.append_output(f"\n[Execution error: {e}]\n")
+            if res.blocked_message:
+                self.terminal.append_output(res.blocked_message + "\n")
+            elif res.build_timed_out:
+                self.terminal.append_output("Compilation timed out after 20 s (possible resource-exhaustion input)\n")
+            elif res.build_failed_stderr is not None:
+                self.terminal.append_output(f"Build failed:\n{res.build_failed_stderr}\n")
+            elif res.execution_failed:
+                self.terminal.append_output("Execution failed.\n")
+            elif res.error_message:
+                self.terminal.append_output(f"\n[Execution error: {res.error_message}]\n")
+            elif res.timed_out:
+                self.terminal.append_output("Execution timed out after 5 s\n")
+            else:
+                if res.stdout:
+                    self.terminal.append_output(res.stdout)
+                if res.truncated:
+                    self.terminal.append_output("\nOutput truncated at 1 MB\n")
+                if res.stderr:
+                    self.terminal.append_output(res.stderr)
+                self.terminal.append_output(f"\n[Process exited with code {res.returncode}]\n")
         finally:
-            get_energy_monitor().end_action("Run")
+            if hasattr(self, "btn_run") and self.btn_run:
+                self.btn_run.setEnabled(True)
+            self._runner_worker = None
 
 
 # ── Application Entry Point ───────────────────────────────────────────────────

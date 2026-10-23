@@ -19,6 +19,9 @@ class DiffLine:
     content: str                 # raw text of the line (no newline)
 
 
+from guard.output_safe import safe_text
+
+
 def compute_diff(original: str, patched: str, context: int = 3) -> List[DiffLine]:
     """
     Compare two source strings and return a list of DiffLine objects.
@@ -91,10 +94,12 @@ def format_diff_html(diff: List[DiffLine],
             prefix = " "
 
         safe_content = (
-            d.content
+            safe_text(d.content)
             .replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;")
+            .replace('"', "&quot;")
+            .replace("'", "&#39;")
             .replace(" ", "&nbsp;")
         )
 

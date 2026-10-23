@@ -18,6 +18,13 @@ import dataclasses
 import subprocess
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
+import secrets
+import socket
+
+from guard.limiter import ConcurrencyLimiter, RateLimiter
+from guard.config import ENDPOINT_CONCURRENCY, ENDPOINT_RATE, SOCKET_TIMEOUT_SECONDS
+from guard.attack_log import log_event
+from guard import get_supervisor, InputKind
 
 # Suppress sklearn version mismatch warnings (model trained on older sklearn)
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
@@ -49,6 +56,9 @@ except ImportError:
     HAS_CODECARBON = False
 
 classifier = get_default_classifier()
+
+from guard.pathsafe import set_allowed_roots
+set_allowed_roots([tempfile.gettempdir()])
 
 # ── Helper utilities ──────────────────────────────────────────────────────────
 
@@ -531,6 +541,8 @@ int main() {
 }
 `;
 
+    const GUARD_TOKEN = "__GUARD_TOKEN__";
+
     function updateLineNumbers() {
       const editor = document.getElementById('code-editor');
       const lines = editor.value.split('\\n').length;
@@ -563,13 +575,16 @@ int main() {
       try {
         const res = await fetch('/api/compile', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Guard-Token': GUARD_TOKEN
+          },
           body: JSON.stringify({ code })
         });
         const data = await res.json();
         renderExplanations(data);
         renderAST(data.ast_tree);
-        renderSecurity(data.security_findings, data.security_report);
+        renderSecurity(data.guard, data.quality, data.security_findings, data.security_report);
         updateTelemetry(data.duration, data.emissions);
         document.getElementById('editor-status').textContent = data.status === 'clean' ? 'Compilation Successful' : data.errors.length + ' Issue(s) Detected';
         switchTab('explanations');
@@ -601,14 +616,14 @@ int main() {
           <div class="card ${isWarn ? 'warning-card' : 'error-card'}">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
               <div style="display:flex; gap:6px; align-items:center;">
-                <span class="badge ${isWarn ? 'badge-warning' : 'badge-error'}">${err.type}</span>
-                <span class="badge badge-category">${err.category || 'other'}</span>
+                <span class="badge ${isWarn ? 'badge-warning' : 'badge-error'}">${escapeHtml(err.type)}</span>
+                <span class="badge badge-category">${escapeHtml(err.category || 'other')}</span>
                 <span class="badge badge-confidence">Conf: ${Math.round((err.confidence||0)*100)}%</span>
               </div>
-              <span style="font-size:12px; color:var(--text-muted); font-family:var(--code-font);">Line ${err.line || '?'}${err.column ? ':' + err.column : ''}</span>
+              <span style="font-size:12px; color:var(--text-muted); font-family:var(--code-font);">Line ${escapeHtml(err.line || '?')}${err.column ? ':' + escapeHtml(err.column) : ''}</span>
             </div>
             <div class="card-title">${escapeHtml(err.message)}</div>
-            ${err.ast_node ? `<div style="font-size:12px; color:#38bdf8; margin: 4px 0;">AST Location: <b>${err.ast_node}</b></div>` : ''}
+            ${err.ast_node ? `<div style="font-size:12px; color:#38bdf8; margin: 4px 0;">AST Location: <b>${escapeHtml(err.ast_node)}</b></div>` : ''}
             
             ${err.explanation ? `
               <div class="section-title">Analysis &amp; Explanation</div>
@@ -653,7 +668,10 @@ int main() {
       try {
         const res = await fetch('/api/heal', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Guard-Token': GUARD_TOKEN
+          },
           body: JSON.stringify({ code }),
           signal: controller.signal
         });
@@ -701,14 +719,42 @@ int main() {
         </div>
       `;
 
+      if (data.security_view) {
+        const sv = data.security_view;
+        const counts = sv.counts || {};
+        const svClass = sv.tone === 'ok' ? 'success-card' : (sv.tone === 'warn' ? 'warning-card' : 'error-card');
+        html += `
+          <div class="card ${svClass}" style="margin-top:12px;">
+            <div class="card-title" style="margin-bottom:6px;">${escapeHtml(sv.headline)}</div>
+            <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">
+              Fixed: <b>${Number(counts.fixed || 0)}</b> | Suggested: <b>${Number(counts.suggested || 0)}</b> | Remaining: <b>${Number(counts.remaining || 0)}</b>
+            </div>
+        `;
+        if (sv.applied && sv.applied.length > 0) {
+          html += `<div class="section-title">Applied Fixes</div>`;
+          sv.applied.forEach(af => {
+            html += `
+              <div style="background:#0a0f16; border:1px solid #1e293b; border-radius:6px; padding:8px; margin:6px 0;">
+                <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:600;">
+                  <span>${escapeHtml(af.title)}</span>
+                  <span style="color:#6ee7b7;">${escapeHtml(Array.isArray(af.agents) ? af.agents.join(', ') : (af.agents || ''))}</span>
+                </div>
+                ${af.diff ? `<div class="diff-container" style="margin-top:4px;">${escapeHtml(af.diff)}</div>` : ''}
+              </div>
+            `;
+          });
+        }
+        html += `</div>`;
+      }
+
       if (rounds.length > 0) {
-        html += `<div style="font-weight:600; margin:12px 0 6px 0; color:#94a3b8; font-size:12px;">HEAL ROUNDS (${rounds.length})</div>`;
+        html += `<div style="font-weight:600; margin:12px 0 6px 0; color:#94a3b8; font-size:12px;">HEAL ROUNDS (${Number(rounds.length)})</div>`;
         rounds.forEach(r => {
           html += `
             <div class="card">
               <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
-                <b>Round ${r.round_no}: ${escapeHtml(r.method || 'repair')}</b>
-                <span class="badge badge-category">${r.errors_before} → ${r.errors_after} errors (${r.seconds}s)</span>
+                <b>Round ${Number(r.round_no)}: ${escapeHtml(r.method || 'repair')}</b>
+                <span class="badge badge-category">${Number(r.errors_before)} → ${Number(r.errors_after)} errors (${Number(r.seconds)}s)</span>
               </div>
               ${r.diff_html ? `<div class="diff-container">${r.diff_html}</div>` : '<div class="section-body">No diff for this round.</div>'}
             </div>
@@ -719,8 +765,8 @@ int main() {
           html += `
             <div class="card">
               <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
-                <b>Attempt ${att.attempt_no}: ${escapeHtml(att.target_error ? att.target_error.message : 'Fix applied')}</b>
-                <span class="badge badge-category">${att.target_error ? att.target_error.category : ''}</span>
+                <b>Attempt ${Number(att.attempt_no)}: ${escapeHtml(att.target_error ? att.target_error.message : 'Fix applied')}</b>
+                <span class="badge badge-category">${escapeHtml(att.target_error ? att.target_error.category : '')}</span>
               </div>
               ${att.diff_html ? `<div class="diff-container">${att.diff_html}</div>` : '<div class="section-body">No diff for this step.</div>'}
             </div>
@@ -751,33 +797,114 @@ int main() {
       container.innerHTML = `<div class="card"><div class="code-box">${buildTreeHtml(nodes)}</div></div>`;
     }
 
-    function renderSecurity(findings, report) {
+    function renderSecurity(guard, quality, fallbackFindings, fallbackReport) {
       const container = document.getElementById('security-view');
-      if (!findings || findings.length === 0) {
-        container.innerHTML = `
+      let html = '';
+
+      const view = (guard && guard.view) ? guard.view : null;
+      if (view && view.summary) {
+        const s = view.summary;
+        const isClean = s.risk_score === 0;
+        const cardClass = isClean ? 'success-card' : (s.tone === 'error' ? 'error-card' : 'warning-card');
+        const counts = s.counts || {};
+        html += `
+          <div class="card ${cardClass}">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div class="card-title" style="margin:0;">
+                <span class="badge ${isClean ? 'badge-confidence' : (s.tone === 'error' ? 'badge-error' : 'badge-warning')}">${escapeHtml(s.risk_label)}</span>
+                <span style="font-weight:700; margin-left:8px;">Risk Score: ${Number(s.risk_score)}</span>
+              </div>
+              <div style="font-size:12px; color:var(--text-muted);">
+                Crit: ${Number(counts.Critical || 0)} | High: ${Number(counts.High || 0)} | Med: ${Number(counts.Medium || 0)} | Low: ${Number(counts.Low || 0)}
+              </div>
+            </div>
+            ${s.blocked_summary ? `<div style="font-size:12px; color:#f87171; margin-top:6px; font-weight:600;">${escapeHtml(s.blocked_summary)}</div>` : ''}
+          </div>
+        `;
+
+        if (view.findings && view.findings.length > 0) {
+          view.findings.forEach(f => {
+            const isBlocked = f.action_label === 'BLOCKED';
+            const fCardClass = f.tone === 'error' ? 'error-card' : 'warning-card';
+            html += `
+              <div class="card ${fCardClass}">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                  <div style="display:flex; gap:6px; align-items:center;">
+                    <span class="badge ${f.tone === 'error' ? 'badge-error' : 'badge-warning'}">${escapeHtml(f.severity)}</span>
+                    <span class="badge ${isBlocked ? 'badge-error' : 'badge-category'}">${escapeHtml(f.action_label)}</span>
+                    <span style="font-size:11px; color:#94a3b8; font-weight:600;">${escapeHtml(f.detected_by)}</span>
+                  </div>
+                  <span style="font-size:12px; color:var(--text-muted); font-family:var(--code-font);">Line ${escapeHtml(f.line !== null && f.line !== undefined ? f.line : 'global')}</span>
+                </div>
+                <div class="card-title">${escapeHtml(f.title)}</div>
+                ${f.what ? `<div class="section-title">What</div><div class="section-body">${escapeHtml(f.what)}</div>` : ''}
+                ${f.why ? `<div class="section-title">Why</div><div class="section-body">${escapeHtml(f.why)}</div>` : ''}
+                ${f.how ? `<div class="section-title">How to Fix</div><div class="code-box" style="color:#6ee7b7;">${escapeHtml(f.how)}</div>` : ''}
+              </div>
+            `;
+          });
+        }
+      } else if (fallbackFindings && fallbackFindings.length > 0) {
+        fallbackFindings.forEach(f => {
+          const isCrit = f.severity === 'Critical' || f.severity === 'High';
+          html += `
+            <div class="card ${isCrit ? 'error-card' : 'warning-card'}">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="badge ${isCrit ? 'badge-error' : 'badge-warning'}">${escapeHtml(f.severity)}</span>
+                <span style="font-size:12px; color:var(--text-muted); font-family:var(--code-font);">Line ${escapeHtml(f.line || 'global')}</span>
+              </div>
+              <div class="card-title">${escapeHtml(f.vulnerability_type)}</div>
+              <div class="section-body">${escapeHtml(f.description)}</div>
+              <div class="section-title">Recommendation</div>
+              <div class="code-box" style="color: #38bdf8;">${escapeHtml(f.recommendation)}</div>
+            </div>
+          `;
+        });
+      } else {
+        html += `
           <div class="card success-card">
             <div class="card-title" style="color: var(--success);">Security Scan Clean</div>
             <div class="section-body">No static security vulnerabilities or risky APIs detected in current source.</div>
           </div>
         `;
-        return;
       }
-      let html = '';
-      findings.forEach(f => {
-        const isCrit = f.severity === 'Critical' || f.severity === 'High';
+
+      if (quality) {
+        const qLevel = quality.level || 'Good';
+        const qScore = quality.score !== undefined ? quality.score : 0;
+        const hints = quality.hints || [];
+        const qBadgeClass = qLevel === 'Good' ? 'badge-confidence' : (qLevel === 'Fair' ? 'badge-warning' : 'badge-error');
         html += `
-          <div class="card ${isCrit ? 'error-card' : 'warning-card'}">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <span class="badge ${isCrit ? 'badge-error' : 'badge-warning'}">${f.severity}</span>
-              <span style="font-size:12px; color:var(--text-muted); font-family:var(--code-font);">Line ${f.line || 'global'}</span>
+          <div style="margin-top:16px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-weight:700; font-size:12px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px;">Code Quality (Heuristics)</span>
+            <div>
+              <span class="badge ${qBadgeClass}">${escapeHtml(qLevel)}</span>
+              <span style="font-size:12px; color:var(--text-muted); margin-left:6px;">Score: ${Number(qScore)}</span>
             </div>
-            <div class="card-title">${escapeHtml(f.vulnerability_type)}</div>
-            <div class="section-body">${escapeHtml(f.description)}</div>
-            <div class="section-title">Recommendation</div>
-            <div class="code-box" style="color: #38bdf8;">${escapeHtml(f.recommendation)}</div>
           </div>
         `;
-      });
+        if (hints.length === 0) {
+          html += `
+            <div class="card">
+              <div class="section-body" style="color:#6ee7b7;">No quality issues detected. Code adheres to clean idioms.</div>
+            </div>
+          `;
+        } else {
+          hints.forEach(h => {
+            html += `
+              <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                  <b>${escapeHtml(h.title)}</b>
+                  <span style="font-size:11px; color:var(--text-muted); font-family:var(--code-font);">Line ${Number(h.line)}</span>
+                </div>
+                <div class="section-body" style="font-size:12px;">${escapeHtml(h.message)}</div>
+                ${h.suggestion ? `<div class="code-box" style="color:#38bdf8; margin-top:6px;">💡 ${escapeHtml(h.suggestion)}</div>` : ''}
+              </div>
+            `;
+          });
+        }
+      }
+
       container.innerHTML = html;
     }
 
@@ -796,23 +923,37 @@ int main() {
       try {
         const res = await fetch('/api/run', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Guard-Token': GUARD_TOKEN
+          },
           body: JSON.stringify({ code })
         });
         const data = await res.json();
-        term.textContent = data.output || '(No output produced)';
+        if (data.blocked && data.blocked_view) {
+          let blockedMsg = '🛑 ' + data.blocked_view.title + '\n\n';
+          (data.blocked_view.findings || []).forEach(f => {
+            const ag = (f.agents && f.agents.length) ? f.agents.join(', ') : f.detected_by;
+            blockedMsg += '• [' + f.severity + '] ' + f.title + ' (' + ag + ')\n';
+            if (f.what) blockedMsg += '  What: ' + f.what + '\n';
+          });
+          term.textContent = blockedMsg;
+        } else {
+          term.textContent = data.output || '(No output produced)';
+        }
       } catch (err) {
         term.textContent = 'Execution failed: ' + err;
       }
     }
 
     function escapeHtml(str) {
-      if (!str) return '';
+      if (str === null || str === undefined) return '';
       return String(str)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
     // Initialize with sample code
@@ -822,27 +963,48 @@ int main() {
 </html>
 """
 
+SESSION_TOKEN = secrets.token_urlsafe(24)
+
+_CONCURRENCY_LIMITERS = {
+    path: ConcurrencyLimiter(limit)
+    for path, limit in ENDPOINT_CONCURRENCY.items()
+}
+_GLOBAL_RATE_LIMITER = RateLimiter(*ENDPOINT_RATE)
+
+
 class CompilerWebHandler(BaseHTTPRequestHandler):
+    timeout = SOCKET_TIMEOUT_SECONDS
+
     def log_message(self, format, *args):
         # Silence verbose request logging
         pass
 
+    def end_headers(self):
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src https://fonts.gstatic.com; img-src 'self' data:; "
+            "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        )
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def _is_valid_origin_or_host(self) -> bool:
         port = getattr(self.server, "server_port", 8000)
-        valid_hosts = {"localhost", "127.0.0.1", f"localhost:{port}", f"127.0.0.1:{port}"}
-        host = self.headers.get("Host", "").strip().lower()
-        if host and host not in valid_hosts:
-            return False
-
-        origin = self.headers.get("Origin", "").strip()
-        if origin:
-            p = urlparse(origin)
-            if p.hostname not in {"localhost", "127.0.0.1"}:
-                return False
-            if p.port is not None and p.port != port:
-                return False
-
-        return True
+        meta = {
+            "method": self.command,
+            "path": urlparse(self.path).path,
+            "headers": {k.lower(): v for k, v in self.headers.items()},
+            "server_port": port,
+            "expected_token": SESSION_TOKEN,
+            "stage": "headers",
+        }
+        verdict = get_supervisor().review(InputKind.HTTP_REQUEST, "", purpose="request", meta=meta)
+        return not verdict.blocked
 
     def _send_json(self, data, status=200):
         body = json.dumps(data).encode("utf-8")
@@ -853,48 +1015,141 @@ class CompilerWebHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if not self._is_valid_origin_or_host():
-            self.send_error(403, "Forbidden: Invalid Host or Origin")
-            return
-        parsed = urlparse(self.path)
-        if parsed.path == "/" or parsed.path == "/index.html":
-            body = HTML_PAGE.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-        else:
-            self.send_error(404, "Not Found")
+        try:
+            port = getattr(self.server, "server_port", 8000)
+            headers_dict = {k.lower(): v for k, v in self.headers.items()}
+            meta = {
+                "method": self.command,
+                "path": urlparse(self.path).path,
+                "headers": headers_dict,
+                "server_port": port,
+                "expected_token": SESSION_TOKEN,
+                "stage": "headers",
+            }
+            verdict = get_supervisor().review(InputKind.HTTP_REQUEST, "", purpose="request", meta=meta)
+            if verdict.blocked:
+                status = 403
+                category = "request_blocked"
+                error_msg = "Forbidden"
+                if verdict.findings:
+                    f = verdict.findings[0]
+                    category = f.category
+                    status = f.details.get("http_status", 403)
+                    error_msg = f.title or f.category
+                self._send_json({"error": error_msg, "agent": "EndpointGuard", "category": category}, status=status)
+                return
+
+            parsed = urlparse(self.path)
+            if parsed.path in ("/", "/index.html"):
+                page = HTML_PAGE.replace("__GUARD_TOKEN__", SESSION_TOKEN)
+                body = page.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self.send_error(404, "Not Found")
+        except Exception as e:
+            log_event("server_error", {"type": type(e).__name__})
+            self._send_json({"error": "internal error"}, status=500)
 
     def do_POST(self):
-        if not self._is_valid_origin_or_host():
-            self.send_error(403, "Forbidden: Invalid Host or Origin")
-            return
-
-        content_type = self.headers.get("Content-Type", "")
-        if not content_type.startswith("application/json"):
-            self.send_error(415, "Unsupported Media Type: application/json required")
-            return
-
         parsed = urlparse(self.path)
-        length = int(self.headers.get("Content-Length", 0))
-        raw_body = self.rfile.read(length).decode("utf-8")
-        try:
-            req_data = json.loads(raw_body) if raw_body else {}
-        except Exception:
-            self.send_error(400, "Bad Request: Malformed JSON")
-            return
-        code = req_data.get("code", "")
+        path = parsed.path
 
-        if parsed.path == "/api/compile":
-            self.handle_compile(code)
-        elif parsed.path == "/api/heal":
-            self.handle_heal(code)
-        elif parsed.path == "/api/run":
-            self.handle_run(code)
-        else:
-            self.send_error(404, "API Endpoint Not Found")
+        if not _GLOBAL_RATE_LIMITER.allow():
+            log_event("busy", {"path": path})
+            self._send_json({"error": "server busy"}, status=429)
+            return
+
+        limiter = _CONCURRENCY_LIMITERS.get(path)
+        acquired = False
+        if limiter is not None:
+            if not limiter.try_acquire():
+                log_event("busy", {"path": path})
+                self._send_json({"error": "server busy"}, status=429)
+                return
+            acquired = True
+
+        try:
+            port = getattr(self.server, "server_port", 8000)
+            headers_dict = {k.lower(): v for k, v in self.headers.items()}
+            meta_headers = {
+                "method": self.command,
+                "path": path,
+                "headers": headers_dict,
+                "server_port": port,
+                "expected_token": SESSION_TOKEN,
+                "stage": "headers",
+            }
+            verdict_headers = get_supervisor().review(InputKind.HTTP_REQUEST, "", purpose="request", meta=meta_headers)
+            if verdict_headers.blocked:
+                status = 403
+                category = "request_blocked"
+                error_msg = "Forbidden"
+                if verdict_headers.findings:
+                    f = verdict_headers.findings[0]
+                    category = f.category
+                    status = f.details.get("http_status", 403)
+                    error_msg = f.title or f.category
+                self._send_json({"error": error_msg, "agent": "EndpointGuard", "category": category}, status=status)
+                return
+
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                raw_bytes = self.rfile.read(length)
+                raw_body = raw_bytes.decode("utf-8", errors="replace")
+            except (socket.timeout, TimeoutError):
+                self._send_json({"error": "Request timeout"}, status=408)
+                return
+
+            meta_body = {
+                "method": self.command,
+                "path": path,
+                "headers": headers_dict,
+                "server_port": port,
+                "expected_token": SESSION_TOKEN,
+                "stage": "body",
+            }
+            verdict_body = get_supervisor().review(InputKind.HTTP_REQUEST, raw_body, purpose="request", meta=meta_body)
+            if verdict_body.blocked:
+                status = 400
+                category = "request_blocked"
+                error_msg = "Bad Request"
+                if verdict_body.findings:
+                    f = verdict_body.findings[0]
+                    category = f.category
+                    status = f.details.get("http_status", 400)
+                    error_msg = f.title or f.category
+                self._send_json({"error": error_msg, "agent": "EndpointGuard", "category": category}, status=status)
+                return
+
+            try:
+                req_data = json.loads(raw_body) if raw_body else {}
+            except Exception:
+                self._send_json({"error": "Bad Request: Malformed JSON", "agent": "EndpointGuard", "category": "bad_json"}, status=400)
+                return
+
+            code = req_data.get("code", "")
+
+            if path == "/api/compile":
+                self.handle_compile(code)
+            elif path == "/api/heal":
+                self.handle_heal(code)
+            elif path == "/api/run":
+                self.handle_run(code)
+            else:
+                self.send_error(404, "API Endpoint Not Found")
+
+        except (socket.timeout, TimeoutError):
+            self._send_json({"error": "Request timeout"}, status=408)
+        except Exception as e:
+            log_event("server_error", {"type": type(e).__name__})
+            self._send_json({"error": "internal error"}, status=500)
+        finally:
+            if acquired and limiter is not None:
+                limiter.release()
 
     def handle_compile(self, code: str):
         start_time = time.time()
@@ -905,6 +1160,36 @@ class CompilerWebHandler(BaseHTTPRequestHandler):
         try:
             output = run_cpp_compiler(tmp_path)
             duration = time.time() - start_time
+
+            # Compute guard block (one source of truth)
+            guard_data = {
+                "risk_score": 0,
+                "risk_label": "Clean",
+                "blocked_purposes": [],
+                "findings": [],
+                "agents_run": [],
+                "total_ms": 0.0,
+            }
+            try:
+                from security_view import review_source_guard, build_security_summary, finding_view, sort_findings
+                guard_data = review_source_guard(
+                    code,
+                    source_dir=os.path.dirname(tmp_path),
+                    file_name=os.path.basename(tmp_path),
+                )
+                guard_data["view"] = {
+                    "summary": build_security_summary(guard_data),
+                    "findings": [finding_view(f) for f in sort_findings(guard_data.get("findings", []))],
+                }
+            except Exception:
+                pass
+
+            quality_data = {"score": 0, "level": "Good", "hints": []}
+            try:
+                from quality_hints import analyze_quality
+                quality_data = analyze_quality(code)
+            except Exception:
+                pass
 
             if not output:
                 # Clean compilation — build AST from source (clang++ fallback)
@@ -918,11 +1203,25 @@ class CompilerWebHandler(BaseHTTPRequestHandler):
                     "security_findings": [f.to_dict() for f in security_findings],
                     "security_report": sec_report,
                     "duration": duration,
-                    "emissions": 0.000012
+                    "emissions": 0.000012,
+                    "guard": guard_data,
+                    "quality": quality_data,
                 })
                 return
 
             errors = parse_errors(output)
+            try:
+                from guard import get_supervisor, InputKind
+                messages = [getattr(e, "message", "") or "" for e in errors]
+                get_supervisor().review(
+                    InputKind.COMPILER_OUTPUT,
+                    "\n".join(messages),
+                    purpose="display",
+                    meta={"source": "compiler"},
+                )
+            except Exception:
+                pass
+
             ast_text = extract_ast(tmp_path)
             # Use clang AST if available, otherwise build fallback from source
             ast_tree = parse_ast_to_tree(ast_text) if ast_text else build_fallback_ast(code)
@@ -946,7 +1245,9 @@ class CompilerWebHandler(BaseHTTPRequestHandler):
                 "security_findings": [f.to_dict() for f in security_findings],
                 "security_report": sec_report,
                 "duration": duration,
-                "emissions": 0.000025
+                "emissions": 0.000025,
+                "guard": guard_data,
+                "quality": quality_data,
             })
         finally:
             if os.path.exists(tmp_path):
@@ -962,43 +1263,109 @@ class CompilerWebHandler(BaseHTTPRequestHandler):
             classifier=classifier,
             use_ai=True,
         )
-        self._send_json(result.to_dict())
+        res_dict = result.to_dict()
+        sec = res_dict.get("security")
+        if sec:
+            try:
+                from security_view import heal_security_view
+                res_dict["security_view"] = heal_security_view(sec)
+            except Exception:
+                pass
+        self._send_json(res_dict)
 
     def handle_run(self, code: str):
-        if not _sanitize_code(code):
-            self._send_json({"output": "Execution blocked: Security check failed (contains forbidden calls or system commands)."})
+        from guard import get_supervisor, InputKind, scrubbed_env
+
+        verdict = get_supervisor().review(
+            InputKind.USER_SOURCE,
+            code,
+            purpose="run",
+            meta={"file_name": "web_run.cpp"},
+        )
+        if verdict.blocked:
+            block_lines = []
+            for f in verdict.findings:
+                if f.action == "block":
+                    agents_str = ", ".join(f.agents)
+                    line_str = f"line {f.line}" if f.line is not None else "line ?"
+                    block_lines.append(f"[{f.severity.upper()}] {f.category} ({agents_str}) {line_str}")
+            msg = "Run blocked by the security layer: " + "; ".join(block_lines)
+
+            b_view = None
+            try:
+                from security_view import blocked_banner_view
+                blocking_findings = [f.to_dict() if hasattr(f, "to_dict") else f for f in verdict.findings if getattr(f, "action", "") == "block"]
+                b_view = blocked_banner_view(blocking_findings, purpose="run")
+            except Exception:
+                pass
+
+            resp = {
+                "output": msg,
+                "blocked": True,
+                "findings": [f.to_dict() for f in verdict.findings],
+            }
+            if b_view is not None:
+                resp["blocked_view"] = b_view
+            self._send_json(resp)
             return
 
-        with tempfile.NamedTemporaryFile("w", suffix=".cpp", delete=False, encoding="utf-8") as tmp:
-            tmp_path = tmp.name
-            tmp.write(code)
+        if not _sanitize_code(code):
+            b_view = None
+            try:
+                from security_view import blocked_banner_view
+                b_view = blocked_banner_view([{
+                    "category": "process_execution",
+                    "severity": "Critical",
+                    "agents": ["ExecGuard"],
+                    "action": "block",
+                    "description": "Security check failed (contains forbidden calls or system commands).",
+                    "recommendation": "Remove dangerous system calls.",
+                }], purpose="run")
+            except Exception:
+                pass
+            resp = {
+                "output": "Execution blocked: Security check failed (contains forbidden calls or system commands).",
+                "blocked": True,
+                "findings": [],
+            }
+            if b_view is not None:
+                resp["blocked_view"] = b_view
+            self._send_json(resp)
+            return
 
-        exe_path = tmp_path.replace(".cpp", ".exe" if os.name == "nt" else "")
+        from guard.runner import build_and_run
         try:
-            # Build
-            build_res = subprocess.run(["g++", "-std=c++17", tmp_path, "-o", exe_path], capture_output=True, text=True)
-            if build_res.returncode != 0:
-                self._send_json({"output": "Compilation failed:\n" + build_res.stderr})
+            exec_res = build_and_run(code, timeout=5)
+            if not exec_res.compiled_ok:
+                if exec_res.build_result.timed_out:
+                    self._send_json({"output": "Compilation timed out after 20 s (possible resource-exhaustion input)"})
+                else:
+                    self._send_json({"output": "Compilation failed:\n" + exec_res.build_result.stderr})
                 return
 
-            # Run with stdin=subprocess.DEVNULL
-            run_res = subprocess.run([exe_path], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=5)
+            run_res = exec_res.run_result
+            if run_res is None:
+                self._send_json({"output": "Execution failed."})
+                return
+
+            if run_res.timed_out:
+                self._send_json({"output": "Execution timed out (5s limit)."})
+                return
+
             output = run_res.stdout
+            if run_res.truncated:
+                output += "\n[Output truncated at 1 MB]"
             if run_res.stderr:
                 output += "\n[stderr]:\n" + run_res.stderr
             self._send_json({"output": output or "Program executed successfully with exit code 0."})
-        except subprocess.TimeoutExpired:
-            self._send_json({"output": "Execution timed out (5s limit)."})
         except Exception as e:
             self._send_json({"output": f"Execution error: {e}"})
-        finally:
-            if os.path.exists(tmp_path): os.remove(tmp_path)
-            if os.path.exists(exe_path): os.remove(exe_path)
 
 
 def run_server(port=8000):
     server_address = ("127.0.0.1", port)
     httpd = ThreadingHTTPServer(server_address, CompilerWebHandler)
+    httpd.daemon_threads = True
     print(f"Server running at http://localhost:{port}/")
     try:
         httpd.serve_forever()

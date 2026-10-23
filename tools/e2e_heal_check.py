@@ -92,10 +92,16 @@ def _test_single_file(rel_path: str, clf) -> dict:
 
     attempts_list = []
     is_clean_signaled = [False]
+    security_blocked = []
 
     worker = HealWorker(tmp_path, clf)
     worker.attempt_started.connect(lambda att, err: attempts_list.append(att))
     worker.compile_clean.connect(lambda *args: is_clean_signaled.__setitem__(0, True))
+    def _on_summary(s):
+        for att in s.get("attempts", []):
+            if att.get("reason") == "patch_blocked_by_security":
+                security_blocked.append(att)
+    worker.heal_summary.connect(_on_summary)
 
     try:
         worker._heal()
@@ -118,6 +124,7 @@ def _test_single_file(rel_path: str, clf) -> dict:
         "attempts": attempts_count,
         "first_error": first_err_disp if not clean else "-",
         "raw_error": first_err,
+        "security_blocked": security_blocked,
     }
 
     if os.path.exists(tmp_path):
@@ -180,6 +187,16 @@ def print_results(results: List[dict], is_subset: bool = False):
     total = len(results)
     pct = (passed / total * 100) if total > 0 else 0.0
     print(f"TOTAL HEALED: {passed}/{total} ({pct:.1f}%)")
+    all_blocked = []
+    for r in results:
+        for b in r.get("security_blocked", []):
+            all_blocked.append((r["file"], b))
+    if all_blocked:
+        print(f"SECURITY BLOCKED ATTEMPTS: {len(all_blocked)}")
+        for f, b in all_blocked:
+            print(f"  - {f}: attempt {b.get('attempt')}, category {b.get('category')}, reason: {b.get('reason')}")
+    else:
+        print("SECURITY BLOCKED ATTEMPTS: 0 (no false positives from PatchGuard)")
     if is_subset:
         print("NOTE: Ran on 6-file subset (tc01, tc02, tc03, tc05, tc_autoheal_semicolons, test_heal) because projected time exceeded 90 s.")
     print("=" * 80)

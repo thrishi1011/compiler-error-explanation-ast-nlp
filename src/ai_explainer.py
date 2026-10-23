@@ -42,8 +42,9 @@ def get_5_line_context(source_code: str, line_no: Optional[int]) -> str:
     return "\n".join(context_lines)
 
 
-def build_batch_prompt(errors: list, source_code: str) -> Tuple[str, List[int]]:
+def build_batch_prompt(errors: list, source_code: str, nonce: Optional[str] = None) -> Tuple[str, List[int]]:
     """Build a compact JSON string representing up to 5 errors."""
+    from guard.promptsafe import wrap_untrusted
     items = []
     indices = []
     for idx, err in enumerate(errors[:5]):
@@ -57,12 +58,14 @@ def build_batch_prompt(errors: list, source_code: str) -> Tuple[str, List[int]]:
             cat = getattr(err, "category", "unknown")
 
         context = get_5_line_context(source_code, line_num)
+        wrapped_ctx = wrap_untrusted("source", context, nonce=nonce) if nonce else context
+        wrapped_msg = wrap_untrusted("errors", msg, nonce=nonce) if nonce else msg
         items.append({
             "index": idx,
             "line": line_num,
             "category": cat,
-            "compiler_message": msg,
-            "code_context": context,
+            "compiler_message": wrapped_msg,
+            "code_context": wrapped_ctx,
         })
         indices.append(idx)
 
@@ -231,9 +234,28 @@ def explain_errors_batch(errors: list, source_code: str) -> Tuple[Dict[int, dict
     if not errors:
         return {}, None, "No errors to explain"
 
-    prompt, _ = build_batch_prompt(errors, source_code)
+    import secrets
+    from guard.gates import check_ai_send
+    from guard.promptsafe import DATA_NOTICE
+    from guard import get_supervisor, InputKind
+
+    # Collect messages and context for pre-flight check
+    msgs = [err.get("message", "") if isinstance(err, dict) else getattr(err, "message", "") for err in errors[:5]]
+    errors_text = "\n".join(msgs)
+    contexts = [get_5_line_context(source_code, err.get("line") if isinstance(err, dict) else getattr(err, "line", None)) for err in errors[:5]]
+    source_contexts = "\n".join(contexts)
+
+    ai_send_res = check_ai_send(source=source_contexts, errors_text=errors_text)
+    if ai_send_res.blocked:
+        offline_results = _generate_offline_explanations(errors, source_code)
+        return offline_results, "NLP Engine", None
+
+    nonce = secrets.token_hex(8)
+    system_prompt = f"{EXPLAIN_SYSTEM_PROMPT}\n\n{DATA_NOTICE(nonce)}"
+    prompt, _ = build_batch_prompt(errors, source_code, nonce=nonce)
+
     res = llm_client.ask(
-        system=EXPLAIN_SYSTEM_PROMPT,
+        system=system_prompt,
         prompt=prompt,
         kind="explain",
         max_tokens=1500,
@@ -245,8 +267,32 @@ def explain_errors_batch(errors: list, source_code: str) -> Tuple[Dict[int, dict
         parsed = parse_batch_response(res.text)
 
     if parsed and res.provider:
+        # Display review (log only)
+        all_display_text = " ".join(
+            f"{d.get('explanation', '')} {d.get('fix', '')} {d.get('why', '')}"
+            for d in parsed.values()
+        )
+        get_supervisor().review(InputKind.AI_RESPONSE, all_display_text, purpose="display")
+
+        # Security review of fix snippets
         for idx, d in parsed.items():
             d["provider"] = res.provider
+            fix_code = d.get("fix", "")
+            if fix_code:
+                fix_v = get_supervisor().review(
+                    InputKind.USER_SOURCE,
+                    fix_code,
+                    purpose="analyze",
+                    include_vulnerability=False,
+                )
+                has_attack = any(
+                    f.origin == "attack" and f.severity in ("High", "Critical")
+                    for f in fix_v.findings
+                )
+                if has_attack:
+                    d["fix"] = ""
+                    d["explanation"] = f"{d.get('explanation', '')} (AI fix hidden by the security layer)".strip()
+
         return parsed, res.provider, None
 
     # Offline fallback

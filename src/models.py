@@ -15,6 +15,7 @@ class CompilerError:
         self.security_risk=security_risk
         self.risk_reason=risk_reason
         self.security_findings=security_findings or []
+        self.origin = None
 
     def to_dict(self):
         findings=[]
@@ -41,6 +42,8 @@ class CompilerError:
             "risk_reason":self.risk_reason,
             "security_findings":findings,
         }
+        if getattr(self, "origin", None) is not None:
+            res["origin"] = self.origin
         if hasattr(self, "ai_explanation") and self.ai_explanation is not None:
             res["ai_explanation"] = self.ai_explanation
         return res

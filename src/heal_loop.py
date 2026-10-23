@@ -69,12 +69,52 @@ def _compile(file_path: str) -> tuple[list[dict], str]:
             "confidence": 1.0
         }], "error: Malicious code blocked"
 
-    res = subprocess.run(
-        ["g++", "-fsyntax-only", "-std=c++17", "-Wall", file_path],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+    source_code = ""
+    if os.path.exists(file_path):
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            source_code = f.read()
+
+    from guard import check_compile, safe_run
+    verdict = check_compile(
+        source_code,
+        source_dir=os.path.dirname(os.path.abspath(file_path)),
+        file_name=os.path.basename(file_path),
     )
+    if verdict.blocked:
+        blocking_f = next((f for f in verdict.findings if f.action == "block"), verdict.findings[0] if verdict.findings else None)
+        agents_str = ", ".join(blocking_f.agents) if blocking_f else "ResourceGuard"
+        cat = blocking_f.category if blocking_f else "security_violation"
+        line_no = blocking_f.line if (blocking_f and blocking_f.line) else 1
+        col_no = blocking_f.column if (blocking_f and blocking_f.column) else 1
+        msg = f"Security Error: blocked by {agents_str} ({cat}) at line {line_no}"
+        return [{
+            "file": file_path,
+            "line": line_no,
+            "column": col_no,
+            "type": "error",
+            "message": msg,
+            "raw": f"error: {msg}",
+            "category": "security_violation",
+            "confidence": 1.0,
+        }], f"error: {msg}"
+
+    res = safe_run(
+        ["g++", "-fsyntax-only", "-std=c++17", "-Wall", file_path],
+        kind="syntax",
+    )
+    if res.timed_out:
+        t_s = int(res.duration_s)
+        msg = f"Compilation timed out after {t_s} s (possible resource-exhaustion input)"
+        return [{
+            "file": file_path,
+            "line": 1,
+            "column": 1,
+            "type": "error",
+            "message": msg,
+            "raw": f"error: {msg}",
+            "category": "timeout",
+            "confidence": 1.0,
+        }], f"error: {msg}"
     errors = []
     for line in res.stderr.splitlines():
         m = _ERR_PATTERN.match(line.strip())
@@ -216,6 +256,26 @@ def create_heal_backup(file_path: str) -> Optional[str]:
         return None
 
 
+def restore_heal_backup(backup_path: str, target_path: str) -> bool:
+    """
+    Restore the content from backup_path into target_path.
+    Returns True on success, False on failure.
+    """
+    try:
+        if not os.path.exists(backup_path):
+            return False
+        with open(backup_path, "r", encoding="utf-8") as sf:
+            content = sf.read()
+        target_dir = os.path.dirname(os.path.abspath(target_path))
+        if target_dir:
+            os.makedirs(target_dir, exist_ok=True)
+        with open(target_path, "w", encoding="utf-8") as df:
+            df.write(content)
+        return True
+    except Exception:
+        return False
+
+
 class HealWorker(QThread):
     """
     QThread that runs the full heal loop asynchronously.
@@ -234,9 +294,19 @@ class HealWorker(QThread):
     status_update   = pyqtSignal(str)                 # status text update
     info_message    = pyqtSignal(str)                 # card info message
 
-    def __init__(self, file_path: str, classifier, hint: Optional[str] = None, enable_ai: bool = False):
+    def __init__(
+        self,
+        file_path: str,
+        classifier,
+        hint: Optional[str] = None,
+        enable_ai: bool = False,
+        output_path: Optional[str] = None,
+        source: Optional[str] = None,
+    ):
         super().__init__()
         self.file_path  = file_path
+        self.output_path = output_path
+        self.source     = source
         self.classifier = classifier
         self.hint       = hint          # optional user guidance from previous round
         self.enable_ai  = enable_ai
@@ -261,9 +331,14 @@ class HealWorker(QThread):
         if self.last_backup_path:
             self.backup_created.emit(self.last_backup_path)
 
-        # Read current source
-        with open(self.file_path, "r", encoding="utf-8") as f:
-            source = f.read()
+        # Read current source (either provided in memory or from disk)
+        if self.source is not None:
+            source = self.source
+        elif os.path.exists(self.file_path):
+            with open(self.file_path, "r", encoding="utf-8") as f:
+                source = f.read()
+        else:
+            source = ""
 
         from heal_engine import heal_until_clean
 
@@ -287,9 +362,26 @@ class HealWorker(QThread):
             on_event=on_event,
         )
 
-        # Write final code back to file
-        with open(self.file_path, "w", encoding="utf-8") as f:
+        # Determine destination file: write to output_path if provided, else file_path
+        dest_path = self.output_path if self.output_path else self.file_path
+        dest_dir = os.path.dirname(os.path.abspath(dest_path))
+        if dest_dir:
+            os.makedirs(dest_dir, exist_ok=True)
+
+        with open(dest_path, "w", encoding="utf-8") as f:
             f.write(result.code)
+
+        # Also mirror to project_root/healed/ if dest_path is in another directory
+        try:
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            proj_healed_dir = os.path.join(project_root, "healed")
+            os.makedirs(proj_healed_dir, exist_ok=True)
+            proj_dest = os.path.join(proj_healed_dir, os.path.basename(dest_path))
+            if os.path.abspath(proj_dest) != os.path.abspath(dest_path):
+                with open(proj_dest, "w", encoding="utf-8") as pf:
+                    pf.write(result.code)
+        except Exception:
+            pass
 
         telemetry = []
         for rnd in result.rounds:
