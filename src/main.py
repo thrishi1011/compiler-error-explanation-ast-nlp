@@ -222,22 +222,21 @@ def _print_quality_cli_report(quality_data: dict) -> None:
         print(f"  [line {h.get('line', '?')}] {h.get('title', '')}: {h.get('message', '')} ({h.get('suggestion', '')})")
 
 
-def main():
-    args=parse_arguments()
+def run_pipeline(source_file: str, ai_enabled: bool = False, verbose: bool = True):
     try:
         from guard.pathsafe import set_allowed_roots
-        set_allowed_roots([os.path.dirname(os.path.abspath(args.source_file))])
+        set_allowed_roots([os.path.dirname(os.path.abspath(source_file))])
     except Exception:
         pass
 
     src_text = ""
     try:
-        with open(args.source_file, "r", encoding="utf-8", errors="replace") as sf:
+        with open(source_file, "r", encoding="utf-8", errors="replace") as sf:
             src_text = sf.read()
     except Exception:
         pass
 
-    output=run_cpp_compiler(args.source_file)
+    output = run_cpp_compiler(source_file)
     errors = parse_errors(output) if output else []
 
     try:
@@ -252,17 +251,17 @@ def main():
     except Exception:
         pass
 
-    ast_text=extract_ast(args.source_file)
+    ast_text = extract_ast(source_file)
 
     for e in errors:
         if e.line:
-            e.ast_node=extract_node_near_line(ast_text, e.line)
+            e.ast_node = extract_node_near_line(ast_text, e.line)
         else:
-            e.ast_node=None
+            e.ast_node = None
         enrich_error(e)
         log_example(e, source_text=src_text)
 
-    security_findings = analyze(args.source_file, errors)
+    security_findings = analyze(source_file, errors)
     for e in errors:
         if not getattr(e, "security_findings", None):
             e.security_findings = [
@@ -274,7 +273,7 @@ def main():
 
     # Convert static security findings (not originating from compiler diagnostics) into diagnostic problem cards
     static_errors = [
-        finding_to_compiler_error(finding, args.source_file)
+        finding_to_compiler_error(finding, source_file)
         for finding in security_findings
         if finding.source != "compiler_diagnostic"
     ]
@@ -292,14 +291,11 @@ def main():
     visible_error_count = sum(1 for e in visible_errors if e.error_type == "error")
     visible_warning_count = sum(1 for e in visible_errors if e.error_type == "warning")
 
-    # AI Explanation if enabled (--ai flag or ENABLE_LLM=1)
-    ai_enabled = getattr(args, "ai", False) or os.environ.get("ENABLE_LLM") == "1"
+    # AI Explanation if enabled
     if ai_enabled and visible_errors:
         try:
             from ai_explainer import explain_errors_batch
-            with open(args.source_file, "r", encoding="utf-8", errors="replace") as sf:
-                src_code = sf.read()
-            ai_results, provider, _ = explain_errors_batch(visible_errors, src_code)
+            ai_results, provider, _ = explain_errors_batch(visible_errors, src_text)
             for idx, err in enumerate(visible_errors):
                 if idx in ai_results:
                     err.ai_explanation = ai_results[idx]
@@ -317,8 +313,8 @@ def main():
     }
     try:
         from security_view import review_source_guard
-        src_dir = os.path.dirname(os.path.abspath(args.source_file))
-        fname = os.path.basename(args.source_file)
+        src_dir = os.path.dirname(os.path.abspath(source_file))
+        fname = os.path.basename(source_file)
         guard_data = review_source_guard(src_text, source_dir=src_dir, file_name=fname)
     except Exception:
         pass
@@ -331,23 +327,32 @@ def main():
     except Exception:
         pass
 
+    overall_status = "error" if visible_error_count > 0 else ("warning" if visible_warning_count > 0 else "success")
+    result = {
+        "status": overall_status,
+        "file": source_file,
+        "error_count": visible_error_count,
+        "warning_count": visible_warning_count,
+        "errors": [e.to_dict() for e in visible_errors],
+        "security_findings": [finding.to_dict() for finding in security_findings],
+        "security_report": format_security_report(security_findings),
+        "guard": guard_data,
+        "quality": quality_data,
+    }
+    return result, visible_errors, security_findings, guard_data, quality_data
+
+
+def main():
+    args = parse_arguments()
+    ai_enabled = getattr(args, "ai", False) or os.environ.get("ENABLE_LLM") == "1"
+    result, visible_errors, security_findings, guard_data, quality_data = run_pipeline(
+        args.source_file, ai_enabled=ai_enabled, verbose=args.verbose
+    )
+
     # JSON mode
     if args.json:
-        overall_status = "error" if visible_error_count > 0 else ("warning" if visible_warning_count > 0 else "success")
-        result={
-            "status": overall_status,
-            "file": args.source_file,
-            "error_count": visible_error_count,
-            "warning_count": visible_warning_count,
-            "errors": [e.to_dict() for e in visible_errors],
-            "security_findings": [finding.to_dict() for finding in security_findings],
-            "security_report": format_security_report(security_findings),
-            "guard": guard_data,
-            "quality": quality_data,
-        }
-
         print(json.dumps(result, indent=2))
-        return 1 if visible_error_count > 0 else 0
+        return 1 if result["error_count"] > 0 else 0
 
     # Human readable output
     if not visible_errors:
@@ -359,14 +364,10 @@ def main():
         return 0
 
     print(f"\n{len(visible_errors)} issue(s) found:\n")
-    error_count=0
-    warning_count=0
+    error_count = result["error_count"]
+    warning_count = result["warning_count"]
     for e in visible_errors:
-        if e.error_type=="error":
-            error_count+=1
-        elif e.error_type=="warning":
-            warning_count+=1
-        print_error(e,verbose=args.verbose)
+        print_error(e, verbose=args.verbose)
 
     print(f"{error_count} error(s), {warning_count} warning(s)")
     print()

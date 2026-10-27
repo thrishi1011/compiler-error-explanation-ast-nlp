@@ -783,7 +783,14 @@ def run_benchmark(
 
     git_hash = "unavailable"
     try:
-        g_out = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
+        git_kwargs = {"text": True}
+        if os.name == "nt":
+            git_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) | 0x00000008
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = subprocess.SW_HIDE
+            git_kwargs["startupinfo"] = si
+        g_out = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], **git_kwargs).strip()
         if g_out:
             git_hash = g_out
     except Exception:

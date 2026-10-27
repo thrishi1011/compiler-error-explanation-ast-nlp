@@ -1254,12 +1254,21 @@ class ASTWorker(QThread):
 class CompilerWorker(QThread):
     finished = pyqtSignal(str, str, int)
 
-    def __init__(self, cmd):
+    def __init__(self, cmd=None, file_path=None, ai_enabled=False):
         super().__init__()
         self.cmd = cmd
+        self.file_path = file_path
+        self.ai_enabled = ai_enabled
 
     def run(self):
         try:
+            if self.file_path and os.path.exists(self.file_path):
+                from main import run_pipeline
+                res_dict, _, _, _, _ = run_pipeline(self.file_path, ai_enabled=self.ai_enabled, verbose=True)
+                retcode = 1 if res_dict.get("error_count", 0) > 0 else 0
+                self.finished.emit(json.dumps(res_dict), "", retcode)
+                return
+
             from guard.safe_run import safe_run
             result = safe_run(self.cmd, kind="compile")
             stderr = result.stderr
@@ -4131,7 +4140,7 @@ class AppGUI(QMainWindow):
         cmd = [sys.executable, main_script, self.file_path, "-j", "-v"]
 
         get_energy_monitor().start_action("Compile")
-        self.compile_worker = CompilerWorker(cmd)
+        self.compile_worker = CompilerWorker(cmd, file_path=self.file_path, ai_enabled=self.is_ai_enabled())
         self.compile_worker.finished.connect(self._on_analysis_finished)
         self.compile_worker.start()
 

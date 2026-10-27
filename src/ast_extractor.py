@@ -236,6 +236,7 @@ def extract_ast(file_path, code=None):
         t_start = time.perf_counter()
 
         popen_kwargs = {
+            "stdin": subprocess.DEVNULL,
             "stdout": subprocess.PIPE,
             "stderr": subprocess.DEVNULL,
             "text": True,
@@ -244,7 +245,7 @@ def extract_ast(file_path, code=None):
             "shell": False,
         }
         if os.name == "nt":
-            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) | 0x00000008
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = subprocess.SW_HIDE
