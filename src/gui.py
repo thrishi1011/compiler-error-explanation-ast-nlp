@@ -40,7 +40,7 @@ from PyQt6.QtCore import (
     pyqtProperty, QPropertyAnimation, QEasingCurve
 )
 from PyQt6.QtGui import (
-    QFont, QColor, QPainter, QTextFormat, QTextCharFormat,
+    QFont, QFontMetrics, QColor, QPainter, QTextFormat, QTextCharFormat,
     QSyntaxHighlighter, QTextCursor, QPainterPath, QPen, QLinearGradient, QBrush,
     QDesktopServices
 )
@@ -354,7 +354,14 @@ def _extract_cpp_cfg(code):
 
 def get_gcc_version() -> str:
     try:
-        res = subprocess.run(["g++", "--version"], capture_output=True, text=True, timeout=3)
+        kwargs = {"capture_output": True, "text": True, "timeout": 3}
+        if os.name == "nt":
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            kwargs["startupinfo"] = startupinfo
+        res = subprocess.run(["g++", "--version"], **kwargs)
         if res.returncode == 0 and res.stdout:
             first_line = res.stdout.splitlines()[0]
             m = re.search(r"(\d+\.\d+(?:\.\d+)?)", first_line)
@@ -631,17 +638,24 @@ MetricsGraph = PowerLineChart
 
 class GraphNode(QGraphicsRectItem):
     def __init__(self, label, x, y, w, h, border, fill):
-        super().__init__(-w / 2, -h / 2, w, h)
-        self.setPos(x + w / 2, y + h / 2)
+        super().__init__()
+        self.text = QGraphicsTextItem(label, self)
+        self.text.setFont(theme.mono_font(10, bold=True))
+        self.text.setDefaultTextColor(theme.qcolor("text"))
+        br = self.text.boundingRect()
+
+        actual_w = max(float(w), float(br.width() + 32))
+        actual_h = max(float(h), float(br.height() + 18))
+        self.node_w = actual_w
+        self.node_h = actual_h
+
+        self.setRect(-actual_w / 2, -actual_h / 2, actual_w, actual_h)
+        self.setPos(x + actual_w / 2, y + actual_h / 2)
         self.setBrush(fill)
         self.setPen(QPen(border, 1.8))
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
 
-        self.text = QGraphicsTextItem(label, self)
-        self.text.setFont(theme.mono_font(10, bold=True))
-        self.text.setDefaultTextColor(theme.qcolor("text"))
-        br = self.text.boundingRect()
         self.text.setPos(-br.width() / 2, -br.height() / 2)
         self.edges_out = []
         self.edges_in = []
@@ -765,12 +779,25 @@ class CFGWidget(QGraphicsView):
             return
 
         y_offset = 50
-        margin_x = 100
+        margin_x = 80
+        font = theme.mono_font(10, bold=True)
+        fm = QFontMetrics(font)
+
         for func in functions_data:
             nodes_data = func["nodes"]
             edges_data = func["edges"]
             node_map = {}
-            node_w, node_h = 180, 50
+            node_w, node_h = 200, 50
+
+            max_func_w = node_w
+            for n in nodes_data:
+                lines = (n.get("label") or "").splitlines()
+                if lines:
+                    line_w = max(fm.horizontalAdvance(l) for l in lines) + 36
+                    if line_w > max_func_w:
+                        max_func_w = line_w
+
+            center_x = margin_x + max_func_w / 2
 
             f_lbl = self.scene.addText(f"FUNCTION: {func['name']}")
             f_lbl.setFont(theme.ui_font(11, bold=True))
@@ -792,10 +819,11 @@ class CFGWidget(QGraphicsView):
                     "stmt": theme.qcolor("surface"),
                 }.get(n["type"], theme.qcolor("surface"))
 
-                node = GraphNode(n["label"], margin_x, y_offset, node_w, node_h, border, fill)
+                node = GraphNode(n["label"], 0, 0, node_w, node_h, border, fill)
+                node.setPos(center_x, y_offset + node.node_h / 2)
                 self.scene.addItem(node)
                 node_map[n["id"]] = node
-                y_offset += 75
+                y_offset += int(node.node_h + 35)
 
             for start_id, end_id in edges_data:
                 if start_id in node_map and end_id in node_map:
@@ -1278,6 +1306,7 @@ class SyntaxWorker(QThread):
                     "line": match_line,
                     "column": 1,
                     "error_type": "error",
+                    "origin": "security",
                     "message": "Security Error: Malicious command injection or forbidden system call detected."
                 }])
                 return
@@ -1302,6 +1331,7 @@ class SyntaxWorker(QThread):
                         "line": 1,
                         "column": 1,
                         "error_type": "error",
+                        "origin": "security",
                         "message": msg
                     }])
                     return
@@ -1878,8 +1908,10 @@ class ModelAccuracyTab(QWidget):
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("background: transparent;")
 
         host = QWidget()
+        host.setStyleSheet("background: transparent;")
         lay = QVBoxLayout(host)
         lay.setContentsMargins(14, 14, 14, 14)
         lay.setSpacing(14)
@@ -2390,7 +2422,9 @@ class SecurityPage(CustomFrame):
 
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
+        self.scroll.setStyleSheet("background: transparent;")
         self.report_host = QWidget()
+        self.report_host.setStyleSheet("background: transparent;")
         self.report_layout = QVBoxLayout(self.report_host)
         self.report_layout.setContentsMargins(0, 0, 0, 0)
         self.report_layout.setSpacing(10)
@@ -2468,7 +2502,9 @@ class SecurityPage(CustomFrame):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("background: transparent;")
         self.agents_host = QWidget()
+        self.agents_host.setStyleSheet("background: transparent;")
         self.agents_layout = QVBoxLayout(self.agents_host)
         self.agents_layout.setContentsMargins(0, 0, 0, 0)
         self.agents_layout.setSpacing(8)
@@ -3220,7 +3256,9 @@ class AppGUI(QMainWindow):
 
         self.error_cards_scroll = QScrollArea()
         self.error_cards_scroll.setWidgetResizable(True)
+        self.error_cards_scroll.setStyleSheet("background: transparent;")
         self.error_cards_widget = QWidget()
+        self.error_cards_widget.setStyleSheet("background: transparent;")
         self.error_cards_layout = QVBoxLayout(self.error_cards_widget)
         self.error_cards_layout.setContentsMargins(14, 14, 14, 14)
         self.error_cards_layout.setSpacing(12)

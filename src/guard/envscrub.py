@@ -18,4 +18,6 @@ def scrubbed_env(base: dict[str, str] | None = None) -> dict[str, str]:
             continue
         cleaned[k] = v
 
+    cleaned["PYTHONIOENCODING"] = "utf-8"
+    cleaned["PYTHONUTF8"] = "1"
     return cleaned

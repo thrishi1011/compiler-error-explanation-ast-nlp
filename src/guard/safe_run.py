@@ -37,12 +37,17 @@ def _kill_process_tree(proc: subprocess.Popen) -> None:
     """Kills the entire process tree on Windows or POSIX."""
     if os.name == "nt":
         try:
-            # Kill process tree via taskkill
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
             subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 check=False,
+                creationflags=creationflags,
+                startupinfo=startupinfo,
             )
         except Exception:
             pass
@@ -104,7 +109,11 @@ def safe_run(
         popen_kwargs["stdin"] = subprocess.DEVNULL
 
     if os.name == "nt":
-        popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        popen_kwargs["startupinfo"] = startupinfo
     else:
         popen_kwargs["start_new_session"] = True
 

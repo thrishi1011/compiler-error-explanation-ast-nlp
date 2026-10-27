@@ -6,6 +6,13 @@ import os
 import sys
 import textwrap
 
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 from compiler_runner import run_cpp_compiler
 from error_parser import parse_errors
 from error_explainer import enrich_error

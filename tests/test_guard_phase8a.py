@@ -678,6 +678,59 @@ class TestGuiOffscreen(unittest.TestCase):
         self.assertIsNotNone(win.blocked_banner.fix_btn)
         self.assertEqual(win.blocked_banner.fix_btn.text(), "Fix with Auto-Heal")
 
+    def test_card_click_to_expand_and_header_transparency(self):
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QWidget
+        from ui_components import IssueCard, SecurityFindingCard
+
+        # 1. IssueCard click-to-expand & header transparency
+        err = {
+            "file": "test.cpp",
+            "line": 42,
+            "type": "error",
+            "message": "expected ';' before '}' token",
+            "explanation": "What happened:\nMissing semicolon.\nWhy it happened:\nSyntax error.\nHow to fix it:\nAdd ;",
+            "suggestion": ";",
+        }
+        issue_card = IssueCard(err)
+        self.assertTrue(issue_card.body.isHidden())
+        self.assertEqual(issue_card.toggle_indicator.text(), "▸")
+        self.assertTrue(issue_card.header_widget.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents))
+        for child in issue_card.header_widget.findChildren(QWidget):
+            self.assertTrue(child.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents))
+
+        issue_card.toggle_expand()
+        self.assertFalse(issue_card.body.isHidden())
+        self.assertEqual(issue_card.toggle_indicator.text(), "▾")
+        issue_card.toggle_expand()
+        self.assertTrue(issue_card.body.isHidden())
+        self.assertEqual(issue_card.toggle_indicator.text(), "▸")
+
+        # 2. SecurityFindingCard click-to-expand & header transparency
+        finding_data = {
+            "title": "Buffer Overflow",
+            "severity": "Critical",
+            "line": 15,
+            "tone": "error",
+            "kind_label": "Weakness",
+            "what": "Buffer overrun detected",
+            "why": "Memory corruption",
+            "how": "Use std::string",
+        }
+        sec_card = SecurityFindingCard(finding_data)
+        self.assertTrue(sec_card.body.isHidden())
+        self.assertEqual(sec_card.toggle_indicator.text(), "▸")
+        self.assertTrue(sec_card.header_widget.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents))
+        for child in sec_card.header_widget.findChildren(QWidget):
+            self.assertTrue(child.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents))
+
+        sec_card.toggle_expand()
+        self.assertFalse(sec_card.body.isHidden())
+        self.assertEqual(sec_card.toggle_indicator.text(), "▾")
+        sec_card.toggle_expand()
+        self.assertTrue(sec_card.body.isHidden())
+        self.assertEqual(sec_card.toggle_indicator.text(), "▸")
+
 
 if __name__ == "__main__":
     unittest.main()

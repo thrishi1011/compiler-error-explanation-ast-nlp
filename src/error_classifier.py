@@ -414,9 +414,16 @@ class ErrorClassifier:
             if not os.path.exists(fpath):
                 continue
 
+            kwargs = {"capture_output": True, "text": True}
+            if os.name == "nt":
+                kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                kwargs["startupinfo"] = startupinfo
             result = subprocess.run(
                 ["g++", "-std=c++17", "-Wall", fpath],
-                capture_output=True, text=True
+                **kwargs
             )
             predicted_cats = []
             for line in result.stderr.splitlines():

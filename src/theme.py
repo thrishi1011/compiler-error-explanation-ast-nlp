@@ -23,7 +23,7 @@ from __future__ import annotations
 from string import Template
 
 from PyQt6.QtCore import QSettings
-from PyQt6.QtGui import QColor, QFont, QTextCharFormat
+from PyQt6.QtGui import QColor, QFont, QPalette, QTextCharFormat
 from PyQt6.QtWidgets import QApplication, QWidget
 
 # ── Fonts ────────────────────────────────────────────────────────────────────
@@ -179,6 +179,9 @@ QHeaderView::section { background: $surface_alt; color: $muted; border: none;
 
 /* ---------- scroll ---------- */
 QScrollArea { border: none; background: transparent; }
+QScrollArea > QWidget { background: transparent; }
+QScrollArea > QWidget > QWidget { background: transparent; }
+QGraphicsView { background: $surface; border: 1px solid $border; border-radius: 8px; }
 QScrollBar:vertical   { background: transparent; width: 10px; margin: 2px; }
 QScrollBar:horizontal { background: transparent; height: 10px; margin: 2px; }
 QScrollBar::handle:vertical   { background: $border; border-radius: 3px; min-height: 28px; }
@@ -188,7 +191,7 @@ QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 
 /* ---------- misc ---------- */
-QSplitter::handle { background: $bg; }
+QSplitter::handle { background: $border; }
 QSplitter::handle:horizontal { width: 6px; }
 QSplitter::handle:vertical   { height: 6px; }
 QProgressBar { background: $surface_alt; border: none; border-radius: 5px;
@@ -228,6 +231,28 @@ def apply_theme(app: QApplication, new_mode: str | None = None) -> None:
     if new_mode in TOKENS:
         _mode = new_mode
     app.setFont(ui_font(13))
+
+    pal = app.palette()
+    bg_col = QColor(TOKENS[_mode]["bg"])
+    surf_col = QColor(TOKENS[_mode]["surface"])
+    surf_alt = QColor(TOKENS[_mode]["surface_alt"])
+    text_col = QColor(TOKENS[_mode]["text"])
+    accent_col = QColor(TOKENS[_mode]["accent"])
+    on_accent = QColor(TOKENS[_mode]["on_accent"])
+
+    pal.setColor(QPalette.ColorRole.Window, bg_col)
+    pal.setColor(QPalette.ColorRole.WindowText, text_col)
+    pal.setColor(QPalette.ColorRole.Base, surf_col)
+    pal.setColor(QPalette.ColorRole.AlternateBase, surf_alt)
+    pal.setColor(QPalette.ColorRole.ToolTipBase, surf_alt)
+    pal.setColor(QPalette.ColorRole.ToolTipText, text_col)
+    pal.setColor(QPalette.ColorRole.Text, text_col)
+    pal.setColor(QPalette.ColorRole.Button, surf_col)
+    pal.setColor(QPalette.ColorRole.ButtonText, text_col)
+    pal.setColor(QPalette.ColorRole.Highlight, accent_col)
+    pal.setColor(QPalette.ColorRole.HighlightedText, on_accent)
+    app.setPalette(pal)
+
     app.setStyleSheet(_QSS.substitute(TOKENS[_mode]))
     QSettings("CppExplainer", "App").setValue("theme", _mode)
     for cb in list(_listeners):

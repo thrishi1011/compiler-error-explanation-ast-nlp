@@ -56,9 +56,16 @@ ERROR_PATTERN = re.compile(
 
 def compile_file(path: str):
     """Run g++ and return list of (type, message, ast_node) tuples."""
+    kwargs = {"capture_output": True, "text": True}
+    if os.name == "nt":
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        kwargs["startupinfo"] = startupinfo
     result = subprocess.run(
         ["g++", "-std=c++17", "-Wall", "-Wextra", path],
-        capture_output=True, text=True
+        **kwargs
     )
     entries = []
     for line in result.stderr.splitlines():

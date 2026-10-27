@@ -167,9 +167,20 @@ class IssueCard(QFrame):
         self.card_layout.setContentsMargins(14, 14, 14, 14)
         self.card_layout.setSpacing(12)
 
-        # 1. Top row: Type badge, Category badge, Line badge
+        # ── Header area ───────────────────────────────────────────────────────
+        self.header_widget = QWidget()
+        header_lay = QVBoxLayout(self.header_widget)
+        header_lay.setContentsMargins(0, 0, 0, 0)
+        header_lay.setSpacing(8)
+
+        # 1. Top row: Toggle indicator, Type badge, Category badge, Line badge
         top = QHBoxLayout()
         top.setSpacing(8)
+
+        self.toggle_indicator = plain_label("▸", "Muted", wrap=False)
+        self.toggle_indicator.setCursor(Qt.CursorShape.PointingHandCursor)
+        top.addWidget(self.toggle_indicator)
+
         top.addWidget(badge(sev.upper(), "error" if sev == "error" else "warn"))
         cat = err.get("category")
         if cat:
@@ -178,10 +189,11 @@ class IssueCard(QFrame):
         if self.line:
             loc = plain_label(f"Line {self.line}", "Muted")
             top.addWidget(loc)
-        self.card_layout.addLayout(top)
+        header_lay.addLayout(top)
 
         # 2. Issue message title
-        self.card_layout.addWidget(plain_label(err.get("message", "Unknown issue"), "IssueTitle"))
+        self.title_label = plain_label(err.get("message", "Unknown issue"), "IssueTitle")
+        header_lay.addWidget(self.title_label)
 
         # 3. Compact telemetry & security stats row
         stats_row = QHBoxLayout()
@@ -199,7 +211,15 @@ class IssueCard(QFrame):
         stats_row.addWidget(badge(f"🌍 {co2}", "ok"))
         stats_row.addWidget(badge(f"🛡️ {risk}", risk_tone))
         stats_row.addStretch(1)
-        self.card_layout.addLayout(stats_row)
+        header_lay.addLayout(stats_row)
+
+        self.card_layout.addWidget(self.header_widget)
+
+        # ── Collapsible Body (Code context, Explanation, Fix, AI) ─────────────
+        self.body = QWidget()
+        self.body_layout = QVBoxLayout(self.body)
+        self.body_layout.setContentsMargins(0, 4, 0, 0)
+        self.body_layout.setSpacing(8)
 
         # 4. Code context snippet
         context = err.get("context", {})
@@ -221,8 +241,8 @@ class IssueCard(QFrame):
                 else:
                     ctx_text += f"  {i:3} | {lt_clean}\n"
             if ctx_text.strip():
-                self.card_layout.addWidget(section_label("CODE CONTEXT"))
-                self.card_layout.addWidget(code_block(ctx_text.rstrip("\n"), copy_button=False))
+                self.body_layout.addWidget(section_label("CODE CONTEXT"))
+                self.body_layout.addWidget(code_block(ctx_text.rstrip("\n"), copy_button=False))
 
         # 5. Explanations (What / Why / How)
         expl_text = err.get("explanation")
@@ -230,37 +250,50 @@ class IssueCard(QFrame):
         has_parts = bool(parts["what"] or parts["why"] or parts["how"])
 
         if has_parts:
-            self.card_layout.addWidget(section_label("EXPLANATION"))
+            self.body_layout.addWidget(section_label("EXPLANATION"))
             for key, title in (("what", "What happened:"),
                                ("why", "Why it happened:"),
                                ("how", "How to fix it:")):
                 if parts[key]:
                     sec = CollapsibleSection(title, expanded=True)
                     sec.set_text(parts[key])
-                    self.card_layout.addWidget(sec)
+                    self.body_layout.addWidget(sec)
             if parts.get("extra"):
                 extra_lbl = plain_label(f"ℹ️ {parts['extra']}", "Muted")
-                self.card_layout.addWidget(extra_lbl)
+                self.body_layout.addWidget(extra_lbl)
         elif expl_text:
-            self.card_layout.addWidget(section_label("EXPLANATION"))
-            self.card_layout.addWidget(plain_label(expl_text))
+            self.body_layout.addWidget(section_label("EXPLANATION"))
+            self.body_layout.addWidget(plain_label(expl_text))
 
         # 6. Suggested Fix
         if err.get("suggestion"):
-            self.card_layout.addWidget(section_label("SUGGESTED FIX"))
-            self.card_layout.addWidget(code_block(err["suggestion"], copy_button=True))
+            self.body_layout.addWidget(section_label("SUGGESTED FIX"))
+            self.body_layout.addWidget(code_block(err["suggestion"], copy_button=True))
 
         # 7. AI Explanation if already attached
         ai_exp = err.get("ai_explanation")
         if ai_exp and isinstance(ai_exp, dict):
             self.add_ai_explanation(ai_exp)
 
+        self.body.setVisible(False)
+        self.card_layout.addWidget(self.body)
+
+        # Make header transparent for mouse events so all clicks reach the card
+        self.header_widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        for child in self.header_widget.findChildren(QWidget):
+            child.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+    def toggle_expand(self):
+        is_hidden = self.body.isHidden()
+        self.body.setVisible(is_hidden)
+        self.toggle_indicator.setText("▾" if is_hidden else "▸")
+
     def add_ai_explanation(self, ai_data: dict) -> None:
         if not ai_data or not isinstance(ai_data, dict):
             return
         if hasattr(self, "ai_card") and self.ai_card:
             try:
-                self.card_layout.removeWidget(self.ai_card)
+                self.body_layout.removeWidget(self.ai_card)
                 self.ai_card.deleteLater()
             except Exception:
                 pass
@@ -272,14 +305,17 @@ class IssueCard(QFrame):
         why = ai_data.get("why", "")
         if expl or fix or why:
             self.ai_card = AiCard(provider, expl, fix, why)
-            self.card_layout.addWidget(self.ai_card)
+            self.body_layout.addWidget(self.ai_card)
             self.update()
 
     def set_selected(self, selected: bool) -> None:
         theme.set_prop(self, "selected", "true" if selected else "false")
 
     def mousePressEvent(self, event):
-        self.clicked.emit(self.line)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self.line)
+            if self.body.isHidden() or event.pos().y() <= self.header_widget.geometry().bottom():
+                self.toggle_expand()
         super().mousePressEvent(event)
 
 
@@ -498,10 +534,15 @@ class SecurityFindingCard(QFrame):
         self.body.setVisible(False)
         self.card_layout.addWidget(self.body)
 
+        # Make header transparent for mouse events so all clicks reach the card
+        self.header_widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        for child in self.header_widget.findChildren(QWidget):
+            child.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
     def toggle_expand(self):
-        is_vis = not self.body.isVisible()
-        self.body.setVisible(is_vis)
-        self.toggle_indicator.setText("▾" if is_vis else "▸")
+        is_hidden = self.body.isHidden()
+        self.body.setVisible(is_hidden)
+        self.toggle_indicator.setText("▾" if is_hidden else "▸")
 
     def add_ai_explanation(self, ai_data: dict) -> None:
         """No-op for security finding cards to guard against attribute errors."""
@@ -511,9 +552,10 @@ class SecurityFindingCard(QFrame):
         theme.set_prop(self, "selected", "true" if selected else "false")
 
     def mousePressEvent(self, event):
-        self.clicked.emit(self.line)
-        if not self.body.isVisible() or event.pos().y() <= self.body.pos().y():
-            self.toggle_expand()
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self.line)
+            if self.body.isHidden() or event.pos().y() <= self.header_widget.geometry().bottom():
+                self.toggle_expand()
         super().mousePressEvent(event)
 
 

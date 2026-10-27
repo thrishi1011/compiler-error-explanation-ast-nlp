@@ -22,8 +22,9 @@ except ImportError:
 
 
 def _to_snake_case(text: str) -> str:
-    cleaned = re.sub(r"[^\w\s-]", "", text)
-    snake = re.sub(r"[\s\-_/]+", "_", cleaned).strip("_").lower()
+    cleaned = re.sub(r"[/]+", " ", text)
+    cleaned = re.sub(r"[^\w\s-]", "", cleaned)
+    snake = re.sub(r"[\s\-_]+", "_", cleaned).strip("_").lower()
     if snake in ("command_injection", "process_execution"):
         return "process_execution"
     return snake

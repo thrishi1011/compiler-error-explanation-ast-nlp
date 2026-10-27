@@ -86,6 +86,7 @@ class SecurityHealResult:
     rounds: int
     seconds: float
     improved: bool
+    stopped_reason: str = "completed"
 
     def to_dict(self) -> dict:
         return {
@@ -103,6 +104,7 @@ class SecurityHealResult:
             "rounds": self.rounds,
             "seconds": round(self.seconds, 3),
             "improved": self.improved,
+            "stopped_reason": self.stopped_reason,
         }
 
 
@@ -153,7 +155,7 @@ def find_char_array_size(source: str, name: str, line: int | None) -> int | None
                 return None
 
             # Check if this line is a function header with parameter (e.g. char* name or char name[...])
-            if re.search(rf"\b[A-Za-z_]\w*\s*\([^)]*\b{re.escape(name)}\b[^)]*\)", code_part):
+            if not code_part.strip().endswith(";") and re.search(rf"\b[A-Za-z_]\w*\s*\([^)]*\b(?:char\s*\*|char)\s+{re.escape(name)}\b[^)]*\)", code_part):
                 return None
 
             # Check for char array declaration: char name[SIZE] ... ;
@@ -277,7 +279,7 @@ def _apply_unsafe_string(source: str, finding: Finding) -> Optional[Fix]:
     orig_line = lines[line_no - 1]
 
     # (a) strcpy(d, s)
-    m_cpy = re.search(r"\bstrcpy\s*\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*\)\s*;", orig_line)
+    m_cpy = re.search(r'\bstrcpy\s*\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*|"(?:[^"\\]|\\.)*")\s*\)\s*;', orig_line)
     if m_cpy:
         d, s = m_cpy.group(1), m_cpy.group(2)
         n = find_char_array_size(source, d, line_no)
@@ -302,7 +304,7 @@ def _apply_unsafe_string(source: str, finding: Finding) -> Optional[Fix]:
             )
 
     # (b) strcat(d, s)
-    m_cat = re.search(r"\bstrcat\s*\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*\)\s*;", orig_line)
+    m_cat = re.search(r'\bstrcat\s*\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*|"(?:[^"\\]|\\.)*")\s*\)\s*;', orig_line)
     if m_cat:
         d, s = m_cat.group(1), m_cat.group(2)
         n = find_char_array_size(source, d, line_no)
@@ -376,8 +378,8 @@ def _apply_unbounded_input(source: str, finding: Finding) -> Optional[Fix]:
     if not line_no or not (1 <= line_no <= len(lines)):
         return None
     orig_line = lines[line_no - 1]
-
-    m = re.search(r'scanf\s*\(\s*"([^"]*)"\s*,\s*([A-Za-z_]\w*)\s*\)\s*;', orig_line)
+    code_part = orig_line.split("//")[0]
+    m = re.search(r'scanf\s*\(\s*"([^"]*)"\s*,\s*([A-Za-z_]\w*)\s*\)\s*;', code_part)
     if m:
         fmt, b = m.group(1), m.group(2)
         if "%s" in fmt and not re.search(r"%\d+s", fmt):
@@ -760,22 +762,50 @@ def _suggest_uninitialized_variable(source: str, finding: Finding) -> Optional[F
 
 # 8. Integer overflow
 def _apply_integer_overflow(source: str, finding: Finding) -> Optional[Fix]:
+    lines = source.splitlines()
+    line_no = finding.line
+    if not line_no or not (1 <= line_no <= len(lines)):
+        return None
+    orig_line = lines[line_no - 1]
+
+    # Pattern: var * const or var * var
+    m = re.search(r"\b([A-Za-z_]\w*)\s*([\*])\s*(\d+|[A-Za-z_]\w*)", orig_line)
+    if m:
+        v1, op, v2 = m.group(1), m.group(2), m.group(3)
+        if not orig_line.strip().startswith("static_cast"):
+            repl = f"static_cast<size_t>({v1}) {op} {v2}"
+            fixed_line = orig_line[:m.start()] + repl + orig_line[m.end():]
+            lines[line_no - 1] = fixed_line
+            new_source = "\n".join(lines)
+            if source.endswith("\n") and not new_source.endswith("\n"):
+                new_source += "\n"
+            return Fix(
+                finding_category=finding.category,
+                line=line_no,
+                safety_class="auto",
+                description="Cast operand to size_t to prevent overflow before multiplication",
+                before=orig_line.strip(),
+                after=fixed_line.strip(),
+                new_source=new_source,
+            )
+
     err_dict = {
         "message": finding.description or finding.title,
         "line": finding.line,
         "category": "integer_overflow",
     }
-    patched = auto_healer.fix_integer_overflow(source, err_dict)
-    if patched and patched != source:
-        return Fix(
-            finding_category=finding.category,
-            line=finding.line,
-            safety_class="auto",
-            description="Widen integer type to long long to prevent overflow",
-            before="",
-            after="Widen to long long",
-            new_source=patched,
-        )
+    if hasattr(auto_healer, "fix_integer_overflow"):
+        patched = auto_healer.fix_integer_overflow(source, err_dict)
+        if patched and patched != source:
+            return Fix(
+                finding_category=finding.category,
+                line=finding.line,
+                safety_class="auto",
+                description="Widen integer type to long long to prevent overflow",
+                before="",
+                after="Widen to long long",
+                new_source=patched,
+            )
     return None
 
 
@@ -1211,7 +1241,98 @@ def _suggest_vector_oob(source: str, finding: Finding) -> Optional[Fix]:
     )
 
 
-# 17. Generic suggest-only helper
+# 17. Weak randomness - auto_notice
+def _apply_weak_randomness(source: str, finding: Finding) -> Optional[Fix]:
+    lines = source.splitlines()
+    line_no = finding.line
+    if not line_no or not (1 <= line_no <= len(lines)):
+        return None
+    orig_line = lines[line_no - 1]
+
+    if "rand()" in orig_line:
+        repl = orig_line.replace("rand()", "static_cast<int>(std::random_device{}() & 0x7fffffff)")
+        lines[line_no - 1] = repl
+        new_source = "\n".join(lines)
+        if source.endswith("\n") and not new_source.endswith("\n"):
+            new_source += "\n"
+        new_source = _ensure_include(new_source, "random")
+        return Fix(
+            finding_category=finding.category,
+            line=line_no,
+            safety_class="auto_notice",
+            description="Replace rand() with std::random_device",
+            before=orig_line.strip(),
+            after=repl.strip(),
+            new_source=new_source,
+        )
+    return None
+
+
+def _suggest_weak_randomness(source: str, finding: Finding) -> Optional[Fix]:
+    lines = source.splitlines()
+    line_no = finding.line
+    orig_line = lines[line_no - 1].strip() if (line_no and 1 <= line_no <= len(lines)) else ""
+    return Fix(
+        finding_category=finding.category,
+        line=line_no,
+        safety_class="suggest",
+        description="Replace rand() with std::random_device and mt19937",
+        before=orig_line,
+        after=safe_text(
+            "// Use std::random_device for secure randomness:\n"
+            "#include <random>\n"
+            "std::random_device rd;\n"
+            "std::mt19937 gen(rd());"
+        ),
+        new_source=None,
+    )
+
+
+# 18. Signed / Unsigned mismatch - auto_notice
+def _apply_signed_unsigned_mismatch(source: str, finding: Finding) -> Optional[Fix]:
+    lines = source.splitlines()
+    line_no = finding.line
+    if not line_no or not (1 <= line_no <= len(lines)):
+        return None
+    orig_line = lines[line_no - 1]
+
+    m = re.search(r"([A-Za-z_]\w*)\s*(<|<=|>|>=|==|!=)\s*([A-Za-z_]\w*)", orig_line)
+    if m:
+        left, op, right = m.group(1), m.group(2), m.group(3)
+        repl = f"static_cast<long long>({left}) {op} static_cast<long long>({right})"
+        fixed_line = orig_line[:m.start()] + repl + orig_line[m.end():]
+        lines[line_no - 1] = fixed_line
+        new_source = "\n".join(lines)
+        if source.endswith("\n") and not new_source.endswith("\n"):
+            new_source += "\n"
+        return Fix(
+            finding_category=finding.category,
+            line=line_no,
+            safety_class="auto_notice",
+            description="Cast signed and unsigned operands to long long for comparison",
+            before=orig_line.strip(),
+            after=fixed_line.strip(),
+            new_source=new_source,
+        )
+    return None
+
+
+def _suggest_signed_unsigned_mismatch(source: str, finding: Finding) -> Optional[Fix]:
+    lines = source.splitlines()
+    line_no = finding.line
+    orig_line = lines[line_no - 1].strip() if (line_no and 1 <= line_no <= len(lines)) else ""
+    return Fix(
+        finding_category=finding.category,
+        line=line_no,
+        safety_class="suggest",
+        description="Cast comparison operands or ensure types match",
+        before=orig_line,
+        after=safe_text("// Cast to common signed type:\nstatic_cast<long long>(a) < static_cast<long long>(b);"),
+        new_source=None,
+    )
+
+
+# 19. Generic suggest-only helper
 def _make_suggest_only(category: str, snippet: str, description: str) -> Tuple[RecipeFn, RecipeFn]:
     def _apply_none(_source: str, _finding: Finding) -> Optional[Fix]:
         return None
@@ -1258,13 +1379,11 @@ register_recipe("hidden_unicode", "auto", _apply_hidden_unicode, _suggest_hidden
 register_recipe("division_by_zero", "auto_notice", _apply_division_by_zero, _suggest_division_by_zero)
 register_recipe("null_pointer_dereference", "auto_notice", _apply_null_pointer_dereference, _suggest_null_pointer_dereference)
 register_recipe("vector_out_of_bounds", "auto_notice", _apply_vector_oob, _suggest_vector_oob)
+register_recipe("weak_randomness", "auto_notice", _apply_weak_randomness, _suggest_weak_randomness)
+register_recipe("signed_unsigned_mismatch", "auto_notice", _apply_signed_unsigned_mismatch, _suggest_signed_unsigned_mismatch)
 
 # suggest-only recipes
 _SUGGEST_ONLY_DEFS = {
-    "weak_randomness": (
-        "// Use std::random_device for secure randomness:\n#include <random>\nstd::random_device rd;\nstd::mt19937 gen(rd());",
-        "Replace rand() with std::random_device and mt19937",
-    ),
     "unsafe_memory_copy": (
         "// Validate bounds and prefer std::copy:\nstd::copy(src, src + size, dst);",
         "Use std::copy with verified container bounds",
@@ -1356,7 +1475,7 @@ def heal_security(
     source: str,
     *,
     allow_behavior_changes: Optional[bool] = None,
-    max_rounds: int = 10,
+    max_rounds: Optional[int] = None,
     source_dir: Optional[str] = None,
 ) -> SecurityHealResult:
     """
@@ -1390,11 +1509,15 @@ def heal_security(
             rounds=0,
             seconds=time.time() - t0,
             improved=False,
+            stopped_reason="completed",
         )
 
     risk_before = verdict_before.risk_score
     label_before = verdict_before.risk_label
     findings_before = list(verdict_before.findings)
+
+    if max_rounds is None:
+        max_rounds = min(60, max(10, len(findings_before) + 5))
 
     current_source = source
     current_verdict = verdict_before
@@ -1408,6 +1531,7 @@ def heal_security(
     # Lazy import compile_source to avoid circular dependencies
     from heal_engine import compile_source
 
+    stopped_reason = "completed"
     round_count = 0
     while round_count < max_rounds:
         try:
@@ -1610,6 +1734,19 @@ def heal_security(
         except Exception as e:
             log_event("security_heal_error", {"type": type(e).__name__})
             break
+    else:
+        rem_cands = []
+        for f in current_findings:
+            key = (f.category, normalize_evidence(f.evidence))
+            if key in tried_keys:
+                continue
+            recipe = get_recipe(f.category)
+            if not recipe:
+                continue
+            if recipe.safety_class == "auto" or (recipe.safety_class == "auto_notice" and allow_behavior_changes):
+                rem_cands.append(f)
+        if rem_cands:
+            stopped_reason = "round_limit"
 
     # Re-scan final state
     try:
@@ -1643,10 +1780,13 @@ def heal_security(
             reason = "No recipe for category"
         elif recipe.safety_class == "auto_notice" and not allow_behavior_changes:
             status = "skipped_behavior"
-            reason = "Behavior-changing fixes disabled (GUARD_ALLOW_BEHAVIOR_FIXES=0)"
+            reason = 'Behavior-changing fixes disabled. Enable "Allow behaviour-changing security fixes" in settings to apply.'
         elif recipe.safety_class == "suggest":
             status = "suggested"
             reason = "Manual review required"
+        elif stopped_reason == "round_limit" and fb_key not in tried_keys:
+            status = "not_attempted"
+            reason = "Round limit reached before processing finding"
         else:
             # Recipe exists but preconditions failed or loop terminated before reaching it
             status = "suggested"
@@ -1694,4 +1834,5 @@ def heal_security(
         rounds=round_count,
         seconds=duration,
         improved=improved,
+        stopped_reason=stopped_reason,
     )

@@ -11,11 +11,11 @@
     "scanner_evasion_benign": 2
   },
   "environment": {
-    "timestamp": "2026-10-22T16:03:46Z",
+    "timestamp": "2026-10-27T14:58:54Z",
     "python_version": "3.11.9",
     "os_version": "Windows 10",
     "compiler_version": "unavailable",
-    "git_commit": "3438c2c",
+    "git_commit": "3ddc190",
     "case_counts": {
       "total": 127,
       "headline_cases": 120,
@@ -1327,53 +1327,53 @@
     "cases_covered": 127
   },
   "latency": {
-    "mean": 4.173,
-    "median": 2.65,
-    "p95": 12.96,
-    "max": 27.162,
+    "mean": 8.344,
+    "median": 3.304,
+    "p95": 34.96,
+    "max": 69.897,
     "cases_covered": 127,
     "by_kind": {
       "COMPILER_OUTPUT": {
-        "mean": 0.467,
-        "median": 0.421,
-        "p95": 0.941,
-        "max": 1.117
+        "mean": 1.723,
+        "median": 1.643,
+        "p95": 3.605,
+        "max": 4.348
       },
       "DATASET_ENTRY": {
-        "mean": 1.123,
-        "median": 0.884,
-        "p95": 2.04,
-        "max": 2.356
+        "mean": 1.693,
+        "median": 1.556,
+        "p95": 2.98,
+        "max": 3.49
       },
       "HTTP_REQUEST": {
-        "mean": 0.277,
-        "median": 0.169,
-        "p95": 0.742,
-        "max": 0.884
+        "mean": 0.462,
+        "median": 0.307,
+        "p95": 1.744,
+        "max": 1.849
       },
       "MODEL_FILE": {
-        "mean": 2.796,
-        "median": 3.396,
-        "p95": 4.517,
-        "max": 4.593
+        "mean": 12.435,
+        "median": 2.281,
+        "p95": 43.125,
+        "max": 53.199
       },
       "PATCH": {
-        "mean": 1.402,
-        "median": 1.067,
-        "p95": 2.793,
-        "max": 3.602
+        "mean": 1.853,
+        "median": 1.562,
+        "p95": 2.959,
+        "max": 4.451
       },
       "USER_HINT": {
-        "mean": 0.68,
-        "median": 0.592,
-        "p95": 1.256,
-        "max": 1.316
+        "mean": 1.893,
+        "median": 0.655,
+        "p95": 6.23,
+        "max": 7.805
       },
       "USER_SOURCE": {
-        "mean": 7.551,
-        "median": 6.729,
-        "p95": 18.423,
-        "max": 27.162
+        "mean": 14.711,
+        "median": 8.521,
+        "p95": 38.702,
+        "max": 69.897
       }
     }
   },
@@ -1680,19 +1680,19 @@
         "risk_before": 27,
         "risk_after": 0,
         "risk_reduction_pct": 100.0,
-        "seconds": 1.841
+        "seconds": 6.361
       },
       {
         "file": "unfixable.cpp",
         "findings_before": 3,
         "fixed": 0,
-        "suggested": 2,
-        "skipped": 1,
+        "suggested": 1,
+        "skipped": 2,
         "rejected": 0,
         "risk_before": 17,
         "risk_after": 17,
         "risk_reduction_pct": 0.0,
-        "seconds": 0.038
+        "seconds": 0.165
       },
       {
         "file": "clean.cpp",
@@ -1704,7 +1704,7 @@
         "risk_before": 0,
         "risk_after": 0,
         "risk_reduction_pct": 0.0,
-        "seconds": 0.018
+        "seconds": 0.058
       },
       {
         "file": "gets_sample.cpp",
@@ -1716,7 +1716,7 @@
         "risk_before": 10,
         "risk_after": 0,
         "risk_reduction_pct": 100.0,
-        "seconds": 0.382
+        "seconds": 1.234
       },
       {
         "file": "strcat_sample.cpp",
@@ -1728,7 +1728,7 @@
         "risk_before": 5,
         "risk_after": 0,
         "risk_reduction_pct": 100.0,
-        "seconds": 0.448
+        "seconds": 0.852
       },
       {
         "file": "sprintf_sample.cpp",
@@ -1740,7 +1740,7 @@
         "risk_before": 5,
         "risk_after": 0,
         "risk_reduction_pct": 100.0,
-        "seconds": 0.373
+        "seconds": 0.762
       },
       {
         "file": "leak_sample.cpp",
@@ -1752,7 +1752,7 @@
         "risk_before": 2,
         "risk_after": 0,
         "risk_reduction_pct": 100.0,
-        "seconds": 0.35
+        "seconds": 0.752
       },
       {
         "file": "double_free_sample.cpp",
@@ -1764,14 +1764,14 @@
         "risk_before": 5,
         "risk_after": 0,
         "risk_reduction_pct": 100.0,
-        "seconds": 0.399
+        "seconds": 0.756
       }
     ],
     "totals": {
       "findings_before": 14,
       "fixed": 11,
-      "suggested": 2,
-      "skipped": 1,
+      "suggested": 1,
+      "skipped": 2,
       "rejected": 0,
       "risk_before": 71,
       "risk_after": 17,
@@ -1804,7 +1804,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 6,
-      "total_ms": 5.521,
+      "total_ms": 22.326,
       "agents_found": [
         "ExecGuard"
       ],
@@ -1814,7 +1814,7 @@
       ],
       "findings": [
         {
-          "id": "de3443fe",
+          "id": "3b773455",
           "agents": [
             "ExecGuard"
           ],
@@ -1833,7 +1833,7 @@
           "details": {}
         },
         {
-          "id": "12d48341",
+          "id": "33b1f033",
           "agents": [
             "ExecGuard"
           ],
@@ -1878,7 +1878,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 6,
-      "total_ms": 4.288,
+      "total_ms": 13.661,
       "agents_found": [
         "ExecGuard"
       ],
@@ -1888,7 +1888,7 @@
       ],
       "findings": [
         {
-          "id": "a3c0c37c",
+          "id": "bb867156",
           "agents": [
             "ExecGuard"
           ],
@@ -1907,7 +1907,7 @@
           "details": {}
         },
         {
-          "id": "63cf0321",
+          "id": "0c93a3ac",
           "agents": [
             "ExecGuard"
           ],
@@ -1952,7 +1952,7 @@
       "baseline_reason": "sanitizer:popen",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 2.888,
+      "total_ms": 19.252,
       "agents_found": [
         "ExecGuard"
       ],
@@ -1961,7 +1961,7 @@
       ],
       "findings": [
         {
-          "id": "4c1d518b",
+          "id": "ddc227a4",
           "agents": [
             "ExecGuard"
           ],
@@ -2006,7 +2006,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 3.638,
+      "total_ms": 15.03,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2015,7 +2015,7 @@
       ],
       "findings": [
         {
-          "id": "541813d8",
+          "id": "461bf511",
           "agents": [
             "ExecGuard"
           ],
@@ -2060,7 +2060,7 @@
       "baseline_reason": "sanitizer:asm",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 2.866,
+      "total_ms": 11.629,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2069,7 +2069,7 @@
       ],
       "findings": [
         {
-          "id": "262916c2",
+          "id": "aeef57d1",
           "agents": [
             "ExecGuard"
           ],
@@ -2114,7 +2114,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 4.424,
+      "total_ms": 16.041,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2123,7 +2123,7 @@
       ],
       "findings": [
         {
-          "id": "e3f7838d",
+          "id": "f38e4ab5",
           "agents": [
             "ExecGuard"
           ],
@@ -2168,7 +2168,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 8.932,
+      "total_ms": 38.777,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2177,7 +2177,7 @@
       ],
       "findings": [
         {
-          "id": "29a4ca58",
+          "id": "1b8c961b",
           "agents": [
             "ExecGuard"
           ],
@@ -2222,7 +2222,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 4.366,
+      "total_ms": 35.036,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2232,7 +2232,7 @@
       ],
       "findings": [
         {
-          "id": "07f71b44",
+          "id": "7b2943f0",
           "agents": [
             "ExecGuard"
           ],
@@ -2251,7 +2251,7 @@
           "details": {}
         },
         {
-          "id": "b6e208f7",
+          "id": "83586c22",
           "agents": [
             "ExecGuard"
           ],
@@ -2296,7 +2296,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 2,
-      "total_ms": 20.778,
+      "total_ms": 34.782,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2305,7 +2305,7 @@
       ],
       "findings": [
         {
-          "id": "6668896c",
+          "id": "d6f28aef",
           "agents": [
             "ExecGuard"
           ],
@@ -2350,7 +2350,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 7.299,
+      "total_ms": 18.246,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2359,7 +2359,7 @@
       ],
       "findings": [
         {
-          "id": "362acde2",
+          "id": "52570629",
           "agents": [
             "ExecGuard"
           ],
@@ -2404,7 +2404,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 7.239,
+      "total_ms": 62.372,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2413,7 +2413,7 @@
       ],
       "findings": [
         {
-          "id": "26ec571f",
+          "id": "0767af2c",
           "agents": [
             "ExecGuard"
           ],
@@ -2458,7 +2458,7 @@
       "baseline_reason": "sanitizer:sys-include",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 6.652,
+      "total_ms": 16.993,
       "agents_found": [
         "ExecGuard",
         "SecretsGuard"
@@ -2469,7 +2469,7 @@
       ],
       "findings": [
         {
-          "id": "fff3a83f",
+          "id": "09071e9e",
           "agents": [
             "ExecGuard"
           ],
@@ -2488,7 +2488,7 @@
           "details": {}
         },
         {
-          "id": "ba23ebeb",
+          "id": "d0f10325",
           "agents": [
             "SecretsGuard"
           ],
@@ -2539,7 +2539,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 8.84,
+      "total_ms": 14.614,
       "agents_found": [
         "ResourceGuard",
         "SecretsGuard"
@@ -2550,7 +2550,7 @@
       ],
       "findings": [
         {
-          "id": "70960193",
+          "id": "50ee923d",
           "agents": [
             "ResourceGuard"
           ],
@@ -2572,7 +2572,7 @@
           "details": {}
         },
         {
-          "id": "80ba095e",
+          "id": "2bf51b42",
           "agents": [
             "SecretsGuard"
           ],
@@ -2623,7 +2623,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 7.584,
+      "total_ms": 13.941,
       "agents_found": [
         "ResourceGuard",
         "SecretsGuard"
@@ -2634,7 +2634,7 @@
       ],
       "findings": [
         {
-          "id": "b6f94a83",
+          "id": "cfd8af36",
           "agents": [
             "ResourceGuard"
           ],
@@ -2656,7 +2656,7 @@
           "details": {}
         },
         {
-          "id": "aac61c52",
+          "id": "e2460454",
           "agents": [
             "SecretsGuard"
           ],
@@ -2707,7 +2707,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 5.947,
+      "total_ms": 10.09,
       "agents_found": [
         "ResourceGuard"
       ],
@@ -2716,7 +2716,7 @@
       ],
       "findings": [
         {
-          "id": "98980c0d",
+          "id": "38a5c9bd",
           "agents": [
             "ResourceGuard"
           ],
@@ -2764,7 +2764,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 7.099,
+      "total_ms": 15.354,
       "agents_found": [
         "ResourceGuard"
       ],
@@ -2773,7 +2773,7 @@
       ],
       "findings": [
         {
-          "id": "f156522b",
+          "id": "d7bfe56a",
           "agents": [
             "ResourceGuard"
           ],
@@ -2821,7 +2821,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 7.155,
+      "total_ms": 12.596,
       "agents_found": [
         "ResourceGuard"
       ],
@@ -2830,7 +2830,7 @@
       ],
       "findings": [
         {
-          "id": "5310df3f",
+          "id": "45148c2a",
           "agents": [
             "ResourceGuard"
           ],
@@ -2877,7 +2877,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 6.395,
+      "total_ms": 18.538,
       "agents_found": [
         "ResourceGuard"
       ],
@@ -2886,7 +2886,7 @@
       ],
       "findings": [
         {
-          "id": "f2ea79dd",
+          "id": "2ad7db08",
           "agents": [
             "ResourceGuard"
           ],
@@ -2933,7 +2933,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 2,
-      "total_ms": 6.273,
+      "total_ms": 22.548,
       "agents_found": [
         "ResourceGuard"
       ],
@@ -2942,7 +2942,7 @@
       ],
       "findings": [
         {
-          "id": "66dd2b73",
+          "id": "f8076917",
           "agents": [
             "ResourceGuard"
           ],
@@ -2987,7 +2987,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 5.252,
+      "total_ms": 27.931,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -2996,7 +2996,7 @@
       ],
       "findings": [
         {
-          "id": "e209a239",
+          "id": "230c5dfa",
           "agents": [
             "SecretsGuard"
           ],
@@ -3047,7 +3047,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 6.805,
+      "total_ms": 7.117,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3056,7 +3056,7 @@
       ],
       "findings": [
         {
-          "id": "6c7dc577",
+          "id": "10a64cc5",
           "agents": [
             "SecretsGuard"
           ],
@@ -3107,7 +3107,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 3.218,
+      "total_ms": 69.897,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3116,7 +3116,7 @@
       ],
       "findings": [
         {
-          "id": "8e9839d1",
+          "id": "e3a5666e",
           "agents": [
             "SecretsGuard"
           ],
@@ -3167,7 +3167,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 5.947,
+      "total_ms": 20.683,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3176,7 +3176,7 @@
       ],
       "findings": [
         {
-          "id": "6757cb7b",
+          "id": "c161824e",
           "agents": [
             "SecretsGuard"
           ],
@@ -3227,7 +3227,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 7,
-      "total_ms": 4.525,
+      "total_ms": 62.836,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3237,7 +3237,7 @@
       ],
       "findings": [
         {
-          "id": "63e28c42",
+          "id": "a93c7436",
           "agents": [
             "SecretsGuard"
           ],
@@ -3262,7 +3262,7 @@
           }
         },
         {
-          "id": "cb276000",
+          "id": "9a81cda4",
           "agents": [
             "SecretsGuard"
           ],
@@ -3309,7 +3309,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 4.934,
+      "total_ms": 7.807,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3318,7 +3318,7 @@
       ],
       "findings": [
         {
-          "id": "db45cd88",
+          "id": "e0a6cfdb",
           "agents": [
             "SecretsGuard"
           ],
@@ -3369,7 +3369,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 5,
-      "total_ms": 3.396,
+      "total_ms": 14.754,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3378,7 +3378,7 @@
       ],
       "findings": [
         {
-          "id": "b3abb80b",
+          "id": "4324fab9",
           "agents": [
             "SecretsGuard"
           ],
@@ -3427,7 +3427,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 5,
-      "total_ms": 3.641,
+      "total_ms": 8.617,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3436,7 +3436,7 @@
       ],
       "findings": [
         {
-          "id": "d6c3ce79",
+          "id": "26fb73b7",
           "agents": [
             "SecretsGuard"
           ],
@@ -3485,7 +3485,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 5,
-      "total_ms": 7.191,
+      "total_ms": 9.387,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3494,7 +3494,7 @@
       ],
       "findings": [
         {
-          "id": "b76f7e35",
+          "id": "0f78dd34",
           "agents": [
             "SecretsGuard"
           ],
@@ -3543,7 +3543,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 5,
-      "total_ms": 0.324,
+      "total_ms": 2.698,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3552,7 +3552,7 @@
       ],
       "findings": [
         {
-          "id": "7857f511",
+          "id": "efc4e171",
           "agents": [
             "SecretsGuard"
           ],
@@ -3601,7 +3601,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 5,
-      "total_ms": 0.249,
+      "total_ms": 0.958,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3610,7 +3610,7 @@
       ],
       "findings": [
         {
-          "id": "5a04b94f",
+          "id": "6ab7ed91",
           "agents": [
             "SecretsGuard"
           ],
@@ -3659,7 +3659,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 4,
-      "total_ms": 0.584,
+      "total_ms": 2.032,
       "agents_found": [
         "OutputGuard"
       ],
@@ -3669,7 +3669,7 @@
       ],
       "findings": [
         {
-          "id": "7f4cee4a",
+          "id": "cf901a1f",
           "agents": [
             "OutputGuard"
           ],
@@ -3688,7 +3688,7 @@
           "details": {}
         },
         {
-          "id": "f5a9f71c",
+          "id": "bcc6464a",
           "agents": [
             "OutputGuard"
           ],
@@ -3733,7 +3733,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 2,
-      "total_ms": 0.476,
+      "total_ms": 1.859,
       "agents_found": [
         "OutputGuard"
       ],
@@ -3742,7 +3742,7 @@
       ],
       "findings": [
         {
-          "id": "f803df39",
+          "id": "7bbf3ed1",
           "agents": [
             "OutputGuard"
           ],
@@ -3787,7 +3787,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 2,
-      "total_ms": 0.413,
+      "total_ms": 1.277,
       "agents_found": [
         "OutputGuard"
       ],
@@ -3796,7 +3796,7 @@
       ],
       "findings": [
         {
-          "id": "f0392fd5",
+          "id": "42411469",
           "agents": [
             "OutputGuard"
           ],
@@ -3841,7 +3841,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 2,
-      "total_ms": 2.794,
+      "total_ms": 17.42,
       "agents_found": [
         "OutputGuard"
       ],
@@ -3850,7 +3850,7 @@
       ],
       "findings": [
         {
-          "id": "ec71e73f",
+          "id": "e5cbf5ab",
           "agents": [
             "OutputGuard"
           ],
@@ -3895,7 +3895,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 2,
-      "total_ms": 0.429,
+      "total_ms": 1.426,
       "agents_found": [
         "OutputGuard"
       ],
@@ -3904,7 +3904,7 @@
       ],
       "findings": [
         {
-          "id": "bc11ee06",
+          "id": "260f055e",
           "agents": [
             "OutputGuard"
           ],
@@ -3949,7 +3949,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 5,
-      "total_ms": 1.117,
+      "total_ms": 2.189,
       "agents_found": [
         "OutputGuard"
       ],
@@ -3958,7 +3958,7 @@
       ],
       "findings": [
         {
-          "id": "2f3b9e7f",
+          "id": "61c7a525",
           "agents": [
             "OutputGuard"
           ],
@@ -4003,7 +4003,7 @@
       "baseline_reason": "http:foreign-origin",
       "blocked": true,
       "risk_score": 20,
-      "total_ms": 0.706,
+      "total_ms": 1.849,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4015,7 +4015,7 @@
       ],
       "findings": [
         {
-          "id": "641f073e",
+          "id": "7a0d6976",
           "agents": [
             "EndpointGuard"
           ],
@@ -4038,7 +4038,7 @@
           }
         },
         {
-          "id": "d207ca67",
+          "id": "0e0e106a",
           "agents": [
             "EndpointGuard"
           ],
@@ -4061,7 +4061,7 @@
           }
         },
         {
-          "id": "8901cb6b",
+          "id": "91b9d467",
           "agents": [
             "EndpointGuard"
           ],
@@ -4084,7 +4084,7 @@
           }
         },
         {
-          "id": "fabb0467",
+          "id": "ddad4755",
           "agents": [
             "EndpointGuard"
           ],
@@ -4133,7 +4133,7 @@
       "baseline_reason": "http:content-type",
       "blocked": true,
       "risk_score": 20,
-      "total_ms": 0.559,
+      "total_ms": 1.718,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4145,7 +4145,7 @@
       ],
       "findings": [
         {
-          "id": "585f224c",
+          "id": "6c3aa0ec",
           "agents": [
             "EndpointGuard"
           ],
@@ -4168,7 +4168,7 @@
           }
         },
         {
-          "id": "a95d51f5",
+          "id": "47888601",
           "agents": [
             "EndpointGuard"
           ],
@@ -4191,7 +4191,7 @@
           }
         },
         {
-          "id": "3c56d5c6",
+          "id": "39188d0d",
           "agents": [
             "EndpointGuard"
           ],
@@ -4214,7 +4214,7 @@
           }
         },
         {
-          "id": "744f6689",
+          "id": "2bf0b608",
           "agents": [
             "EndpointGuard"
           ],
@@ -4263,7 +4263,7 @@
       "baseline_reason": "http:foreign-host",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.162,
+      "total_ms": 0.323,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4272,7 +4272,7 @@
       ],
       "findings": [
         {
-          "id": "ee874ed6",
+          "id": "7389370d",
           "agents": [
             "EndpointGuard"
           ],
@@ -4321,7 +4321,7 @@
       "baseline_reason": "http:content-type",
       "blocked": true,
       "risk_score": 20,
-      "total_ms": 0.884,
+      "total_ms": 0.823,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4333,7 +4333,7 @@
       ],
       "findings": [
         {
-          "id": "4dfe3003",
+          "id": "eed73cdf",
           "agents": [
             "EndpointGuard"
           ],
@@ -4356,7 +4356,7 @@
           }
         },
         {
-          "id": "06ec71f7",
+          "id": "ef9526a7",
           "agents": [
             "EndpointGuard"
           ],
@@ -4379,7 +4379,7 @@
           }
         },
         {
-          "id": "7bc3bc34",
+          "id": "ee5c989f",
           "agents": [
             "EndpointGuard"
           ],
@@ -4402,7 +4402,7 @@
           }
         },
         {
-          "id": "8015ca48",
+          "id": "930c14dc",
           "agents": [
             "EndpointGuard"
           ],
@@ -4451,7 +4451,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.145,
+      "total_ms": 0.236,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4460,7 +4460,7 @@
       ],
       "findings": [
         {
-          "id": "e52b2117",
+          "id": "fabc174d",
           "agents": [
             "EndpointGuard"
           ],
@@ -4509,7 +4509,7 @@
       "baseline_reason": "http:content-type",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 0.235,
+      "total_ms": 0.381,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4519,7 +4519,7 @@
       ],
       "findings": [
         {
-          "id": "b4b0d793",
+          "id": "4a9e762e",
           "agents": [
             "EndpointGuard"
           ],
@@ -4542,7 +4542,7 @@
           }
         },
         {
-          "id": "848d92d9",
+          "id": "781afaf1",
           "agents": [
             "EndpointGuard"
           ],
@@ -4591,7 +4591,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 0.215,
+      "total_ms": 0.354,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4601,7 +4601,7 @@
       ],
       "findings": [
         {
-          "id": "5114d59c",
+          "id": "7f3cb7cb",
           "agents": [
             "EndpointGuard"
           ],
@@ -4624,7 +4624,7 @@
           }
         },
         {
-          "id": "179bd322",
+          "id": "c7a7b700",
           "agents": [
             "EndpointGuard"
           ],
@@ -4673,7 +4673,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 0.221,
+      "total_ms": 0.333,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4683,7 +4683,7 @@
       ],
       "findings": [
         {
-          "id": "04949e15",
+          "id": "cbb1dda2",
           "agents": [
             "EndpointGuard"
           ],
@@ -4706,7 +4706,7 @@
           }
         },
         {
-          "id": "a738fc91",
+          "id": "4b77fd4c",
           "agents": [
             "EndpointGuard"
           ],
@@ -4755,7 +4755,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 0.208,
+      "total_ms": 0.307,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4765,7 +4765,7 @@
       ],
       "findings": [
         {
-          "id": "552bfbf6",
+          "id": "a99e7b66",
           "agents": [
             "EndpointGuard"
           ],
@@ -4788,7 +4788,7 @@
           }
         },
         {
-          "id": "dc979027",
+          "id": "ccabf0ed",
           "agents": [
             "EndpointGuard"
           ],
@@ -4837,7 +4837,7 @@
       "baseline_reason": "http:content-type",
       "blocked": true,
       "risk_score": 20,
-      "total_ms": 0.507,
+      "total_ms": 0.555,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4849,7 +4849,7 @@
       ],
       "findings": [
         {
-          "id": "d543b67e",
+          "id": "9d2bce91",
           "agents": [
             "EndpointGuard"
           ],
@@ -4872,7 +4872,7 @@
           }
         },
         {
-          "id": "93ad34f2",
+          "id": "83880206",
           "agents": [
             "EndpointGuard"
           ],
@@ -4895,7 +4895,7 @@
           }
         },
         {
-          "id": "eddd8dc2",
+          "id": "bfea971d",
           "agents": [
             "EndpointGuard"
           ],
@@ -4918,7 +4918,7 @@
           }
         },
         {
-          "id": "468841b0",
+          "id": "d2bc6edc",
           "agents": [
             "EndpointGuard"
           ],
@@ -4967,7 +4967,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.147,
+      "total_ms": 0.187,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4976,7 +4976,7 @@
       ],
       "findings": [
         {
-          "id": "9bbaac39",
+          "id": "3f60a8ea",
           "agents": [
             "EndpointGuard"
           ],
@@ -5025,7 +5025,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.169,
+      "total_ms": 0.197,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -5034,7 +5034,7 @@
       ],
       "findings": [
         {
-          "id": "a4a1146e",
+          "id": "c54e0f0a",
           "agents": [
             "EndpointGuard"
           ],
@@ -5083,7 +5083,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.157,
+      "total_ms": 0.2,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -5092,7 +5092,7 @@
       ],
       "findings": [
         {
-          "id": "83ce690b",
+          "id": "d02ec349",
           "agents": [
             "EndpointGuard"
           ],
@@ -5141,7 +5141,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.167,
+      "total_ms": 0.209,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -5150,7 +5150,7 @@
       ],
       "findings": [
         {
-          "id": "0ac59a97",
+          "id": "5d073118",
           "agents": [
             "EndpointGuard"
           ],
@@ -5199,7 +5199,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.762,
+      "total_ms": 1.556,
       "agents_found": [
         "IntegrityGuard"
       ],
@@ -5208,7 +5208,7 @@
       ],
       "findings": [
         {
-          "id": "1fa685ee",
+          "id": "5e870e46",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5257,7 +5257,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.669,
+      "total_ms": 3.49,
       "agents_found": [
         "IntegrityGuard"
       ],
@@ -5266,7 +5266,7 @@
       ],
       "findings": [
         {
-          "id": "28a28bc1",
+          "id": "e500d826",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5315,7 +5315,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 2.356,
+      "total_ms": 1.79,
       "agents_found": [
         "IntegrityGuard"
       ],
@@ -5324,7 +5324,7 @@
       ],
       "findings": [
         {
-          "id": "add9125d",
+          "id": "a8e83ec1",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5373,7 +5373,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 0.884,
+      "total_ms": 1.753,
       "agents_found": [
         "IntegrityGuard",
         "SecretsGuard"
@@ -5384,7 +5384,7 @@
       ],
       "findings": [
         {
-          "id": "fe1f464b",
+          "id": "99eae6ec",
           "agents": [
             "SecretsGuard"
           ],
@@ -5407,7 +5407,7 @@
           }
         },
         {
-          "id": "c7ac8d6c",
+          "id": "38bd4d09",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5456,7 +5456,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.728,
+      "total_ms": 1.148,
       "agents_found": [
         "IntegrityGuard"
       ],
@@ -5465,7 +5465,7 @@
       ],
       "findings": [
         {
-          "id": "b97f68de",
+          "id": "07eed597",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5514,7 +5514,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 3.396,
+      "total_ms": 53.199,
       "agents_found": [
         "IntegrityGuard"
       ],
@@ -5523,7 +5523,7 @@
       ],
       "findings": [
         {
-          "id": "d78058df",
+          "id": "38b02edf",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5575,7 +5575,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.739,
+      "total_ms": 2.281,
       "agents_found": [
         "IntegrityGuard"
       ],
@@ -5584,7 +5584,7 @@
       ],
       "findings": [
         {
-          "id": "caef2e12",
+          "id": "976c0460",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5592,18 +5592,18 @@
           "category": "model_manifest_missing",
           "severity": "High",
           "title": "Model manifest or model file missing",
-          "description": "Manifest 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_6kp7ungv\\case_mod_002\\data\\model_manifest.json' or model file 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_6kp7ungv\\case_mod_002\\data\\error_classifier.joblib' not found.",
+          "description": "Manifest 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_x675jid1\\case_mod_002\\data\\model_manifest.json' or model file 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_x675jid1\\case_mod_002\\data\\error_classifier.joblib' not found.",
           "recommendation": "Ensure model_manifest.json exists and contains entry for this model.",
           "line": null,
           "column": null,
-          "evidence": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_6kp7ungv\\case_mod_002\\data\\model_man",
+          "evidence": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_x675jid1\\case_mod_002\\data\\model_man",
           "action": "block",
           "confidence": 1.0,
           "blocks_on": [
             "model_load"
           ],
           "details": {
-            "manifest_path": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_6kp7ungv\\case_mod_002\\data\\model_manifest.json"
+            "manifest_path": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_x675jid1\\case_mod_002\\data\\model_manifest.json"
           }
         }
       ],
@@ -5633,7 +5633,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 1.039,
+      "total_ms": 2.828,
       "agents_found": [
         "IntegrityGuard"
       ],
@@ -5642,7 +5642,7 @@
       ],
       "findings": [
         {
-          "id": "562bd2c1",
+          "id": "b5a0f397",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5650,19 +5650,19 @@
           "category": "model_outside_data_dir",
           "severity": "High",
           "title": "Model file outside data directory",
-          "description": "Model file 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_6kp7ungv\\case_mod_003\\evil.joblib' is not within authorized data directory 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_6kp7ungv\\case_mod_003\\data'.",
+          "description": "Model file 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_x675jid1\\case_mod_003\\evil.joblib' is not within authorized data directory 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_x675jid1\\case_mod_003\\data'.",
           "recommendation": "Place ML models inside project data directory.",
           "line": null,
           "column": null,
-          "evidence": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_6kp7ungv\\case_mod_003\\evil.joblib",
+          "evidence": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_x675jid1\\case_mod_003\\evil.joblib",
           "action": "block",
           "confidence": 1.0,
           "blocks_on": [
             "model_load"
           ],
           "details": {
-            "model_path": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_6kp7ungv\\case_mod_003\\evil.joblib",
-            "data_dir": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_6kp7ungv\\case_mod_003\\data"
+            "model_path": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_x675jid1\\case_mod_003\\evil.joblib",
+            "data_dir": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_x675jid1\\case_mod_003\\data"
           }
         }
       ],
@@ -5692,7 +5692,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 1.054,
+      "total_ms": 3.304,
       "agents_found": [
         "PromptGuard"
       ],
@@ -5702,7 +5702,7 @@
       ],
       "findings": [
         {
-          "id": "2fa81aa3",
+          "id": "927629d1",
           "agents": [
             "PromptGuard"
           ],
@@ -5726,7 +5726,7 @@
           }
         },
         {
-          "id": "bc1ab733",
+          "id": "c5fded9a",
           "agents": [
             "PromptGuard"
           ],
@@ -5776,7 +5776,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 2.478,
+      "total_ms": 6.792,
       "agents_found": [
         "PromptGuard"
       ],
@@ -5785,7 +5785,7 @@
       ],
       "findings": [
         {
-          "id": "77550a34",
+          "id": "ae07d31a",
           "agents": [
             "PromptGuard"
           ],
@@ -5836,7 +5836,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 2.343,
+      "total_ms": 8.037,
       "agents_found": [
         "PromptGuard"
       ],
@@ -5846,7 +5846,7 @@
       ],
       "findings": [
         {
-          "id": "6f0550e5",
+          "id": "1cfffa46",
           "agents": [
             "PromptGuard"
           ],
@@ -5871,7 +5871,7 @@
           }
         },
         {
-          "id": "183c51c0",
+          "id": "193210ff",
           "agents": [
             "PromptGuard"
           ],
@@ -5922,7 +5922,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 2.671,
+      "total_ms": 37.278,
       "agents_found": [
         "PromptGuard"
       ],
@@ -5931,7 +5931,7 @@
       ],
       "findings": [
         {
-          "id": "a96ebf1a",
+          "id": "9f8b126c",
           "agents": [
             "PromptGuard"
           ],
@@ -5982,7 +5982,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 0.725,
+      "total_ms": 4.348,
       "agents_found": [
         "PromptGuard"
       ],
@@ -5992,7 +5992,7 @@
       ],
       "findings": [
         {
-          "id": "b985eb20",
+          "id": "ca83943c",
           "agents": [
             "PromptGuard"
           ],
@@ -6016,7 +6016,7 @@
           }
         },
         {
-          "id": "3dcb41aa",
+          "id": "d7fef3af",
           "agents": [
             "PromptGuard"
           ],
@@ -6066,7 +6066,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 20,
-      "total_ms": 1.144,
+      "total_ms": 7.805,
       "agents_found": [
         "PromptGuard"
       ],
@@ -6076,7 +6076,7 @@
       ],
       "findings": [
         {
-          "id": "f70df51d",
+          "id": "0422d3f5",
           "agents": [
             "PromptGuard"
           ],
@@ -6100,7 +6100,7 @@
           }
         },
         {
-          "id": "10369a3e",
+          "id": "6df82edd",
           "agents": [
             "PromptGuard"
           ],
@@ -6124,7 +6124,7 @@
           }
         },
         {
-          "id": "f315931c",
+          "id": "e52536e9",
           "agents": [
             "PromptGuard"
           ],
@@ -6148,7 +6148,7 @@
           }
         },
         {
-          "id": "8a5b4d7c",
+          "id": "e2066662",
           "agents": [
             "PromptGuard"
           ],
@@ -6198,7 +6198,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.778,
+      "total_ms": 2.19,
       "agents_found": [
         "PromptGuard"
       ],
@@ -6207,7 +6207,7 @@
       ],
       "findings": [
         {
-          "id": "1b9f443a",
+          "id": "3af1392a",
           "agents": [
             "PromptGuard"
           ],
@@ -6257,7 +6257,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 2,
-      "total_ms": 5.187,
+      "total_ms": 8.424,
       "agents_found": [
         "PromptGuard"
       ],
@@ -6266,7 +6266,7 @@
       ],
       "findings": [
         {
-          "id": "70ed7ce1",
+          "id": "4a534051",
           "agents": [
             "PromptGuard"
           ],
@@ -6315,7 +6315,7 @@
       "baseline_reason": "sanitizer:system",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 1.783,
+      "total_ms": 4.451,
       "agents_found": [
         "PatchGuard"
       ],
@@ -6324,7 +6324,7 @@
       ],
       "findings": [
         {
-          "id": "34a17e68",
+          "id": "389a4418",
           "agents": [
             "PatchGuard"
           ],
@@ -6376,7 +6376,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 2.165,
+      "total_ms": 2.696,
       "agents_found": [
         "PatchGuard"
       ],
@@ -6385,7 +6385,7 @@
       ],
       "findings": [
         {
-          "id": "3d62f28f",
+          "id": "9cdd9a04",
           "agents": [
             "PatchGuard"
           ],
@@ -6434,7 +6434,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 1.606,
+      "total_ms": 2.402,
       "agents_found": [
         "PatchGuard"
       ],
@@ -6443,7 +6443,7 @@
       ],
       "findings": [
         {
-          "id": "61392d47",
+          "id": "782d0f3d",
           "agents": [
             "PatchGuard"
           ],
@@ -6504,7 +6504,7 @@
       ],
       "findings": [
         {
-          "id": "48156e9f",
+          "id": "d969ac2c",
           "agents": [
             "PatchGuard"
           ],
@@ -6554,7 +6554,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 1.019,
+      "total_ms": 1.004,
       "agents_found": [
         "PatchGuard"
       ],
@@ -6563,7 +6563,7 @@
       ],
       "findings": [
         {
-          "id": "217ee829",
+          "id": "50b63a3a",
           "agents": [
             "PatchGuard"
           ],
@@ -6613,7 +6613,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 1.089,
+      "total_ms": 1.481,
       "agents_found": [
         "PatchGuard"
       ],
@@ -6622,7 +6622,7 @@
       ],
       "findings": [
         {
-          "id": "6f638820",
+          "id": "21b40383",
           "agents": [
             "PatchGuard"
           ],
@@ -6671,7 +6671,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 1.651,
+      "total_ms": 1.227,
       "agents_found": [
         "PatchGuard"
       ],
@@ -6680,7 +6680,7 @@
       ],
       "findings": [
         {
-          "id": "6625bec4",
+          "id": "0622ef8c",
           "agents": [
             "PatchGuard"
           ],
@@ -6729,7 +6729,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 1.043,
+      "total_ms": 1.097,
       "agents_found": [
         "PatchGuard"
       ],
@@ -6738,7 +6738,7 @@
       ],
       "findings": [
         {
-          "id": "9f7fd6b3",
+          "id": "1e5a0a19",
           "agents": [
             "PatchGuard"
           ],
@@ -6787,7 +6787,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 2.65,
+      "total_ms": 2.324,
       "agents_found": [
         "PatchGuard"
       ],
@@ -6797,7 +6797,7 @@
       ],
       "findings": [
         {
-          "id": "10366189",
+          "id": "dee1077e",
           "agents": [
             "PatchGuard"
           ],
@@ -6820,7 +6820,7 @@
           }
         },
         {
-          "id": "e951ea87",
+          "id": "2be18464",
           "agents": [
             "PatchGuard"
           ],
@@ -6872,7 +6872,7 @@
       "baseline_reason": "validate_ai_code:line-count",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 2.012,
+      "total_ms": 2.566,
       "agents_found": [
         "PatchGuard"
       ],
@@ -6881,7 +6881,7 @@
       ],
       "findings": [
         {
-          "id": "55508474",
+          "id": "8bdcd66f",
           "agents": [
             "PatchGuard"
           ],
@@ -6931,7 +6931,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.891,
+      "total_ms": 0.997,
       "agents_found": [
         "PatchGuard"
       ],
@@ -6940,7 +6940,7 @@
       ],
       "findings": [
         {
-          "id": "61da502a",
+          "id": "15415a68",
           "agents": [
             "PatchGuard"
           ],
@@ -6987,7 +6987,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 2.312,
+      "total_ms": 2.636,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7017,7 +7017,7 @@
       "baseline_reason": "sanitizer:system",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 4.507,
+      "total_ms": 3.279,
       "agents_found": [
         "ExecGuard",
         "VulnGuard"
@@ -7027,7 +7027,7 @@
       ],
       "findings": [
         {
-          "id": "41856bfa",
+          "id": "78fc2628",
           "agents": [
             "ExecGuard",
             "VulnGuard"
@@ -7073,7 +7073,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 18.615,
+      "total_ms": 3.27,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7103,7 +7103,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 7.739,
+      "total_ms": 8.157,
       "agents_found": [
         "ExecGuard"
       ],
@@ -7112,7 +7112,7 @@
       ],
       "findings": [
         {
-          "id": "b774352f",
+          "id": "6a0e1d8c",
           "agents": [
             "ExecGuard"
           ],
@@ -7157,7 +7157,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 10.522,
+      "total_ms": 5.004,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -7166,7 +7166,7 @@
       ],
       "findings": [
         {
-          "id": "a365c76c",
+          "id": "5eeeba3c",
           "agents": [
             "SecretsGuard"
           ],
@@ -7217,7 +7217,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 9.327,
+      "total_ms": 6.332,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -7226,7 +7226,7 @@
       ],
       "findings": [
         {
-          "id": "cb97b302",
+          "id": "526f0662",
           "agents": [
             "SecretsGuard"
           ],
@@ -7277,7 +7277,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.406,
+      "total_ms": 0.355,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7307,7 +7307,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.387,
+      "total_ms": 0.252,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7337,7 +7337,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 1.316,
+      "total_ms": 0.955,
       "agents_found": [
         "PromptGuard"
       ],
@@ -7346,7 +7346,7 @@
       ],
       "findings": [
         {
-          "id": "f184ba3c",
+          "id": "fd82486e",
           "agents": [
             "PromptGuard"
           ],
@@ -7396,7 +7396,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 7.81,
+      "total_ms": 6.152,
       "agents_found": [
         "PromptGuard"
       ],
@@ -7405,7 +7405,7 @@
       ],
       "findings": [
         {
-          "id": "48122371",
+          "id": "ea4b6ece",
           "agents": [
             "PromptGuard"
           ],
@@ -7456,7 +7456,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 3.602,
+      "total_ms": 2.473,
       "agents_found": [
         "PatchGuard"
       ],
@@ -7465,7 +7465,7 @@
       ],
       "findings": [
         {
-          "id": "4c2371b2",
+          "id": "202b17ec",
           "agents": [
             "PatchGuard"
           ],
@@ -7514,7 +7514,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 27.162,
+      "total_ms": 3.714,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7542,7 +7542,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 7.51,
+      "total_ms": 6.88,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7570,7 +7570,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 8.674,
+      "total_ms": 6.823,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7598,7 +7598,7 @@
       "baseline_reason": "sanitizer:system",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 9.375,
+      "total_ms": 7.58,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7626,7 +7626,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 9.447,
+      "total_ms": 5.382,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7654,7 +7654,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 12.53,
+      "total_ms": 7.022,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7682,7 +7682,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 13.144,
+      "total_ms": 7.619,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7710,7 +7710,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 14.78,
+      "total_ms": 4.688,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7738,7 +7738,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 13.903,
+      "total_ms": 5.291,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7766,7 +7766,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 7.772,
+      "total_ms": 6.248,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7794,7 +7794,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 10.373,
+      "total_ms": 10.508,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7822,7 +7822,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.146,
+      "total_ms": 0.223,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7850,7 +7850,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.203,
+      "total_ms": 0.216,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7878,7 +7878,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 4.09,
+      "total_ms": 3.402,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7906,7 +7906,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.05,
+      "total_ms": 0.04,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7934,7 +7934,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.08,
+      "total_ms": 0.047,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7962,7 +7962,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.102,
+      "total_ms": 0.09,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7990,7 +7990,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 1.303,
+      "total_ms": 1.17,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8018,7 +8018,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 1.156,
+      "total_ms": 0.946,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8046,7 +8046,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 4.593,
+      "total_ms": 2.138,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8074,7 +8074,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 4.213,
+      "total_ms": 1.728,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8102,7 +8102,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.224,
+      "total_ms": 0.15,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8130,7 +8130,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.131,
+      "total_ms": 0.132,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8158,7 +8158,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 3.776,
+      "total_ms": 2.05,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8186,7 +8186,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 5.181,
+      "total_ms": 5.097,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8214,7 +8214,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 4.393,
+      "total_ms": 5.249,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8242,7 +8242,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.613,
+      "total_ms": 1.41,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8270,7 +8270,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.717,
+      "total_ms": 1.642,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8298,7 +8298,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.861,
+      "total_ms": 2.038,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8326,7 +8326,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 1.045,
+      "total_ms": 2.03,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8354,7 +8354,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.575,
+      "total_ms": 1.113,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8382,7 +8382,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.572,
+      "total_ms": 1.067,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8412,7 +8412,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 3.397,
+      "total_ms": 4.718,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8442,7 +8442,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 3.424,
+      "total_ms": 4.899,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8472,7 +8472,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 20.779,
+      "total_ms": 4.107,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8502,7 +8502,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 9.261,
+      "total_ms": 21.432,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8532,7 +8532,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 11.206,
+      "total_ms": 24.817,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8560,7 +8560,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 9.15,
+      "total_ms": 4.772,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8588,12 +8588,12 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 9.411,
+      "total_ms": 6.169,
       "agents_found": [],
       "categories": [],
       "findings": [],
       "notes": "Clean allocation with matched free in same scope"
     }
   ],
-  "benchmark_seconds": 5.283
+  "benchmark_seconds": 13.406
 }

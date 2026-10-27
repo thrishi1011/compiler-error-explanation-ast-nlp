@@ -26,31 +26,41 @@ def _get_dangerous_patterns(permissions: dict = None) -> list:
 
     return dangerous_patterns
 
+def _strip_comments(source: str) -> str:
+    cleaned = re.sub(r'/\*.*?\*/', '', source, flags=re.DOTALL)
+    cleaned = re.sub(r'//.*$', '', cleaned, flags=re.MULTILINE)
+    return cleaned
+
 def _find_dangerous_line(source: str, permissions: dict = None) -> int:
     patterns = _get_dangerous_patterns(permissions)
+    fallback_line = 1
     for idx, line in enumerate(source.splitlines(), start=1):
+        code_part = re.sub(r'//.*$', '', line).strip()
         for pattern in patterns:
-            if re.search(pattern, line):
+            if code_part and re.search(pattern, code_part):
                 return idx
-    return 1
+            elif re.search(pattern, line) and fallback_line == 1:
+                fallback_line = idx
+    return fallback_line
 
 def _sanitize_code(source: str, permissions: dict = None) -> bool:
+    clean_src = _strip_comments(source)
     for pattern in _get_dangerous_patterns(permissions):
-        if re.search(pattern, source):
+        if re.search(pattern, clean_src):
             return False
     return True
 
 def _sanitize_input(file_path: str, permissions: dict = None) -> bool:
     if not os.path.exists(file_path):
         return True
-    with open(file_path, 'r', errors='ignore') as f:
+    with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
         return _sanitize_code(f.read(), permissions)
 
 def run_cpp_compiler(file_path, permissions=None):
     if not _sanitize_input(file_path, permissions):
         source_code = ""
         if os.path.exists(file_path):
-            with open(file_path, "r", errors="ignore") as f:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
                 source_code = f.read()
         err_line = _find_dangerous_line(source_code, permissions) if source_code else 1
         return [{
@@ -58,6 +68,7 @@ def run_cpp_compiler(file_path, permissions=None):
             "line": err_line,
             "column": 1,
             "type": "error",
+            "origin": "security",
             "message": "Security Error: Malicious command injection or forbidden system call detected.",
             "raw": "error: Malicious command injection or forbidden system call detected."
         }]

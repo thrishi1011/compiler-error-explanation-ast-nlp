@@ -170,12 +170,12 @@ class TestSecurityHealerPhase6(unittest.TestCase):
             self.assertIn("!= 0 ?", res.source_after)
 
     def test_safety_class_suggest_never_changes_code(self):
-        source = """#include <cstdlib>\nvoid f() {\n    int token = rand();\n}\n"""
+        source = """#include <cstring>\nvoid f(char* src, char* dst) {\n    memcpy(dst, src, 100);\n}\n"""
         res = heal_security(source, allow_behavior_changes=True)
         self.assertEqual(res.source_before, res.source_after)
-        rand_o = next((o for o in res.outcomes if o.category == "weak_randomness"), None)
-        self.assertIsNotNone(rand_o)
-        self.assertEqual(rand_o.status, "suggested")
+        mem_o = next((o for o in res.outcomes if o.category == "unsafe_memory_copy"), None)
+        self.assertIsNotNone(mem_o)
+        self.assertEqual(mem_o.status, "suggested")
 
     # ── 5. Rollback on Validation Failure ──────────────────────────────────────
 

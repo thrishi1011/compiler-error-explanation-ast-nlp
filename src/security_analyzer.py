@@ -365,6 +365,8 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
     uninit_vars: dict[str, int] = {}
     null_ptrs: dict[str, int] = {}
     vector_sizes: dict[str, int] = {}
+    signed_vars: set[str] = set()
+    unsigned_vars: set[str] = set()
     current_fn: str | None = None
     fn_has_base_case = False
     fn_recursive_lines: list[int] = []
@@ -379,12 +381,18 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
             recent_sensitive_lines.append(line_no)
             recent_sensitive_lines = recent_sensitive_lines[-3:]
 
+        for m_u in re.finditer(r"\b(?:unsigned(?:\s+(?:int|char|long|short))?|uint\w*|size_t)\s+([A-Za-z_]\w*)", code_line):
+            unsigned_vars.add(m_u.group(1))
+        for m_s in re.finditer(r"\b(?:int|long|short)\s+([A-Za-z_]\w*)", code_line):
+            signed_vars.add(m_s.group(1))
+
         # ── 1. Infinite Recursion ─────────────────────────────────────────────
         fn_start = re.search(r"^\s*(?:int|void|bool|double|float|long|auto)\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*\{", code_line)
         if fn_start:
             current_fn = fn_start.group(1)
             fn_has_base_case = False
             fn_recursive_lines = []
+            freed_vars.clear()
 
         if current_fn:
             if re.search(r"\bif\s*\(", code_line) or (re.search(r"\breturn\b", code_line) and not re.search(rf"\b{re.escape(current_fn)}\s*\(", code_line)):
@@ -405,6 +413,7 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
             current_fn = None
             fn_has_base_case = False
             fn_recursive_lines = []
+            freed_vars.clear()
 
         # ── 2. Integer Overflow / Underflow ───────────────────────────────────
         int_max_init = re.search(r"\b(?<!long\s)(?:int|short)\s+([A-Za-z_]\w*)\s*=\s*(?:INT_MAX|2147483647)\b", code_line)
@@ -547,7 +556,8 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                 "Use bounded alternatives such as strncpy/strncat/snprintf or switch to std::string.",
             )
 
-        scanf_match = re.search(r"\bscanf\s*\((.+)\)\s*;?\s*$", raw_line)
+        line_no_comment = raw_line.split("//")[0].strip()
+        scanf_match = re.search(r"\bscanf\s*\((.+)\)\s*;?", line_no_comment)
         if scanf_match:
             args = _split_args(scanf_match.group(1))
             if args:
@@ -639,7 +649,7 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
 
         if re.search(r"\b(?:[A-Za-z_]\w*\s*[\+\-\*/]\s*[A-Za-z_0-9()]+)\b", code_line) and (
             "INT_MAX" in code_line or "SIZE_MAX" in code_line or "sizeof" in code_line or re.search(r"\b(?:alloc|size|len|count|capacity)\b", code_line)
-        ) and not (re.search(r">\s*0\b", code_line) or re.search(r"!=\s*0\b", code_line) or "sizeof" in code_line):
+        ) and not (re.search(r">\s*0\b", code_line) or re.search(r"!=\s*0\b", code_line) or "sizeof" in code_line or "static_cast" in code_line):
             emit(
                 line_no,
                 "Integer Overflow",
@@ -647,6 +657,23 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                 "Arithmetic on size-like values may overflow before allocation or indexing.",
                 "Validate operands before arithmetic and use checked addition/multiplication for allocation sizes.",
             )
+
+        cmp_m = re.search(r"\b([A-Za-z_]\w*)\s*(<|<=|>|>=)\s*([A-Za-z_]\w*)\b", code_line)
+        if cmp_m:
+            c1, op, c2 = cmp_m.group(1), cmp_m.group(2), cmp_m.group(3)
+            is_signed_compare = (
+                (c1 in signed_vars and c2 in unsigned_vars)
+                or (c1 in unsigned_vars and c2 in signed_vars)
+                or ("signed" in raw_lower and "unsigned" in raw_lower)
+            )
+            if is_signed_compare and "static_cast" not in code_line:
+                emit(
+                    line_no,
+                    "Signed/Unsigned Mismatch",
+                    "Medium",
+                    "Signed and unsigned types are being compared.",
+                    "Cast operands explicitly to a common signed type.",
+                )
 
         if "malloc(" in code_line:
             current_scope()["malloc_lines"].append(line_no)
@@ -656,7 +683,7 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                 scope["free_seen"] = True
 
         for freed_name, freed_line in list(freed_vars.items()):
-            if re.search(rf"\b{re.escape(freed_name)}\s*=\s*(?:nullptr|NULL|0|\w+)\s*;", code_line):
+            if re.search(rf"(?<![\*\&])\b{re.escape(freed_name)}\s*=\s*(?:nullptr|NULL|0|\w+)\s*;", code_line):
                 del freed_vars[freed_name]
                 continue
             if re.search(rf"\bdelete\s*(?:\[\])?\s*{re.escape(freed_name)}\s*;", code_line) and line_no != freed_line:
@@ -667,7 +694,7 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                     "The same pointer appears to be deleted more than once.",
                     "Set the pointer to nullptr immediately after delete or switch to smart pointers.",
                 )
-            if re.search(rf"\*\s*{re.escape(freed_name)}\b|{re.escape(freed_name)}\s*->|{re.escape(freed_name)}\s*\[", code_line):
+            if re.search(rf"(?<!\w)\*\s*{re.escape(freed_name)}\b|\b{re.escape(freed_name)}\s*->|\b{re.escape(freed_name)}\s*\[", code_line):
                 emit(
                     line_no,
                     "Use After Free",
@@ -686,8 +713,11 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
             scope_stack.append({"start_line": line_no, "malloc_lines": [], "free_seen": False})
         for _ in range(close_braces):
             if len(scope_stack) <= 1:
+                freed_vars.clear()
                 continue
             finished = scope_stack.pop()
+            if len(scope_stack) <= 1:
+                freed_vars.clear()
             if finished["malloc_lines"] and not finished["free_seen"]:
                 for malloc_line in finished["malloc_lines"]:
                     emit(

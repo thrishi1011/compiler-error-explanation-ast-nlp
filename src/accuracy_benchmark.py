@@ -86,9 +86,16 @@ _ERR_PATTERN = re.compile(
 def _extract_messages(fpath: str) -> List[str]:
     """Compile a .cpp file and return all error/warning message strings."""
     try:
+        kwargs = {"capture_output": True, "text": True, "timeout": 15}
+        if os.name == "nt":
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            kwargs["startupinfo"] = startupinfo
         result = subprocess.run(
             ["g++", "-std=c++17", "-Wall", fpath],
-            capture_output=True, text=True, timeout=15
+            **kwargs
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return []

@@ -26,7 +26,7 @@ def get_source_context(path, line_no, context_lines=2):
         return None
 
     try:
-        with open(path,"r") as f:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
             lines=f.readlines()
         start=max(0,line_no-1-context_lines)
         end=min(len(lines),line_no+context_lines)
