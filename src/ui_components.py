@@ -164,8 +164,8 @@ class IssueCard(QFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self.card_layout = QVBoxLayout(self)
-        self.card_layout.setContentsMargins(14, 12, 14, 12)
-        self.card_layout.setSpacing(10)
+        self.card_layout.setContentsMargins(14, 14, 14, 14)
+        self.card_layout.setSpacing(12)
 
         # 1. Top row: Type badge, Category badge, Line badge
         top = QHBoxLayout()
@@ -289,8 +289,8 @@ class AiCard(QFrame):
         super().__init__(parent)
         self.setObjectName("AiCard")
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 12, 14, 12)
-        lay.setSpacing(8)
+        lay.setContentsMargins(14, 14, 14, 14)
+        lay.setSpacing(12)
 
         head = QHBoxLayout()
         head.addWidget(badge(f"🤖 AI ASSISTANT · {provider.upper()}", "accent"))
@@ -319,8 +319,8 @@ class SecuritySummaryCard(QFrame):
         self.quality = quality or {}
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 12, 14, 12)
-        lay.setSpacing(8)
+        lay.setContentsMargins(14, 14, 14, 14)
+        lay.setSpacing(12)
 
         # Top row: SECURITY label, Badge with level and score, stretch, agents list
         top = QHBoxLayout()
@@ -378,7 +378,7 @@ class SecuritySummaryCard(QFrame):
 
 
 class SecurityFindingCard(QFrame):
-    """Detailed finding card with severity strip, kind/action badges, collapsible explanation, and evidence."""
+    """Detailed finding card with severity strip, cleaner badge row, agent chips, and collapsible body."""
     clicked = pyqtSignal(int)
 
     def __init__(self, finding_view_data: dict, parent=None):
@@ -392,35 +392,86 @@ class SecurityFindingCard(QFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self.card_layout = QVBoxLayout(self)
-        self.card_layout.setContentsMargins(14, 12, 14, 12)
-        self.card_layout.setSpacing(8)
+        self.card_layout.setContentsMargins(14, 14, 14, 14)
+        self.card_layout.setSpacing(12)
 
-        # 1. Top row: Severity badge, Kind badge, Action badge, stretch, Line
+        # ── Header area ───────────────────────────────────────────────────────
+        self.header_widget = QWidget()
+        header_lay = QVBoxLayout(self.header_widget)
+        header_lay.setContentsMargins(0, 0, 0, 0)
+        header_lay.setSpacing(8)
+
+        # 1. Top row: Toggle indicator, Severity badge, neutral muted tag, action badge (BLOCKED only), line
         top = QHBoxLayout()
         top.setSpacing(8)
-        top.addWidget(badge(self.data.get("severity", "Medium").upper(), self.data.get("tone", "warn")))
-        top.addWidget(badge(self.data.get("kind_label", "Attack on the tool"), "accent"))
 
-        act_label = self.data.get("action_label", "WARNING")
-        act_tone = "error" if act_label == "BLOCKED" else ("warn" if act_label == "WARNING" else "muted")
-        top.addWidget(badge(act_label, act_tone))
+        self.toggle_indicator = plain_label("▸", "Muted", wrap=False)
+        self.toggle_indicator.setCursor(Qt.CursorShape.PointingHandCursor)
+        top.addWidget(self.toggle_indicator)
+
+        top.addWidget(badge(self.data.get("severity", "Medium").upper(), self.data.get("tone", "warn")))
+
+        kind_label = self.data.get("kind_label", "")
+        tag_text = "Your code" if kind_label.startswith("Weakness") else "Tool attack"
+        top.addWidget(badge(tag_text, "muted"))
+
+        act_label = self.data.get("action_label", "")
+        if act_label == "BLOCKED":
+            top.addWidget(badge("BLOCKED", "error"))
 
         top.addStretch(1)
         if self.line > 0:
             top.addWidget(plain_label(f"Line {self.line}", "Muted"))
-        self.card_layout.addLayout(top)
+        header_lay.addLayout(top)
 
-        # 2. Title & Detected by
-        self.card_layout.addWidget(plain_label(self.data.get("title", "Security Finding"), "IssueTitle"))
-        self.card_layout.addWidget(plain_label(self.data.get("detected_by", ""), "Muted"))
+        # 2. Title
+        self.title_label = plain_label(self.data.get("title", "Security Finding"), "IssueTitle")
+        header_lay.addWidget(self.title_label)
 
-        # 3. Evidence code block if present
+        # 3. DETECTED BY row
+        det_row = QHBoxLayout()
+        det_row.setSpacing(6)
+        det_row.addWidget(section_label("DETECTED BY"))
+
+        kind = "attack" if kind_label.startswith("Attack") else "vuln"
+        raw_agents = self.data.get("agents")
+        if not raw_agents:
+            agents = ["Security Guard"]
+        elif isinstance(raw_agents, str):
+            agents = [raw_agents]
+        elif isinstance(raw_agents, (list, tuple)):
+            agents = list(raw_agents)
+        else:
+            agents = ["Security Guard"]
+
+        for ag in agents:
+            chip = plain_label(str(ag), "AgentChip", wrap=False)
+            chip.setProperty("kind", kind)
+            det_row.addWidget(chip)
+        det_row.addStretch(1)
+        header_lay.addLayout(det_row)
+
+        # 4. One-line evidence
         evidence = self.data.get("evidence", "")
         if evidence:
-            self.card_layout.addWidget(section_label("EVIDENCE"))
-            self.card_layout.addWidget(code_block(evidence, copy_button=True))
+            first_ev = ""
+            for l in evidence.splitlines():
+                if l.strip():
+                    first_ev = l.strip()
+                    break
+            if first_ev:
+                self.evidence_label = plain_label(first_ev, "Muted", wrap=False)
+                self.evidence_label.setFont(theme.mono_font(12))
+                header_lay.addWidget(self.evidence_label)
 
-        # 4. Collapsible sections (What, Why, How)
+        self.card_layout.addWidget(self.header_widget)
+
+        # ── Collapsible Body (What / Why / How) ────────────────────────────────
+        self.body = QWidget()
+        self.body_layout = QVBoxLayout(self.body)
+        self.body_layout.setContentsMargins(0, 4, 0, 0)
+        self.body_layout.setSpacing(8)
+
         what = self.data.get("what", "")
         why = self.data.get("why", "")
         how = self.data.get("how", "")
@@ -428,17 +479,29 @@ class SecurityFindingCard(QFrame):
         if what:
             sec_what = CollapsibleSection("What happened:", expanded=True)
             sec_what.set_text(what)
-            self.card_layout.addWidget(sec_what)
+            self.body_layout.addWidget(sec_what)
 
         if why:
-            sec_why = CollapsibleSection("Why it is dangerous:", expanded=False)
+            sec_why = CollapsibleSection("Why it is dangerous:", expanded=True)
             sec_why.set_text(why)
-            self.card_layout.addWidget(sec_why)
+            self.body_layout.addWidget(sec_why)
 
         if how:
-            sec_how = CollapsibleSection("How to fix it:", expanded=False)
+            sec_how = CollapsibleSection("How to fix it:", expanded=True)
             sec_how.set_text(how)
-            self.card_layout.addWidget(sec_how)
+            self.body_layout.addWidget(sec_how)
+
+        if evidence and len(evidence.strip().splitlines()) > 1:
+            self.body_layout.addWidget(section_label("FULL EVIDENCE"))
+            self.body_layout.addWidget(code_block(evidence, copy_button=True))
+
+        self.body.setVisible(False)
+        self.card_layout.addWidget(self.body)
+
+    def toggle_expand(self):
+        is_vis = not self.body.isVisible()
+        self.body.setVisible(is_vis)
+        self.toggle_indicator.setText("▾" if is_vis else "▸")
 
     def add_ai_explanation(self, ai_data: dict) -> None:
         """No-op for security finding cards to guard against attribute errors."""
@@ -449,6 +512,8 @@ class SecurityFindingCard(QFrame):
 
     def mousePressEvent(self, event):
         self.clicked.emit(self.line)
+        if not self.body.isVisible() or event.pos().y() <= self.body.pos().y():
+            self.toggle_expand()
         super().mousePressEvent(event)
 
 
@@ -462,8 +527,8 @@ class BlockedBanner(QFrame):
         self.banner_data = banner_data or {}
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(16, 14, 16, 14)
-        lay.setSpacing(8)
+        lay.setContentsMargins(14, 14, 14, 14)
+        lay.setSpacing(12)
 
         # Title
         title_text = self.banner_data.get("title", "Execution blocked by the security layer")
@@ -501,8 +566,8 @@ class SecurityResultCard(QFrame):
         self.view = heal_view or {}
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(16, 14, 16, 14)
-        lay.setSpacing(10)
+        lay.setContentsMargins(14, 14, 14, 14)
+        lay.setSpacing(12)
 
         # Headline and tone
         headline = self.view.get("headline", "Security Healing Result")
@@ -521,6 +586,8 @@ class SecurityResultCard(QFrame):
             f"Remaining {counts.get('remaining', 0)}"
         )
         lay.addWidget(plain_label(counts_text, "Muted"))
+        if self.view.get("stopped_early"):
+            lay.addWidget(plain_label(self.view["stopped_early"], "Muted"))
 
         # Applied fixes (collapsible, closed by default beyond the first 3)
         applied = self.view.get("applied", [])
@@ -602,8 +669,8 @@ class QualityHintCard(QFrame):
         self.line = hint.get("line")
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(12, 10, 12, 10)
-        lay.setSpacing(6)
+        lay.setContentsMargins(14, 14, 14, 14)
+        lay.setSpacing(12)
 
         top = QHBoxLayout()
         top.setSpacing(8)

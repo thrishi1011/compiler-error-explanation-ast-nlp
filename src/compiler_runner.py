@@ -5,7 +5,7 @@ import sys
 
 from guard import check_compile, safe_run
 
-def _sanitize_code(source: str, permissions: dict = None) -> bool:
+def _get_dangerous_patterns(permissions: dict = None) -> list:
     if permissions is None:
         permissions = {
             "allow_system_calls": os.environ.get("ALLOW_SYSTEM_CALLS") == "1",
@@ -24,7 +24,18 @@ def _sanitize_code(source: str, permissions: dict = None) -> bool:
     if not permissions.get("allow_sys_includes", False):
         dangerous_patterns.extend([r'#include\s*[<"]\s*sys/'])
 
-    for pattern in dangerous_patterns:
+    return dangerous_patterns
+
+def _find_dangerous_line(source: str, permissions: dict = None) -> int:
+    patterns = _get_dangerous_patterns(permissions)
+    for idx, line in enumerate(source.splitlines(), start=1):
+        for pattern in patterns:
+            if re.search(pattern, line):
+                return idx
+    return 1
+
+def _sanitize_code(source: str, permissions: dict = None) -> bool:
+    for pattern in _get_dangerous_patterns(permissions):
         if re.search(pattern, source):
             return False
     return True
@@ -37,9 +48,14 @@ def _sanitize_input(file_path: str, permissions: dict = None) -> bool:
 
 def run_cpp_compiler(file_path, permissions=None):
     if not _sanitize_input(file_path, permissions):
+        source_code = ""
+        if os.path.exists(file_path):
+            with open(file_path, "r", errors="ignore") as f:
+                source_code = f.read()
+        err_line = _find_dangerous_line(source_code, permissions) if source_code else 1
         return [{
             "file": file_path,
-            "line": 1,
+            "line": err_line,
             "column": 1,
             "type": "error",
             "message": "Security Error: Malicious command injection or forbidden system call detected.",

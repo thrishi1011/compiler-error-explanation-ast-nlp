@@ -35,12 +35,22 @@ from PyQt6.QtWidgets import (
     QGraphicsRectItem, QGraphicsLineItem, QGraphicsTextItem, QGraphicsItem,
     QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QComboBox
 )
-from PyQt6.QtCore import Qt, QRect, QSize, QThread, pyqtSignal, QTimer, QProcess, QUrl
+from PyQt6.QtCore import (
+    Qt, QRect, QSize, QThread, pyqtSignal, QTimer, QProcess, QUrl,
+    pyqtProperty, QPropertyAnimation, QEasingCurve
+)
 from PyQt6.QtGui import (
     QFont, QColor, QPainter, QTextFormat, QTextCharFormat,
     QSyntaxHighlighter, QTextCursor, QPainterPath, QPen, QLinearGradient, QBrush,
     QDesktopServices
 )
+
+try:
+    import qtawesome as qta
+    HAS_QTAWESOME = True
+except ImportError:
+    HAS_QTAWESOME = False
+    qta = None
 
 # Suppress noisy logs & warnings
 logging.getLogger("codecarbon").setLevel(logging.ERROR)
@@ -824,6 +834,7 @@ class CodeEditor(QPlainTextEdit):
 
         self.error_line = None
         self.errors = []
+        self.marker_lines = {}
         self.fixed_lines = set()
 
         self.update_line_number_area_width(0)
@@ -844,6 +855,15 @@ class CodeEditor(QPlainTextEdit):
         self.errors = errors
         self.highlight_current_line()
         self.viewport().update()
+        self.line_number_area.update()
+
+    def set_marker_lines(self, markers: dict):
+        self.marker_lines = markers or {}
+        self.line_number_area.update()
+
+    def clear_marker_lines(self):
+        self.marker_lines.clear()
+        self.line_number_area.update()
 
     def set_fixed_lines(self, lines):
         self.fixed_lines = set(lines)
@@ -861,8 +881,7 @@ class CodeEditor(QPlainTextEdit):
         while max_blocks >= 10:
             max_blocks /= 10
             digits += 1
-        # Added ~12px padding so numbers never clip code
-        return 17 + self.fontMetrics().horizontalAdvance('9') * digits
+        return 22 + self.fontMetrics().horizontalAdvance('9') * digits
 
     def update_line_number_area_width(self, _):
         self.setViewportMargins(self.line_number_area_width(), 0, 0, 0)
@@ -894,15 +913,34 @@ class CodeEditor(QPlainTextEdit):
         font_normal = theme.mono_font(13)
         font_bold = theme.mono_font(13, bold=True)
 
+        err_tones = {}
+        for e in self.errors:
+            l = e.get("line") if isinstance(e, dict) else getattr(e, "line", None)
+            if l:
+                t = (e.get("type") or e.get("error_type") or "error") if isinstance(e, dict) else (getattr(e, "type", None) or getattr(e, "error_type", None) or "error")
+                tone = "error" if str(t).lower() == "error" else "warn"
+                if int(l) not in err_tones or tone == "error":
+                    err_tones[int(l)] = tone
+
         while block.isValid() and top <= event.rect().bottom():
             if block.isVisible() and bottom >= event.rect().top():
-                number = str(block_number + 1)
-                if self.error_line and block_number + 1 == self.error_line:
+                line_num = block_number + 1
+                number = str(line_num)
+                if self.error_line and line_num == self.error_line:
                     painter.setPen(pen_error)
                     painter.setFont(font_bold)
                 else:
                     painter.setPen(pen_normal)
                     painter.setFont(font_normal)
+
+                # Draw gutter marker circle (6px) left of line number
+                tone = err_tones.get(line_num) or self.marker_lines.get(line_num)
+                if tone:
+                    circle_y = int(top + (self.fontMetrics().height() - 6) / 2)
+                    painter.setPen(Qt.PenStyle.NoPen)
+                    painter.setBrush(theme.qcolor("error" if tone == "error" else "warn"))
+                    painter.drawEllipse(4, circle_y, 6, 6)
+                    painter.setBrush(Qt.BrushStyle.NoBrush)
 
                 painter.drawText(
                     0, top, self.line_number_area.width() - 8, self.fontMetrics().height(),
@@ -1233,10 +1271,11 @@ class SyntaxWorker(QThread):
 
     def run(self):
         try:
-            from compiler_runner import _sanitize_code
+            from compiler_runner import _sanitize_code, _find_dangerous_line
             if not _sanitize_code(self.code):
+                match_line = _find_dangerous_line(self.code)
                 self.finished.emit([{
-                    "line": 1,
+                    "line": match_line,
                     "column": 1,
                     "error_type": "error",
                     "message": "Security Error: Malicious command injection or forbidden system call detected."
@@ -1310,63 +1349,119 @@ class Sidebar(QFrame):
         self.collapsed_width = 56
         self.setFixedWidth(self.expanded_width)
 
+        self.anim = QPropertyAnimation(self, b"sidebarWidth")
+        self.anim.setDuration(150)
+        self.anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+
         lay = QVBoxLayout(self)
         lay.setContentsMargins(8, 12, 8, 12)
         lay.setSpacing(4)
 
-        self.sec_lbl = section_label("NAVIGATION")
-        lay.addWidget(self.sec_lbl)
+        self.sec_workspace = section_label("WORKSPACE")
+        self.sec_analysis = section_label("ANALYSIS")
+        self.sec_security = section_label("SECURITY")
+        self.sec_insights = section_label("INSIGHTS")
+        self.section_labels = [self.sec_workspace, self.sec_analysis, self.sec_security, self.sec_insights]
 
-        self.btn1 = self._create_btn("💻", "Code Editor", "Main C++ editor, diagnostics, and I/O runner")
-        self.btn2 = self._create_btn("🌳", "AST Explorer", "Abstract Syntax Tree hierarchy viewer")
-        self.btn3 = self._create_btn("⚡", "Energy Metrics", "Real-time energy consumption and carbon emissions")
-        self.btn4 = self._create_btn("🔄", "Call Graph", "Function call relationship diagram")
-        self.btn5 = self._create_btn("🛡️", "Security Scan", "Static security vulnerability inspection")
-        self.btn6 = self._create_btn("🔀", "Control Flow", "Control flow graph (CFG) visualizer")
-        self.btn7 = self._create_btn("🧠", "Second Opinion", "ML Classifier vs Regex error categorization")
-        self.btn8 = self._create_btn("📊", "Benchmark", "Measured accuracy benchmark comparison")
+        self.btn1 = self._create_btn("💻", "fa5s.code", "Code Editor", "Main C++ editor, diagnostics, and I/O runner")
+        self.btn2 = self._create_btn("🌳", "fa5s.sitemap", "AST Explorer", "Abstract Syntax Tree hierarchy viewer")
+        self.btn3 = self._create_btn("⚡", "fa5s.bolt", "Energy Metrics", "Real-time energy consumption and carbon emissions")
+        self.btn4 = self._create_btn("🔄", "fa5s.project-diagram", "Call Graph", "Function call relationship diagram")
+        self.btn5 = self._create_btn("🛡️", "fa5s.shield-alt", "Security Scan", "Static security vulnerability inspection")
+        self.btn6 = self._create_btn("🔀", "fa5s.random", "Control Flow", "Control flow graph (CFG) visualizer")
+        self.btn7 = self._create_btn("🧠", "fa5s.brain", "Second Opinion", "ML Classifier vs Regex error categorization")
+        self.btn8 = self._create_btn("📊", "fa5s.chart-bar", "Benchmark", "Measured accuracy benchmark comparison")
 
         self.buttons = [
             self.btn1, self.btn2, self.btn3, self.btn4,
             self.btn5, self.btn6, self.btn7, self.btn8
         ]
 
-        for btn in self.buttons:
-            lay.addWidget(btn)
+        # Grouped navigation layout
+        lay.addWidget(self.sec_workspace)
+        lay.addWidget(self.btn1)
+
+        lay.addWidget(self.sec_analysis)
+        lay.addWidget(self.btn2)
+        lay.addWidget(self.btn4)
+        lay.addWidget(self.btn6)
+
+        lay.addWidget(self.sec_security)
+        lay.addWidget(self.btn5)
+
+        lay.addWidget(self.sec_insights)
+        lay.addWidget(self.btn3)
+        lay.addWidget(self.btn7)
+        lay.addWidget(self.btn8)
 
         lay.addStretch(1)
 
-        self.btn_toggle = QPushButton("«  Collapse")
-        self.btn_toggle.setObjectName("NavButton")
-        self.btn_toggle.setToolTip("Toggle Sidebar (Collapse / Expand)")
-        self.btn_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_toggle.clicked.connect(self.toggle_collapse)
-        lay.addWidget(self.btn_toggle)
+        theme.on_change(lambda m, t: self._update_qta_icons())
+        self._update_qta_icons()
 
-    def _create_btn(self, icon: str, label: str, tooltip: str) -> QPushButton:
+    @pyqtProperty(int)
+    def sidebarWidth(self) -> int:
+        return self.width()
+
+    @sidebarWidth.setter
+    def sidebarWidth(self, w: int) -> None:
+        self.setFixedWidth(w)
+
+    def _create_btn(self, icon: str, qta_name: str, label: str, tooltip: str) -> QPushButton:
         btn = QPushButton(f"{icon}  {label}")
         btn.setObjectName("NavButton")
         btn.icon_symbol = icon
+        btn.qta_name = qta_name
         btn.label_text = label
         btn.setToolTip(f"{label}: {tooltip}")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         return btn
 
+    def _update_qta_icons(self):
+        if not HAS_QTAWESOME or qta is None:
+            return
+        for btn in self.buttons:
+            if hasattr(btn, "qta_name"):
+                active = (btn.property("active") == "true")
+                color = theme.tokens()["accent"] if active else theme.tokens()["muted"]
+                try:
+                    btn.setIcon(qta.icon(btn.qta_name, color=color))
+                    btn.setIconSize(QSize(16, 16))
+                    if self.is_collapsed:
+                        btn.setText("")
+                    else:
+                        btn.setText(f"  {btn.label_text}")
+                except Exception:
+                    pass
+
     def set_active(self, index: int):
         for i, btn in enumerate(self.buttons):
             theme.set_prop(btn, "active", "true" if i == index else "false")
+        self._update_qta_icons()
 
     def toggle_collapse(self):
         self.is_collapsed = not self.is_collapsed
-        w = self.collapsed_width if self.is_collapsed else self.expanded_width
-        self.setFixedWidth(w)
-        self.sec_lbl.setVisible(not self.is_collapsed)
-        self.btn_toggle.setText("»" if self.is_collapsed else "«  Collapse")
+        target_w = self.collapsed_width if self.is_collapsed else self.expanded_width
+
+        for sec in self.section_labels:
+            sec.setVisible(not self.is_collapsed)
+
         for btn in self.buttons:
             if self.is_collapsed:
-                btn.setText(btn.icon_symbol)
+                if HAS_QTAWESOME and qta is not None and hasattr(btn, "qta_name"):
+                    btn.setText("")
+                else:
+                    btn.setText(btn.icon_symbol)
             else:
-                btn.setText(f"{btn.icon_symbol}  {btn.label_text}")
+                if HAS_QTAWESOME and qta is not None and hasattr(btn, "qta_name"):
+                    btn.setText(f"  {btn.label_text}")
+                else:
+                    btn.setText(f"{btn.icon_symbol}  {btn.label_text}")
+
+        self.anim.stop()
+        self.anim.setStartValue(self.width())
+        self.anim.setEndValue(target_w)
+        self.anim.start()
 
 
 # ── Analysis Pages ────────────────────────────────────────────────────────────
@@ -2933,6 +3028,8 @@ class AppGUI(QMainWindow):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
+        self.sidebar = Sidebar()
+
         # ── 1. Top Bar ────────────────────────────────────────────────────────
         top_bar = QFrame()
         top_bar.setObjectName("TopBar")
@@ -2940,7 +3037,15 @@ class AppGUI(QMainWindow):
         top_lay.setContentsMargins(16, 10, 16, 10)
         top_lay.setSpacing(10)
 
-        app_title = plain_label("🌿 C++ Compiler Error Explainer & Auto-Healer", "Title")
+        self.btn_hamburger = QPushButton("☰")
+        self.btn_hamburger.setProperty("variant", "ghost")
+        self.btn_hamburger.setToolTip("Toggle Sidebar (Expand / Collapse)")
+        self.btn_hamburger.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_hamburger.clicked.connect(self.toggle_sidebar)
+        top_lay.addWidget(self.btn_hamburger)
+
+        app_title = plain_label("🌿 C++ Explainer", "Title", wrap=False)
+        app_title.setWordWrap(False)
         top_lay.addWidget(app_title)
         top_lay.addSpacing(16)
 
@@ -2963,6 +3068,7 @@ class AppGUI(QMainWindow):
         self.btn_heal.clicked.connect(self.start_heal)
         top_lay.addWidget(self.btn_heal)
 
+        top_lay.addSpacing(12)
         top_lay.addStretch(1)
 
         btn_load = QPushButton("📂  Load")
@@ -2996,7 +3102,6 @@ class AppGUI(QMainWindow):
         center_lay.setSpacing(0)
         root_layout.addWidget(center_row, 1)
 
-        self.sidebar = Sidebar()
         center_lay.addWidget(self.sidebar)
 
         self.stack = QStackedWidget()
@@ -3068,13 +3173,46 @@ class AppGUI(QMainWindow):
 
         prob_header = QWidget()
         ph_lay = QHBoxLayout(prob_header)
-        ph_lay.setContentsMargins(14, 10, 14, 10)
+        ph_lay.setContentsMargins(14, 10, 14, 6)
         ph_lay.setSpacing(8)
         ph_lay.addWidget(section_label("PROBLEMS"))
         self.problems_count_badge = badge("0", "ok")
         ph_lay.addWidget(self.problems_count_badge)
         ph_lay.addStretch(1)
         pc_lay.addWidget(prob_header)
+
+        # Filter bar with counts: All N, Errors N, Security N, Quality N
+        filter_bar = QWidget()
+        fb_lay = QHBoxLayout(filter_bar)
+        fb_lay.setContentsMargins(14, 0, 14, 8)
+        fb_lay.setSpacing(6)
+
+        self.btn_filter_all = QPushButton("All 0")
+        self.btn_filter_all.setProperty("variant", "primary")
+        self.btn_filter_all.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_filter_all.clicked.connect(self._filter_all)
+        fb_lay.addWidget(self.btn_filter_all)
+
+        self.btn_filter_errors = QPushButton("Errors 0")
+        self.btn_filter_errors.setProperty("variant", "ghost")
+        self.btn_filter_errors.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_filter_errors.clicked.connect(self._filter_errors)
+        fb_lay.addWidget(self.btn_filter_errors)
+
+        self.btn_filter_security = QPushButton("Security 0")
+        self.btn_filter_security.setProperty("variant", "ghost")
+        self.btn_filter_security.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_filter_security.clicked.connect(self._filter_security)
+        fb_lay.addWidget(self.btn_filter_security)
+
+        self.btn_filter_quality = QPushButton("Quality 0")
+        self.btn_filter_quality.setProperty("variant", "ghost")
+        self.btn_filter_quality.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_filter_quality.clicked.connect(self._filter_quality)
+        fb_lay.addWidget(self.btn_filter_quality)
+
+        fb_lay.addStretch(1)
+        pc_lay.addWidget(filter_bar)
 
         div_prob = QFrame()
         div_prob.setObjectName("Divider")
@@ -3084,8 +3222,8 @@ class AppGUI(QMainWindow):
         self.error_cards_scroll.setWidgetResizable(True)
         self.error_cards_widget = QWidget()
         self.error_cards_layout = QVBoxLayout(self.error_cards_widget)
-        self.error_cards_layout.setContentsMargins(14, 12, 14, 12)
-        self.error_cards_layout.setSpacing(10)
+        self.error_cards_layout.setContentsMargins(14, 14, 14, 14)
+        self.error_cards_layout.setSpacing(12)
         self.error_cards_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.error_cards_scroll.setWidget(self.error_cards_widget)
         pc_lay.addWidget(self.error_cards_scroll, 1)
@@ -3180,7 +3318,9 @@ class AppGUI(QMainWindow):
         self.model_chip = badge("Model: OK", "ok")
         sb_lay.addWidget(self.model_chip)
 
-        self.status_label = plain_label("STATUS: ● READY", "Muted")
+        self.status_label = plain_label("STATUS: ● READY", "Muted", wrap=False)
+        self.status_label.setMinimumWidth(190)
+        self.status_label.setWordWrap(False)
         sb_lay.addWidget(self.status_label)
 
         root_layout.addWidget(status_bar)
@@ -3230,6 +3370,57 @@ class AppGUI(QMainWindow):
             self.problems_count_badge.setText("0")
             theme.set_prop(self.problems_count_badge, "tone", "ok")
             self.terminal.append_output("Ready. Paste or load a C++ source file to compile and analyze.\n")
+
+    def toggle_sidebar(self):
+        if hasattr(self, "sidebar") and self.sidebar:
+            self.sidebar.toggle_collapse()
+
+    def _filter_all(self):
+        self._apply_problem_filter("all")
+
+    def _filter_errors(self):
+        self._apply_problem_filter("errors")
+
+    def _filter_security(self):
+        self._apply_problem_filter("security")
+
+    def _filter_quality(self):
+        self._apply_problem_filter("quality")
+
+    def _apply_problem_filter(self, mode: str):
+        self.active_problem_filter = mode
+        for btn, m in [
+            (getattr(self, "btn_filter_all", None), "all"),
+            (getattr(self, "btn_filter_errors", None), "errors"),
+            (getattr(self, "btn_filter_security", None), "security"),
+            (getattr(self, "btn_filter_quality", None), "quality"),
+        ]:
+            if btn:
+                theme.set_prop(btn, "variant", "primary" if m == mode else "ghost")
+
+        for card in self.issue_cards:
+            if mode == "all":
+                card.setVisible(True)
+            elif mode == "errors":
+                card.setVisible(isinstance(card, IssueCard))
+            elif mode == "security":
+                card.setVisible(isinstance(card, SecurityFindingCard))
+            elif mode == "quality":
+                card.setVisible(isinstance(card, QualityHintCard))
+
+    def _update_filter_counts(self):
+        if not hasattr(self, "btn_filter_all"):
+            return
+        n_errors = len([c for c in self.issue_cards if isinstance(c, IssueCard)])
+        n_security = len([c for c in self.issue_cards if isinstance(c, SecurityFindingCard)])
+        n_quality = len([c for c in self.issue_cards if isinstance(c, QualityHintCard)])
+        n_all = len(self.issue_cards)
+
+        self.btn_filter_all.setText(f"All {n_all}")
+        self.btn_filter_errors.setText(f"Errors {n_errors}")
+        self.btn_filter_security.setText(f"Security {n_security}")
+        self.btn_filter_quality.setText(f"Quality {n_quality}")
+        self._apply_problem_filter(getattr(self, "active_problem_filter", "all"))
 
     def _on_global_theme_changed(self, mode_name: str, tokens: dict):
         global CURRENT_THEME, BG_COLOR, PANE_BG, PANEL_BG, HEADER_BG, BORDER_COLOR
@@ -3811,6 +4002,7 @@ class AppGUI(QMainWindow):
                             self.issue_cards.append(card)
                             self.error_cards_layout.addWidget(card)
 
+                self._update_filter_counts()
                 if self.is_ai_enabled():
                     self.request_ai_explanations()
         except Exception:
@@ -3993,6 +4185,17 @@ class AppGUI(QMainWindow):
             self._update_footer()
             self.editor.set_errors(compiler_errors)
 
+            # Mark lines from latest security findings
+            marker_lines = {}
+            for gf in guard_findings:
+                l = gf.get("line")
+                if l:
+                    sev = str(gf.get("severity") or "").lower()
+                    tone = "error" if sev in ("critical", "high") else "warn"
+                    if int(l) not in marker_lines or tone == "error":
+                        marker_lines[int(l)] = tone
+            self.editor.set_marker_lines(marker_lines)
+
             # Problems badge count: compiler issues plus security findings
             total_problems = len(compiler_errors) + len(guard_findings)
             self.problems_count_badge.setText(str(total_problems))
@@ -4080,6 +4283,8 @@ class AppGUI(QMainWindow):
             elif not guard_findings:
                 empty_lbl = plain_label("No compiler errors or warnings detected. Code compiles cleanly.", "Muted")
                 self.error_cards_layout.addWidget(empty_lbl)
+
+            self._update_filter_counts()
 
             # Check if compile was blocked by guard
             if "compile" in guard_data.get("blocked_purposes", []):
@@ -4179,6 +4384,9 @@ class AppGUI(QMainWindow):
             self.issue_cards.append(card)
             created_cards.append(card)
             self.error_cards_layout.addWidget(card)
+
+        self.editor.clear_marker_lines()
+        self._update_filter_counts()
 
         # Output rich compiler messages into terminal
         compiler_html = build_compiler_html(

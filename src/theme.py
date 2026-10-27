@@ -53,7 +53,7 @@ def mono_font(px: int = 13, bold: bool = False) -> QFont:
 TOKENS = {
     "dark": dict(
         bg="#0E1117", surface="#151A23", surface_alt="#1B2230", border="#252D3B",
-        text="#E6EAF2", muted="#8B95A7",
+        text="#E6EAF2", muted="#9AA4B6",
         accent="#6C7BFF", accent_hover="#8290FF", accent_soft="#1F2547", on_accent="#FFFFFF",
         error="#F2555A", warn="#E8B339", ok="#3DBE8B", info="#5AA9FF",
         error_soft="#2A1A1E", warn_soft="#2A2414", ok_soft="#14261F",
@@ -65,7 +65,7 @@ TOKENS = {
     ),
     "light": dict(
         bg="#F6F8FB", surface="#FFFFFF", surface_alt="#F0F3F8", border="#E3E8EF",
-        text="#1A1F36", muted="#5B6478",
+        text="#1A1F36", muted="#566074",
         accent="#5469D4", accent_hover="#4457BF", accent_soft="#E8ECFB", on_accent="#FFFFFF",
         # slightly deeper status colours so they stay readable on white
         error="#D93B42", warn="#B7791F", ok="#1F9D6B", info="#2B7FD6",
@@ -80,7 +80,7 @@ TOKENS = {
 
 # ── Global stylesheet (string.Template: $name -> token) ──────────────────────
 _QSS = Template("""
-QWidget { color: $text; }
+QWidget { color: $text; font-size: 13px; }
 QMainWindow, QDialog, QWidget#Root { background: $bg; }
 QLabel { background: transparent; }
 QToolTip { background: $surface_alt; color: $text; border: 1px solid $border;
@@ -111,8 +111,8 @@ QFrame#BlockedBanner { background: $error_soft; border: 1px solid $error; border
 
 /* ---------- text roles ---------- */
 QLabel#Title      { font-size: 15px; font-weight: 600; }
-QLabel#IssueTitle { font-size: 14px; font-weight: 600; }
-QLabel#Section    { color: $muted; font-size: 11px; font-weight: 600; }
+QLabel#IssueTitle { font-size: 15px; font-weight: 600; }
+QLabel#Section    { color: $muted; font-size: 11px; font-weight: 600; text-transform: uppercase; }
 QLabel#Muted      { color: $muted; }
 QLabel#CodeText   { color: $text; background: transparent; }
 QLabel#Badge { background: $accent_soft; color: $accent; border-radius: 4px;
@@ -121,6 +121,10 @@ QLabel#Badge[tone="error"] { background: $error_soft; color: $error; }
 QLabel#Badge[tone="warn"]  { background: $warn_soft;  color: $warn; }
 QLabel#Badge[tone="ok"]    { background: $ok_soft;    color: $ok; }
 QLabel#Badge[tone="muted"] { background: $surface_alt; color: $muted; }
+
+/* agent chip */
+QLabel#AgentChip { background:$surface_alt; color:$text; border:1px solid $border; border-left:3px solid $accent; border-radius:4px; padding:2px 8px; font-weight:600; font-size:12px; }
+QLabel#AgentChip[kind="vuln"] { border-left:3px solid $info; }
 
 /* ---------- buttons ---------- */
 QPushButton { background: $surface; color: $text; border: 1px solid $border;
@@ -133,11 +137,13 @@ QPushButton[variant="primary"]:hover { background: $accent_hover; border-color: 
 QPushButton[variant="success"] { background: $ok; color: #FFFFFF; border: 1px solid $ok; }
 QPushButton[variant="ghost"]   { background: transparent; border: 1px solid transparent; padding: 6px 10px; }
 QPushButton[variant="ghost"]:hover { background: $surface_alt; }
+QPushButton[variant="ghost"]:disabled { background: transparent; color: $muted; border: 1px solid transparent; }
 
 QPushButton#NavButton { text-align: left; background: transparent; border: none;
-                        border-radius: 6px; padding: 9px 12px; color: $muted; }
+                        border-left: 3px solid transparent; border-radius: 6px; padding: 9px 12px; color: $muted; }
 QPushButton#NavButton:hover { background: $surface_alt; color: $text; }
-QPushButton#NavButton[active="true"] { background: $accent_soft; color: $accent; font-weight: 600; }
+QPushButton#NavButton[active="true"] { background: $accent_soft; color: $accent; font-weight: 600;
+                                      border-left: 3px solid $accent; border-top-left-radius: 0px; border-bottom-left-radius: 0px; }
 
 QToolButton#SectionToggle { border: none; background: transparent; color: $muted;
                             font-weight: 600; text-align: left; padding: 4px 0; }
