@@ -129,12 +129,12 @@ class CollapsibleSection(QWidget):
         self.toggle.toggled.connect(self._on_toggle)
         lay.addWidget(self.toggle)
 
-        self.body = QWidget()
+        self.body = QWidget(self)
         self.body_lay = QVBoxLayout(self.body)
         self.body_lay.setContentsMargins(18, 0, 0, 6)
         self.body_lay.setSpacing(4)
-        self.body.setVisible(bool(expanded))
         lay.addWidget(self.body)
+        self.body.setVisible(bool(expanded))
 
         if content_widget is not None:
             self.body_lay.addWidget(content_widget)
@@ -216,7 +216,7 @@ class IssueCard(QFrame):
         self.card_layout.addWidget(self.header_widget)
 
         # ── Collapsible Body (Code context, Explanation, Fix, AI) ─────────────
-        self.body = QWidget()
+        self.body = QWidget(self)
         self.body_layout = QVBoxLayout(self.body)
         self.body_layout.setContentsMargins(0, 4, 0, 0)
         self.body_layout.setSpacing(8)
@@ -275,8 +275,8 @@ class IssueCard(QFrame):
         if ai_exp and isinstance(ai_exp, dict):
             self.add_ai_explanation(ai_exp)
 
-        self.body.setVisible(False)
         self.card_layout.addWidget(self.body)
+        self.body.setVisible(False)
 
         # Make header transparent for mouse events so all clicks reach the card
         self.header_widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
@@ -503,7 +503,7 @@ class SecurityFindingCard(QFrame):
         self.card_layout.addWidget(self.header_widget)
 
         # ── Collapsible Body (What / Why / How) ────────────────────────────────
-        self.body = QWidget()
+        self.body = QWidget(self)
         self.body_layout = QVBoxLayout(self.body)
         self.body_layout.setContentsMargins(0, 4, 0, 0)
         self.body_layout.setSpacing(8)
@@ -531,8 +531,8 @@ class SecurityFindingCard(QFrame):
             self.body_layout.addWidget(section_label("FULL EVIDENCE"))
             self.body_layout.addWidget(code_block(evidence, copy_button=True))
 
-        self.body.setVisible(False)
         self.card_layout.addWidget(self.body)
+        self.body.setVisible(False)
 
         # Make header transparent for mouse events so all clicks reach the card
         self.header_widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)

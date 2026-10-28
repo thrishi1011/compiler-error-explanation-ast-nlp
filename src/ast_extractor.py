@@ -245,11 +245,13 @@ def extract_ast(file_path, code=None):
             "shell": False,
         }
         if os.name == "nt":
-            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
-            popen_kwargs["startupinfo"] = startupinfo
+            from guard.safe_run import _hidden_window_kwargs
+            hw = _hidden_window_kwargs()
+            new_grp = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+            no_win = hw.get("creationflags_extra", getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
+            popen_kwargs["creationflags"] = new_grp | no_win
+            if "startupinfo" in hw:
+                popen_kwargs["startupinfo"] = hw["startupinfo"]
         else:
             popen_kwargs["start_new_session"] = True
 

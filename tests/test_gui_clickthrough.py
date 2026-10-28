@@ -308,6 +308,22 @@ class TestGuiClickthrough(unittest.TestCase):
         total_duration = time.monotonic() - start_time
         self.assertLess(total_duration, 60.0, f"Full clickthrough test must finish in under 60s (took {total_duration:.2f}s)")
 
+    def test_collapsible_section_headless_no_extra_top_level_widgets(self):
+        """CollapsibleSection(expanded=True) must not create extra visible top-level windows."""
+        app = QApplication.instance() or QApplication([])
+        win = gui.AppGUI()
+        win.show()
+        app.processEvents()
+
+        from ui_components import CollapsibleSection
+        sec = CollapsibleSection("Test Collapsible Section", expanded=True)
+        win.error_cards_layout.addWidget(sec)
+        app.processEvents()
+
+        visible_toplevels = [w for w in QApplication.topLevelWidgets() if w.isVisible()]
+        self.assertEqual(visible_toplevels, [win], f"Expected only main window as top-level, got: {visible_toplevels}")
+        win.close()
+
 
 if __name__ == "__main__":
     unittest.main()

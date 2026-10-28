@@ -33,21 +33,27 @@ class SafeResult:
         }
 
 
+def _hidden_window_kwargs() -> dict:
+    if os.name != "nt":
+        return {}
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = subprocess.SW_HIDE
+    return {"startupinfo": si, "creationflags_extra": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+
+
 def _kill_process_tree(proc: subprocess.Popen) -> None:
     """Kills the entire process tree on Windows or POSIX."""
     if os.name == "nt":
         try:
-            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
+            hw = _hidden_window_kwargs()
             subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 check=False,
-                creationflags=creationflags,
-                startupinfo=startupinfo,
+                creationflags=hw.get("creationflags_extra", getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)),
+                startupinfo=hw.get("startupinfo"),
             )
         except Exception:
             pass
@@ -114,12 +120,12 @@ def safe_run(
                 pyw = cmd[0][:-4] + "w.exe"
                 if os.path.exists(pyw):
                     cmd = [pyw] + list(cmd[1:])
-        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-        popen_kwargs["creationflags"] = creationflags
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        startupinfo.wShowWindow = subprocess.SW_HIDE
-        popen_kwargs["startupinfo"] = startupinfo
+        hw = _hidden_window_kwargs()
+        new_grp = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+        no_win = hw.get("creationflags_extra", getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
+        popen_kwargs["creationflags"] = new_grp | no_win
+        if "startupinfo" in hw:
+            popen_kwargs["startupinfo"] = hw["startupinfo"]
     else:
         popen_kwargs["start_new_session"] = True
 

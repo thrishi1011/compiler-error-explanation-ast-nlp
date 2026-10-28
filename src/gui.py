@@ -356,11 +356,11 @@ def get_gcc_version() -> str:
     try:
         kwargs = {"capture_output": True, "text": True, "timeout": 3}
         if os.name == "nt":
-            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
-            kwargs["startupinfo"] = startupinfo
+            from guard.safe_run import _hidden_window_kwargs
+            hw = _hidden_window_kwargs()
+            kwargs["creationflags"] = hw.get("creationflags_extra", getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
+            if "startupinfo" in hw:
+                kwargs["startupinfo"] = hw["startupinfo"]
         res = subprocess.run(["g++", "--version"], **kwargs)
         if res.returncode == 0 and res.stdout:
             first_line = res.stdout.splitlines()[0]
