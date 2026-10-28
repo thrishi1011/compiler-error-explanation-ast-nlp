@@ -100,6 +100,7 @@ class TestGuiClickthrough(unittest.TestCase):
             original_code = f.read()
 
         win.load_file_path(temp_file)
+        win.analyze()
 
         # Wait up to 20 seconds for CompilerWorker
         deadline = time.monotonic() + 20.0
@@ -230,6 +231,7 @@ class TestGuiClickthrough(unittest.TestCase):
         # Restore fixable.cpp content to temp file
         shutil.copyfile(fixable_src, temp_file)
         win.load_file_path(temp_file)
+        win.analyze()
 
         # Settle any compile worker triggered by load_file_path
         deadline = time.monotonic() + 10.0

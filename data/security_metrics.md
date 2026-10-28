@@ -123,17 +123,17 @@ The `scanner_evasion` family evaluates known blind spots in static regex and AST
 
 Execution latency evaluated across 127 cases:
 
-- **Overall Review Time**: Mean = 8.34 ms | Median = 3.30 ms | P95 = 34.96 ms | Max = 69.90 ms
+- **Overall Review Time**: Mean = 8.29 ms | Median = 8.03 ms | P95 = 19.38 ms | Max = 39.14 ms
 
 | Input Kind | Mean (ms) | Median (ms) | P95 (ms) | Max (ms) |
 |:---|:---:|:---:|:---:|:---:|
-| `COMPILER_OUTPUT` | 1.72 | 1.64 | 3.60 | 4.35 |
-| `DATASET_ENTRY` | 1.69 | 1.56 | 2.98 | 3.49 |
-| `HTTP_REQUEST` | 0.46 | 0.31 | 1.74 | 1.85 |
-| `MODEL_FILE` | 12.44 | 2.28 | 43.12 | 53.20 |
-| `PATCH` | 1.85 | 1.56 | 2.96 | 4.45 |
-| `USER_HINT` | 1.89 | 0.66 | 6.23 | 7.80 |
-| `USER_SOURCE` | 14.71 | 8.52 | 38.70 | 69.90 |
+| `COMPILER_OUTPUT` | 1.59 | 1.63 | 2.62 | 2.78 |
+| `DATASET_ENTRY` | 3.35 | 3.10 | 5.15 | 5.72 |
+| `HTTP_REQUEST` | 0.94 | 1.11 | 1.79 | 2.14 |
+| `MODEL_FILE` | 7.18 | 7.21 | 12.03 | 12.54 |
+| `PATCH` | 5.51 | 5.10 | 9.82 | 10.92 |
+| `USER_HINT` | 2.26 | 1.24 | 5.46 | 6.13 |
+| `USER_SOURCE` | 13.61 | 11.57 | 25.93 | 39.14 |
 
 ## 8. Supervisor Routing Efficiency
 
@@ -151,14 +151,14 @@ Execution latency evaluated across 127 cases:
 
 | File | Findings | Fixed | Suggested | Skipped | Rejected | Risk Before/After | Reduction | Seconds |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| `fixable.cpp` | 6 | 6 | 0 | 0 | 0 | 27 -> 0 | 100.0% | 6.36s |
-| `unfixable.cpp` | 3 | 0 | 1 | 2 | 0 | 17 -> 17 | 0.0% | 0.17s |
-| `clean.cpp` | 0 | 0 | 0 | 0 | 0 | 0 -> 0 | 0.0% | 0.06s |
-| `gets_sample.cpp` | 1 | 1 | 0 | 0 | 0 | 10 -> 0 | 100.0% | 1.23s |
-| `strcat_sample.cpp` | 1 | 1 | 0 | 0 | 0 | 5 -> 0 | 100.0% | 0.85s |
-| `sprintf_sample.cpp` | 1 | 1 | 0 | 0 | 0 | 5 -> 0 | 100.0% | 0.76s |
-| `leak_sample.cpp` | 1 | 1 | 0 | 0 | 0 | 2 -> 0 | 100.0% | 0.75s |
-| `double_free_sample.cpp` | 1 | 1 | 0 | 0 | 0 | 5 -> 0 | 100.0% | 0.76s |
+| `fixable.cpp` | 6 | 6 | 0 | 0 | 0 | 27 -> 0 | 100.0% | 6.65s |
+| `unfixable.cpp` | 3 | 0 | 1 | 2 | 0 | 17 -> 17 | 0.0% | 0.06s |
+| `clean.cpp` | 0 | 0 | 0 | 0 | 0 | 0 -> 0 | 0.0% | 0.04s |
+| `gets_sample.cpp` | 1 | 1 | 0 | 0 | 0 | 10 -> 0 | 100.0% | 0.74s |
+| `strcat_sample.cpp` | 1 | 1 | 0 | 0 | 0 | 5 -> 0 | 100.0% | 0.61s |
+| `sprintf_sample.cpp` | 1 | 1 | 0 | 0 | 0 | 5 -> 0 | 100.0% | 0.41s |
+| `leak_sample.cpp` | 1 | 1 | 0 | 0 | 0 | 2 -> 0 | 100.0% | 0.51s |
+| `double_free_sample.cpp` | 1 | 1 | 0 | 0 | 0 | 5 -> 0 | 100.0% | 0.68s |
 
 ## 10. Known Misses & Hard Evasions
 
@@ -180,7 +180,7 @@ Attacks where the security layer successfully detected the threat, but preventio
 
 ## 12. Evaluation Environment
 
-- **Timestamp**: 2026-10-27T14:58:54Z
+- **Timestamp**: 2026-10-28T12:30:01Z
 - **Platform**: Windows 10 (Python 3.11.9)
 - **Compiler**: unavailable
-- **Git Commit**: 3ddc190
+- **Git Commit**: 3795cb5

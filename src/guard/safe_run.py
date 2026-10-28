@@ -37,7 +37,7 @@ def _kill_process_tree(proc: subprocess.Popen) -> None:
     """Kills the entire process tree on Windows or POSIX."""
     if os.name == "nt":
         try:
-            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) | 0x00000008
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = subprocess.SW_HIDE
@@ -114,7 +114,7 @@ def safe_run(
                 pyw = cmd[0][:-4] + "w.exe"
                 if os.path.exists(pyw):
                     cmd = [pyw] + list(cmd[1:])
-        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) | 0x00000008
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         popen_kwargs["creationflags"] = creationflags
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW

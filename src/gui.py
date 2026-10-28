@@ -3404,9 +3404,15 @@ class AppGUI(QMainWindow):
             except Exception:
                 pass
             self.editor.clear_fixed_lines()
+            self.editor.set_errors([])
+            self.errors_count = 0
+            self.warnings_count = 0
             self._update_footer()
             theme.on_change(lambda m, t: self._on_global_theme_changed(m, t))
-            QTimer.singleShot(150, self.analyze)
+            self.status_label.setText("STATUS: ● READY")
+            self.problems_count_badge.setText("0")
+            theme.set_prop(self.problems_count_badge, "tone", "ok")
+            self.terminal.append_output(f"Loaded {self.file_name}. Click 'Compile' to analyze.\n")
         else:
             self.file_tab_label.setText("📄  untitled.cpp")
             self.editor.setPlainText("")
@@ -3830,10 +3836,13 @@ class AppGUI(QMainWindow):
             self.editor.setPlainText(content)
             self.editor.blockSignals(False)
             self.editor.clear_fixed_lines()
+            self.editor.set_errors([])
+            self.errors_count = 0
+            self.warnings_count = 0
+            self._update_footer()
             self.btn_undo_heal.setEnabled(False)
             self.status_label.setText("STATUS: ● RESTORED ORIGINAL")
             self.error_cards_layout.addWidget(plain_label(f"↺ Restored original code ({self.file_name})", "IssueTitle"))
-            self.analyze()
         except Exception as e:
             show_message(self, "critical", "Undo Heal Error", f"Failed to restore backup: {e}")
 
@@ -4095,7 +4104,21 @@ class AppGUI(QMainWindow):
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 self.editor.setPlainText(f.read())
             self.editor.clear_fixed_lines()
-            self.analyze()
+            self.editor.set_errors([])
+            self.errors_count = 0
+            self.warnings_count = 0
+            self._update_footer()
+            self.status_label.setText("STATUS: ● READY")
+            self.problems_count_badge.setText("0")
+            theme.set_prop(self.problems_count_badge, "tone", "ok")
+            while self.error_cards_layout.count():
+                item = self.error_cards_layout.takeAt(0)
+                w = item.widget()
+                if w:
+                    w.deleteLater()
+            self.issue_cards = []
+            self.terminal.clear()
+            self.terminal.append_output(f"Loaded {self.file_name}. Click 'Compile' to analyze.\n")
 
     def load_file(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Open C++ File", "", "C++ Files (*.cpp *.h *.hpp);;All Files (*)")
