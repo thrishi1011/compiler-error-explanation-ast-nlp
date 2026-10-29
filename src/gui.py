@@ -6,6 +6,7 @@ Designed with a classic, clean IDE layout supporting live dark & light themes.
 """
 
 from __future__ import annotations
+from namespace_style import enforce_std_namespace_style, uses_namespace_std
 
 import sys
 import os
@@ -1401,6 +1402,37 @@ class OptimizationWorker(QThread):
 
 # ── Sidebar Navigation ────────────────────────────────────────────────────────
 
+
+SIDEBAR_SVGS = {
+    "editor": """<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='16 18 22 12 16 6'></polyline><polyline points='8 6 2 12 8 18'></polyline></svg>""",
+    "ast": """<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='9' y='3' width='6' height='5' rx='1'></rect><rect x='3' y='16' width='6' height='5' rx='1'></rect><rect x='15' y='16' width='6' height='5' rx='1'></rect><path d='M12 8v4M6 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2'></path></svg>""",
+    "complexity": """<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z'></path><circle cx='12' cy='12' r='2' fill='currentColor'></circle><path d='M12 12l3.5-3.5'></path></svg>""",
+    "energy": """<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'></polygon></svg>""",
+    "callgraph": """<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='6' cy='6' r='3'></circle><circle cx='18' cy='6' r='3'></circle><circle cx='12' cy='18' r='3'></circle><line x1='8.5' y1='7.5' x2='15.5' y2='7.5'></line><line x1='7.5' y1='8.5' x2='10.5' y2='15.5'></line><line x1='16.5' y1='8.5' x2='13.5' y2='15.5'></line></svg>""",
+    "security": """<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'></path><polyline points='9 12 11 14 15 10'></polyline></svg>""",
+    "cfg": """<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='3' width='6' height='5' rx='1'></rect><rect x='15' y='8' width='6' height='5' rx='1'></rect><rect x='15' y='16' width='6' height='5' rx='1'></rect><path d='M9 5.5h3a2 2 0 0 1 2 2v9a2 2 0 0 0 2 2h-1M14 10.5h1'></path></svg>""",
+    "second_opinion": """<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M9.5 2A4.5 4.5 0 0 0 5 6.5c0 1.2.5 2.3 1.3 3.1A4.5 4.5 0 0 0 5 13.5c0 1.2.5 2.3 1.3 3.1A4.5 4.5 0 0 0 9.5 22h.5V2h-.5zM14.5 2A4.5 4.5 0 0 1 19 6.5c0 1.2-.5 2.3-1.3 3.1A4.5 4.5 0 0 1 19 13.5c0 1.2-.5 2.3-1.3 3.1A4.5 4.5 0 0 1 14.5 22H14V2h.5z'></path></svg>""",
+    "benchmark": """<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><line x1='18' y1='20' x2='18' y2='10'></line><line x1='12' y1='20' x2='12' y2='4'></line><line x1='6' y1='20' x2='6' y2='14'></line><line x1='3' y1='20' x2='21' y2='20'></line></svg>"""
+}
+
+def render_svg_icon(svg_key: str, color: str, size: int = 18) -> QIcon:
+    try:
+        from PyQt6.QtSvg import QSvgRenderer
+        from PyQt6.QtGui import QPixmap, QPainter, QColor, QIcon
+        svg_xml = SIDEBAR_SVGS.get(svg_key)
+        if not svg_xml:
+            return QIcon()
+        colored = svg_xml.replace("currentColor", color)
+        renderer = QSvgRenderer(colored.encode("utf-8"))
+        pix = QPixmap(size, size)
+        pix.fill(QColor(0, 0, 0, 0))
+        p = QPainter(pix)
+        renderer.render(p)
+        p.end()
+        return QIcon(pix)
+    except Exception:
+        return QIcon()
+
 class Sidebar(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1424,15 +1456,15 @@ class Sidebar(QFrame):
         self.sec_insights = section_label("INSIGHTS")
         self.section_labels = [self.sec_workspace, self.sec_analysis, self.sec_security, self.sec_insights]
 
-        self.btn1 = self._create_btn("💻", "fa5s.code", "Code Editor", "Main C++ editor, diagnostics, and I/O runner")
-        self.btn2 = self._create_btn("🌳", "fa5s.sitemap", "AST Explorer", "Abstract Syntax Tree hierarchy viewer")
-        self.btn_complexity = self._create_btn("⏱", "fa5s.tachometer-alt", "Complexity", "Time & Space complexity analysis of run code")
-        self.btn3 = self._create_btn("⚡", "fa5s.bolt", "Energy Metrics", "Real-time energy consumption and carbon emissions")
-        self.btn4 = self._create_btn("🔄", "fa5s.project-diagram", "Call Graph", "Function call relationship diagram")
-        self.btn5 = self._create_btn("🛡️", "fa5s.shield-alt", "Security Scan", "Static security vulnerability inspection")
-        self.btn6 = self._create_btn("🔀", "fa5s.random", "Control Flow", "Control flow graph (CFG) visualizer")
-        self.btn7 = self._create_btn("🧠", "fa5s.brain", "Second Opinion", "ML Classifier vs Regex error categorization")
-        self.btn8 = self._create_btn("📊", "fa5s.chart-bar", "Benchmark", "Measured accuracy benchmark comparison")
+        self.btn1 = self._create_btn("editor", "Code Editor", "Main C++ editor, diagnostics, and I/O runner")
+        self.btn2 = self._create_btn("ast", "AST Explorer", "Abstract Syntax Tree hierarchy viewer")
+        self.btn_complexity = self._create_btn("complexity", "Complexity", "Time & Space complexity analysis of run code")
+        self.btn3 = self._create_btn("energy", "Energy Metrics", "Real-time energy consumption and carbon emissions")
+        self.btn4 = self._create_btn("callgraph", "Call Graph", "Function call relationship diagram")
+        self.btn5 = self._create_btn("security", "Security Scan", "Static security vulnerability inspection")
+        self.btn6 = self._create_btn("cfg", "Control Flow", "Control flow graph (CFG) visualizer")
+        self.btn7 = self._create_btn("second_opinion", "Second Opinion", "ML Classifier vs Regex error categorization")
+        self.btn8 = self._create_btn("benchmark", "Benchmark", "Measured accuracy benchmark comparison")
 
         self.buttons = [
             self.btn1, self.btn2, self.btn_complexity, self.btn3, self.btn4,
@@ -1470,26 +1502,24 @@ class Sidebar(QFrame):
     def sidebarWidth(self, w: int) -> None:
         self.setFixedWidth(w)
 
-    def _create_btn(self, icon: str, qta_name: str, label: str, tooltip: str) -> QPushButton:
-        btn = QPushButton(f"{icon}  {label}")
+    def _create_btn(self, svg_key: str, label: str, tooltip: str) -> QPushButton:
+        btn = QPushButton(f"  {label}")
         btn.setObjectName("NavButton")
-        btn.icon_symbol = icon
-        btn.qta_name = qta_name
+        btn.svg_key = svg_key
         btn.label_text = label
         btn.setToolTip(f"{label}: {tooltip}")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         return btn
 
     def _update_qta_icons(self):
-        if not HAS_QTAWESOME or qta is None:
-            return
         for btn in self.buttons:
-            if hasattr(btn, "qta_name"):
+            if hasattr(btn, "svg_key"):
                 active = (btn.property("active") == "true")
                 color = theme.tokens()["accent"] if active else theme.tokens()["muted"]
                 try:
-                    btn.setIcon(qta.icon(btn.qta_name, color=color))
-                    btn.setIconSize(QSize(16, 16))
+                    icon = render_svg_icon(btn.svg_key, color=color, size=18)
+                    btn.setIcon(icon)
+                    btn.setIconSize(QSize(18, 18))
                     if self.is_collapsed:
                         btn.setText("")
                     else:
@@ -4098,9 +4128,13 @@ class AppGUI(QMainWindow):
         self.btn_top_optimize.setText("⚡  Optimise Code")
         self.status_label.setText("STATUS: ⚡ OPTIMIZATION COMPLETE")
 
+        has_using_std = uses_namespace_std(original_code)
         opt_code = getattr(result, "optimized_code", "")
-        if opt_code and opt_code.strip() and opt_code != original_code:
-            self.editor.setPlainText(opt_code)
+        if opt_code and opt_code.strip():
+            opt_code = enforce_std_namespace_style(opt_code, target_has_using_std=has_using_std)
+            result.optimized_code = opt_code
+            if opt_code != original_code:
+                self.editor.setPlainText(opt_code)
 
         self.latest_optimization_result = result
         summary = build_complexity_summary(result)
@@ -4300,7 +4334,19 @@ class AppGUI(QMainWindow):
 
     def _toggle_expand_diff(self):
         self.is_diff_expanded = not getattr(self, "is_diff_expanded", False)
+
+        # Stop any existing animation
+        if hasattr(self, "_diff_anim") and self._diff_anim:
+            try:
+                self._diff_anim.stop()
+            except Exception:
+                pass
+
+        total_w = self.width()
+        current_left = self.h_splitter.sizes()[0] if self.h_splitter.sizes() else int(total_w * 0.62)
+
         if self.is_diff_expanded:
+            target_left = int(total_w * 0.42)
             if hasattr(self, "btn_expand_diff") and self.btn_expand_diff:
                 self.btn_expand_diff.setText("🗗  Collapse Diff")
                 self.btn_expand_diff.setToolTip("Collapse diff back to normal summary view")
@@ -4321,33 +4367,50 @@ class AppGUI(QMainWindow):
                     getattr(self, "opt_applied", []),
                     expanded=True
                 ))
-            # Adjust horizontal splitter to make the right panel spacious
-            total_w = self.width()
-            self.h_splitter.setSizes([int(total_w * 0.42), int(total_w * 0.58)])
         else:
+            target_left = int(total_w * 0.62)
             if hasattr(self, "btn_expand_diff") and self.btn_expand_diff:
                 self.btn_expand_diff.setText("⛶  Expand Diff")
                 self.btn_expand_diff.setToolTip("Expand diff across the entire right panel to inspect changes clearly")
             if hasattr(self, "opt_expand_bottom_btn") and self.opt_expand_bottom_btn:
                 self.opt_expand_bottom_btn.setText("⛶  Click to Expand Full Changes View")
-            if hasattr(self, "opt_comp_card") and self.opt_comp_card:
-                self.opt_comp_card.setVisible(True)
-            if hasattr(self, "opt_opts_card") and self.opt_opts_card:
-                self.opt_opts_card.setVisible(True)
-            if hasattr(self, "opt_nav_btn") and self.opt_nav_btn:
-                self.opt_nav_btn.setVisible(True)
-            if hasattr(self, "opt_diff_text") and self.opt_diff_text:
-                self.opt_diff_text.setMinimumHeight(180)
-                self.opt_diff_text.setMaximumHeight(350)
-                self.opt_diff_text.setHtml(format_annotated_diff_html(
-                    getattr(self, "opt_orig_code", ""),
-                    getattr(self, "opt_new_code", ""),
-                    getattr(self, "opt_applied", []),
-                    expanded=False
-                ))
-            # Restore splitter
-            total_w = self.width()
-            self.h_splitter.setSizes([int(total_w * 0.62), int(total_w * 0.38)])
+
+        # Smooth transition animation for the splitter
+        from PyQt6.QtCore import QVariantAnimation, QEasingCurve
+        anim = QVariantAnimation(self)
+        anim.setDuration(260)  # Smooth, gentle transition
+        anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        anim.setStartValue(current_left)
+        anim.setEndValue(target_left)
+
+        def on_step(val):
+            left_w = int(val)
+            right_w = max(50, total_w - left_w)
+            self.h_splitter.setSizes([left_w, right_w])
+
+        anim.valueChanged.connect(on_step)
+
+        if not self.is_diff_expanded:
+            def on_collapse_done():
+                if hasattr(self, "opt_comp_card") and self.opt_comp_card:
+                    self.opt_comp_card.setVisible(True)
+                if hasattr(self, "opt_opts_card") and self.opt_opts_card:
+                    self.opt_opts_card.setVisible(True)
+                if hasattr(self, "opt_nav_btn") and self.opt_nav_btn:
+                    self.opt_nav_btn.setVisible(True)
+                if hasattr(self, "opt_diff_text") and self.opt_diff_text:
+                    self.opt_diff_text.setMinimumHeight(180)
+                    self.opt_diff_text.setMaximumHeight(350)
+                    self.opt_diff_text.setHtml(format_annotated_diff_html(
+                        getattr(self, "opt_orig_code", ""),
+                        getattr(self, "opt_new_code", ""),
+                        getattr(self, "opt_applied", []),
+                        expanded=False
+                    ))
+            anim.finished.connect(on_collapse_done)
+
+        self._diff_anim = anim
+        anim.start()
 
     def switch_to_optimization(self):
         self.stack.setCurrentIndex(8)
@@ -4383,6 +4446,8 @@ class AppGUI(QMainWindow):
         if not optimized_code.strip():
             return
 
+        has_using_std = uses_namespace_std(self.editor.toPlainText())
+        optimized_code = enforce_std_namespace_style(optimized_code, target_has_using_std=has_using_std)
         self.editor.setPlainText(optimized_code)
         self.stack.setCurrentIndex(0)
 

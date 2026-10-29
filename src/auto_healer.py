@@ -802,23 +802,21 @@ def fix_name_resolution(source: str, error: dict) -> Optional[str]:
 
     # 3. If symbol belongs to std (or _SYMBOL_TO_HEADER)
     if sym and (sym in _STD_SYMBOLS or sym in _SYMBOL_TO_HEADER):
-        # If 'using namespace std;' is not in source (matching any whitespace format):
+        # If 'using namespace std;' is not in source, qualify with std:: (do NOT inject using namespace std)
         if not re.search(r'\busing\s+namespace\s+std\s*;', source):
-            lines = _lines(source)
-            last_inc = -1
-            for i, l in enumerate(lines):
-                if l.strip().startswith("#include"):
-                    last_inc = i
-            insert_pos = last_inc + 1 if last_inc >= 0 else 0
-            lines.insert(insert_pos, "using namespace std;\n")
-            return _join(lines)
-        else:
             header = _SYMBOL_TO_HEADER.get(sym)
             if header and not _has_include(source, header):
-                return _insert_include(source, header)
+                source = _insert_include(source, header)
             patched = re.sub(rf'(?<!:)\b{re.escape(sym)}\b', f"std::{sym}", source)
             if patched != source:
                 return patched
+            return source
+        else:
+            # User already uses 'using namespace std;' - ensure missing header is included
+            header = _SYMBOL_TO_HEADER.get(sym)
+            if header and not _has_include(source, header):
+                return _insert_include(source, header)
+            return source
 
     # 4. Keyword typo (only if not a known std symbol)
     if sym and sym not in _STD_SYMBOLS and sym not in _SYMBOL_TO_HEADER:

@@ -20,6 +20,7 @@ from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Dict, Any
 
 from complexity_analyzer import scan as local_scan, LocalComplexityEstimate
+from namespace_style import enforce_std_namespace_style, uses_namespace_std
 import llm_client
 from guard.output_safe import safe_text
 
@@ -68,7 +69,10 @@ SYSTEM_OPTIMIZER_PROMPT = (
     "1. Preserve ALL existing functionality, inputs/outputs, and algorithmic correctness.\n"
     "2. Preserve ALL security hardening: do NOT reintroduce unsafe functions like strcpy/gets/sprintf, do NOT remove bounds checks, do NOT introduce memory leaks.\n"
     "3. Respond ONLY with a valid JSON object matching the requested schema. Do NOT include markdown code fences or conversational text outside the JSON.\n"
-    "4. In the optimized_code, include brief, clear inline C++ comments (// Why: ...) explaining why key lines or structures were modified or added so the user understands the rationale.\n\n"
+    "4. In the optimized_code, include brief, clear inline C++ comments (// Why: ...) explaining why key lines or structures were modified or added so the user understands the rationale.\n"
+    "5. NAMESPACE CONVENTION:\n"
+    "   - If the input code has 'using namespace std;', the optimized_code MUST preserve 'using namespace std;' and keep standard library symbols unqualified (e.g. vector, cout, cin, unordered_map, pair).\n"
+    "   - If the input code does NOT have 'using namespace std;', the optimized_code MUST NOT add 'using namespace std;'. Prefix all standard library symbols with std:: (e.g. std::vector, std::cout, std::cin, std::unordered_map, std::pair).\n\n"
     "JSON Schema:\n"
     "{\n"
     '  "original_time_complexity": "O(...) for the input code before optimization",\n'
@@ -155,12 +159,15 @@ def analyze(source_code: str) -> OptimizationResult:
             "Groq API key not configured. Set GROQ_API_KEY in .env to enable AI code optimization."
         )
 
+    has_using_std = uses_namespace_std(source_code)
+
     # 3. Build prompt for Groq
     prompt_builder = [
         "// Static Pre-Analysis:",
         f"// Initial Time Complexity Hint: {local_est.time_hint}",
         f"// Initial Space Complexity Hint: {local_est.space_hint}",
         f"// Detected Heuristic Signals: {len(local_est.signals)}",
+        f"// Namespace Convention: {'Original code HAS using namespace std;' if has_using_std else 'Original code does NOT have using namespace std; - use explicit std::'}",
         "",
         "// Source C++ Code to analyze and optimize:",
         source_code
@@ -220,6 +227,8 @@ def analyze(source_code: str) -> OptimizationResult:
     optimized_code = data.get("optimized_code") or ""
     if not optimized_code.strip():
         optimized_code = source_code
+    else:
+        optimized_code = enforce_std_namespace_style(optimized_code, target_has_using_std=has_using_std)
 
     raw_optimizations = data.get("optimizations_applied") or []
     optimizations_applied: List[str] = []

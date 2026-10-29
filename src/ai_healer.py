@@ -16,6 +16,7 @@ from typing import Optional, Tuple, List
 
 import llm_client
 from llm_client import strip_markdown_fences
+from namespace_style import enforce_std_namespace_style, uses_namespace_std
 
 AI_HEAL_SYSTEM_PROMPT = (
     "You are an automated C++ code repair system.\n"
@@ -27,6 +28,7 @@ AI_HEAL_SYSTEM_PROMPT = (
     "- Do NOT change program logic, semantics, comments, or formatting elsewhere.\n"
     "- Do NOT add features, extra includes, or rewrite working functions.\n"
     "- Do NOT remove main().\n"
+    "- If source has 'using namespace std;', preserve 'using namespace std;'. If source lacks it, do NOT add it and use std::.\n"
     "Respond ONLY with a JSON object in this exact shape:\n"
     "{\n"
     '  "code": "<complete corrected C++ source file as string>",\n'
@@ -202,7 +204,10 @@ def attempt_ai_heal(
     if res.text is None:
         return None, None, [], f"AI provider error: {res.error}"
 
+    has_using_std = uses_namespace_std(source)
     candidate_code, changes = extract_ai_heal_code(res.text)
+    if candidate_code:
+        candidate_code = enforce_std_namespace_style(candidate_code, target_has_using_std=has_using_std)
     is_valid, reason, gpp_stderr = validate_ai_code(source, candidate_code) if candidate_code else (False, "Invalid JSON from AI", "")
 
     if is_valid and candidate_code:

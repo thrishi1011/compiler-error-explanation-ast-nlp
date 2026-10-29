@@ -265,7 +265,7 @@ def format_annotated_diff_html(
     if expanded:
         html_lines.append(
             "<div style='background-color: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 7px 10px; margin-bottom: 8px; color: #bae6fd; font-size: 11px;'>"
-            "<b>💡 Line-by-Line Optimization Rationale:</b> Brief comments explain why each change was made so you can understand the edits."
+            "<b>Line-by-Line Optimization Rationale:</b> Brief comments explain why each change was made so you can understand the edits."
             "</div>"
         )
 
@@ -295,7 +295,7 @@ def format_annotated_diff_html(
                     if r:
                         html_lines.append(
                             f"<div style='color: #38bdf8; font-style: italic; font-size: 10.5px; margin: 1px 0 3px 26px; padding: 2px 8px; background-color: rgba(56, 189, 248, 0.08); border-left: 2px solid #38bdf8; border-radius: 3px; white-space: normal;'>"
-                            f"// 💡 {html.escape(r)}"
+                            f"// {html.escape(r)}"
                             f"</div>"
                         )
             elif tag == "insert":
@@ -312,7 +312,7 @@ def format_annotated_diff_html(
                     if r:
                         html_lines.append(
                             f"<div style='color: #38bdf8; font-style: italic; font-size: 10.5px; margin: 1px 0 3px 26px; padding: 2px 8px; background-color: rgba(56, 189, 248, 0.08); border-left: 2px solid #38bdf8; border-radius: 3px; white-space: normal;'>"
-                            f"// 💡 {html.escape(r)}"
+                            f"// {html.escape(r)}"
                             f"</div>"
                         )
             elif tag == "replace":
@@ -341,7 +341,7 @@ def format_annotated_diff_html(
                     if r:
                         html_lines.append(
                             f"<div style='color: #38bdf8; font-style: italic; font-size: 10.5px; margin: 1px 0 3px 26px; padding: 2px 8px; background-color: rgba(56, 189, 248, 0.08); border-left: 2px solid #38bdf8; border-radius: 3px; white-space: normal;'>"
-                            f"// 💡 {html.escape(r)}"
+                            f"// {html.escape(r)}"
                             f"</div>"
                         )
 

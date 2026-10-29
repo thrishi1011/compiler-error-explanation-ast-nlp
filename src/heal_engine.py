@@ -32,6 +32,7 @@ if _SRC_DIR not in sys.path:
 from compiler_runner import _sanitize_code
 from error_parser import parse_errors
 from auto_healer import attempt_fix, UNFIXABLE_CATEGORIES, clean_duplicate_headers
+from namespace_style import enforce_std_namespace_style, uses_namespace_std
 from diff_viewer import compute_diff, format_diff_html, has_changes
 from guard import check_compile, safe_run
 import llm_client
@@ -620,6 +621,8 @@ def heal_until_clean(
 
     # 5. Final status calculation - ONE full compile to verify end state
     current_source = clean_duplicate_headers(current_source)
+    has_using_std = uses_namespace_std(source)
+    current_source = enforce_std_namespace_style(current_source, target_has_using_std=has_using_std)
     final_errors, final_warnings, _ = compile_source(current_source, syntax_only=False)
     total_duration = round(time.time() - start_time, 3)
 
