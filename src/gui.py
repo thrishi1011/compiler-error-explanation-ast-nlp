@@ -119,7 +119,7 @@ from ui_components import (
 from optimization_view import (
     build_complexity_summary, build_bottleneck_views, build_optimization_summary
 )
-from diff_viewer import compute_diff
+from diff_viewer import compute_diff, format_annotated_diff_html
 from security_view import (
     build_security_summary, finding_view, sort_findings,
     heal_security_view, blocked_banner_view,
@@ -3231,19 +3231,8 @@ class OptimizationPage(CustomFrame):
             self.txt_diff.setHtml("<p style='color: #94a3b8;'>No differences to display (code is identical or not yet optimized).</p>")
             return
 
-        diff_lines = compute_diff(original, optimized)
-
-        html_parts = ["<pre style='font-family: Consolas, monospace; font-size: 12px; margin: 0; line-height: 1.4;'>"]
-        for dl in diff_lines:
-            escaped = html.escape(dl.content)
-            if dl.kind == "+":
-                html_parts.append(f"<span style='color: #4ade80; background-color: rgba(74, 222, 128, 0.12); display: block;'>+ {escaped}</span>")
-            elif dl.kind == "-":
-                html_parts.append(f"<span style='color: #f87171; background-color: rgba(248, 113, 113, 0.12); display: block;'>- {escaped}</span>")
-            else:
-                html_parts.append(f"<span style='color: #94a3b8; display: block;'>  {escaped}</span>")
-        html_parts.append("</pre>")
-        self.txt_diff.setHtml("".join(html_parts))
+        opts = getattr(self.latest_result, "optimizations_applied", []) if getattr(self, "latest_result", None) else []
+        self.txt_diff.setHtml(format_annotated_diff_html(original, optimized, opts, expanded=True))
 
     def _on_copy_code(self):
         text = self.txt_code.toPlainText()
@@ -4198,8 +4187,8 @@ class AppGUI(QMainWindow):
         new_space = c_sum.get("space_complexity", "Unknown")
         new_time_tone = c_sum.get("time_tone", "ok")
         new_space_tone = c_sum.get("space_tone", "ok")
-        new_time_badge = c_sum.get("time_badge", "GOOD")
-        new_space_badge = c_sum.get("space_badge", "GOOD")
+        new_time_badge = ""
+        new_space_badge = ""
 
         # Before & After Complexities display
         comp_box = QVBoxLayout()
@@ -4207,13 +4196,13 @@ class AppGUI(QMainWindow):
 
         time_comp_card = ComplexityCompareCard(
             "⏱", "Time Complexity",
-            prev_val=prev_time, prev_tone=prev_time_tone, prev_badge=prev_time_badge,
-            new_val=new_time, new_tone=new_time_tone, new_badge=new_time_badge
+            prev_val=prev_time, prev_tone=prev_time_tone, prev_badge="",
+            new_val=new_time, new_tone=new_time_tone, new_badge=""
         )
         space_comp_card = ComplexityCompareCard(
             "🧠", "Space Complexity",
-            prev_val=prev_space, prev_tone=prev_space_tone, prev_badge=prev_space_badge,
-            new_val=new_space, new_tone=new_space_tone, new_badge=new_space_badge
+            prev_val=prev_space, prev_tone=prev_space_tone, prev_badge="",
+            new_val=new_space, new_tone=new_space_tone, new_badge=""
         )
         comp_box.addWidget(time_comp_card)
         comp_box.addWidget(space_comp_card)
@@ -4250,9 +4239,13 @@ class AppGUI(QMainWindow):
         self.opt_diff_text = None
         self.opt_expand_bottom_btn = None
         self.is_diff_expanded = False
+        self.opt_orig_code = original_code
+        self.opt_new_code = ""
+        self.opt_applied = opts
 
         opt_code = getattr(result, "optimized_code", "")
         if opt_code and opt_code != original_code:
+            self.opt_new_code = opt_code
             diff_card = QFrame()
             diff_card.setObjectName("Card")
             d_lay = QVBoxLayout(diff_card)
@@ -4270,7 +4263,7 @@ class AppGUI(QMainWindow):
                 "QPushButton { padding: 3px 10px; font-size: 11px; font-weight: bold; border: 1px solid #334155; border-radius: 4px; }"
                 "QPushButton:hover { background-color: rgba(56, 189, 248, 0.15); border-color: #38bdf8; }"
             )
-            self.btn_expand_diff.setToolTip("Expand diff across the entire right panel to inspect changes clearly")
+            self.btn_expand_diff.setToolTip("Expand diff across the entire right panel to inspect changes and explanatory comments clearly")
             self.btn_expand_diff.clicked.connect(self._toggle_expand_diff)
             diff_hdr.addWidget(self.btn_expand_diff)
             d_lay.addLayout(diff_hdr)
@@ -4282,38 +4275,8 @@ class AppGUI(QMainWindow):
             diff_text.setMinimumHeight(180)
             diff_text.setMaximumHeight(350)
 
-            diff_lines = compute_diff(original_code, opt_code)
-            html_lines = [
-                "<div style='font-family: Consolas, monospace; font-size: 11px; line-height: 1.45; background-color: #0d1117; padding: 6px; border-radius: 6px;'>"
-            ]
-            for dl in diff_lines:
-                escaped = html.escape(dl.content) if dl.content else "&nbsp;"
-                if dl.kind == "+":
-                    bg = "rgba(46, 160, 67, 0.25)"
-                    fg = "#3fb950"
-                    num = str(dl.line_no_new if dl.line_no_new is not None else "")
-                    prefix = "+ "
-                elif dl.kind == "-":
-                    bg = "rgba(248, 81, 73, 0.25)"
-                    fg = "#f85149"
-                    num = str(dl.line_no_old if dl.line_no_old is not None else "")
-                    prefix = "- "
-                else:
-                    bg = "transparent"
-                    fg = "#8b949e"
-                    num = str(dl.line_no_new if dl.line_no_new is not None else (dl.line_no_old if dl.line_no_old is not None else ""))
-                    prefix = "  "
-
-                line_div = (
-                    f"<div style='background-color: {bg}; color: {fg}; padding: 1px 4px; margin: 1px 0; border-radius: 2px; white-space: pre;'>"
-                    f"<span style='color: #484f58; font-size: 10px;'>{num:>3} </span>"
-                    f"<b>{prefix}</b>{escaped}"
-                    f"</div>"
-                )
-                html_lines.append(line_div)
-            html_lines.append("</div>")
-
-            diff_text.setHtml("\n".join(html_lines))
+            diff_html = format_annotated_diff_html(original_code, opt_code, opts, expanded=False)
+            diff_text.setHtml(diff_html)
             d_lay.addWidget(diff_text)
 
             btn_expand_bottom = QPushButton("⛶  Click to Expand Full Changes View")
@@ -4352,6 +4315,12 @@ class AppGUI(QMainWindow):
             if hasattr(self, "opt_diff_text") and self.opt_diff_text:
                 self.opt_diff_text.setMinimumHeight(650)
                 self.opt_diff_text.setMaximumHeight(16777215)
+                self.opt_diff_text.setHtml(format_annotated_diff_html(
+                    getattr(self, "opt_orig_code", ""),
+                    getattr(self, "opt_new_code", ""),
+                    getattr(self, "opt_applied", []),
+                    expanded=True
+                ))
             # Adjust horizontal splitter to make the right panel spacious
             total_w = self.width()
             self.h_splitter.setSizes([int(total_w * 0.42), int(total_w * 0.58)])
@@ -4370,6 +4339,12 @@ class AppGUI(QMainWindow):
             if hasattr(self, "opt_diff_text") and self.opt_diff_text:
                 self.opt_diff_text.setMinimumHeight(180)
                 self.opt_diff_text.setMaximumHeight(350)
+                self.opt_diff_text.setHtml(format_annotated_diff_html(
+                    getattr(self, "opt_orig_code", ""),
+                    getattr(self, "opt_new_code", ""),
+                    getattr(self, "opt_applied", []),
+                    expanded=False
+                ))
             # Restore splitter
             total_w = self.width()
             self.h_splitter.setSizes([int(total_w * 0.62), int(total_w * 0.38)])
@@ -5315,16 +5290,14 @@ class AppGUI(QMainWindow):
                     <tr>
                         <td style='width: 50%; padding: 10px 14px; background-color: rgba(30, 41, 59, 0.6); border: 1px solid #334155; border-radius: 6px;'>
                             <div style='font-size: 11px; color: #94a3b8; text-transform: uppercase;'>⏱ Time Complexity</div>
-                            <div style='font-size: 18px; font-weight: bold; color: {t_color}; margin-top: 2px;'>
-                                {time_comp} &nbsp;
-                                <span style='font-size: 11px; background-color: {t_bg}; color: {t_color}; padding: 2px 6px; border-radius: 4px;'>{time_badge}</span>
+                            <div style='font-size: 18px; font-weight: bold; color: #38bdf8; margin-top: 2px;'>
+                                {time_comp}
                             </div>
                         </td>
                         <td style='width: 50%; padding: 10px 14px; background-color: rgba(30, 41, 59, 0.6); border: 1px solid #334155; border-radius: 6px;'>
                             <div style='font-size: 11px; color: #94a3b8; text-transform: uppercase;'>🧠 Space Complexity</div>
-                            <div style='font-size: 18px; font-weight: bold; color: {s_color}; margin-top: 2px;'>
-                                {space_comp} &nbsp;
-                                <span style='font-size: 11px; background-color: {s_bg}; color: {s_color}; padding: 2px 6px; border-radius: 4px;'>{space_badge}</span>
+                            <div style='font-size: 18px; font-weight: bold; color: #38bdf8; margin-top: 2px;'>
+                                {space_comp}
                             </div>
                         </td>
                     </tr>

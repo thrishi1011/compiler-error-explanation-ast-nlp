@@ -853,14 +853,13 @@ class ComplexityBadge(QFrame):
         self.lbl_val.setFont(f_val)
         lay.addWidget(self.lbl_val)
 
-        self.badge_lbl = badge(badge_text, tone)
-        lay.addWidget(self.badge_lbl)
+        self.badge_lbl = plain_label("", "Muted")
+        self.badge_lbl.setVisible(False)
         lay.addStretch(1)
 
-    def set_complexity(self, big_o: str, tone: str, badge_text: str):
+    def set_complexity(self, big_o: str, tone: str = "muted", badge_text: str = ""):
         self.lbl_val.setText(big_o or "Unknown")
-        self.badge_lbl.setText(badge_text or "UNKNOWN")
-        theme.set_prop(self.badge_lbl, "tone", tone or "muted")
+        self.badge_lbl.setVisible(False)
 
 
 class ComplexityCompareCard(QFrame):
@@ -899,9 +898,6 @@ class ComplexityCompareCard(QFrame):
         lbl_prev_val.setFont(f_pv)
         row.addWidget(lbl_prev_val)
 
-        if prev_badge and prev_badge != "UNKNOWN":
-            row.addWidget(badge(prev_badge, prev_tone or "muted"))
-
         # Arrow indicator
         lbl_arrow = plain_label("➔", "Title")
         f_arr = lbl_arrow.font()
@@ -919,9 +915,6 @@ class ComplexityCompareCard(QFrame):
         f_nv.setBold(True)
         lbl_new_val.setFont(f_nv)
         row.addWidget(lbl_new_val)
-
-        if new_badge and new_badge != "UNKNOWN":
-            row.addWidget(badge(new_badge, new_tone or "ok"))
 
         row.addStretch(1)
         lay.addLayout(row)
@@ -1006,8 +999,8 @@ class ComplexityStripWidget(QFrame):
         s_badge = summary.get("space_badge", "")
         count = summary.get("bottleneck_count", 0)
 
-        t_text = f"⏱ Time: {t_val}" + (f" ({t_badge})" if t_badge and t_badge != "UNKNOWN" else "")
-        s_text = f"🧠 Space: {s_val}" + (f" ({s_badge})" if s_badge and s_badge != "UNKNOWN" else "")
+        t_text = f"⏱ Time: {t_val}"
+        s_text = f"🧠 Space: {s_val}"
         b_text = f"⚡ {count} bottleneck{'s' if count != 1 else ''}"
 
         self.lbl_time.setText(t_text)

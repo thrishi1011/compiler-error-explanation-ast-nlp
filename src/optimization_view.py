@@ -40,25 +40,10 @@ def complexity_tone(big_o: str) -> str:
 
 def complexity_badge_label(big_o: str) -> str:
     """
-    Returns short badge text indicating speed or risk:
-    FAST | OK | SLOW | CRITICAL | DANGER | UNKNOWN
+    Returns empty string. Risk/rating labels ('DANGER', 'GOOD', etc.)
+    are disabled to display pure Big-O complexity.
     """
-    if not big_o or big_o.lower() in ("unknown", "n/a", "?"):
-        return "UNKNOWN"
-
-    bo = big_o.replace(" ", "").lower()
-    if "o(n!)" in bo or "o(2^n)" in bo:
-        return "DANGER"
-    if any(k in bo for k in ["o(n^3)", "o(n³)", "o(n^4)"]):
-        return "CRITICAL"
-    if any(k in bo for k in ["o(n^2)", "o(n²)"]):
-        return "SLOW"
-    if any(k in bo for k in ["o(nlogn)", "o(n*logn)", "o(n)"]):
-        return "GOOD"
-    if any(k in bo for k in ["o(1)", "o(logn)", "o(log(n))"]):
-        return "FAST"
-
-    return "INFO"
+    return ""
 
 
 def build_complexity_summary(result: Any) -> Dict[str, Any]:
@@ -93,7 +78,7 @@ def build_complexity_summary(result: Any) -> Dict[str, Any]:
     bottlenecks = res.get("bottlenecks") or res.get("signals") or []
     count = len(bottlenecks)
 
-    headline = f"Time {orig_time_comp} ➔ {time_comp} [{time_badge}] · Space {orig_space_comp} ➔ {space_comp} [{space_badge}] · {count} bottleneck{'s' if count != 1 else ''}"
+    headline = f"Time {orig_time_comp} ➔ {time_comp} · Space {orig_space_comp} ➔ {space_comp} · {count} bottleneck{'s' if count != 1 else ''}"
 
     return {
         "time_complexity": safe_text(time_comp),

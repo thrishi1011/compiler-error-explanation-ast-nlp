@@ -67,7 +67,8 @@ SYSTEM_OPTIMIZER_PROMPT = (
     "CRITICAL CONSTRAINTS:\n"
     "1. Preserve ALL existing functionality, inputs/outputs, and algorithmic correctness.\n"
     "2. Preserve ALL security hardening: do NOT reintroduce unsafe functions like strcpy/gets/sprintf, do NOT remove bounds checks, do NOT introduce memory leaks.\n"
-    "3. Respond ONLY with a valid JSON object matching the requested schema. Do NOT include markdown code fences or conversational text outside the JSON.\n\n"
+    "3. Respond ONLY with a valid JSON object matching the requested schema. Do NOT include markdown code fences or conversational text outside the JSON.\n"
+    "4. In the optimized_code, include brief, clear inline C++ comments (// Why: ...) explaining why key lines or structures were modified or added so the user understands the rationale.\n\n"
     "JSON Schema:\n"
     "{\n"
     '  "original_time_complexity": "O(...) for the input code before optimization",\n'
