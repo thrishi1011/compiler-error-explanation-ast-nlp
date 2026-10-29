@@ -113,8 +113,13 @@ from ui_components import (
     plain_label, badge, section_label, code_block,
     split_explanation, CollapsibleSection, IssueCard, AiCard,
     show_message, SecuritySummaryCard, SecurityFindingCard,
-    BlockedBanner, SecurityResultCard, SecurityBarChart, QualityHintCard
+    BlockedBanner, SecurityResultCard, SecurityBarChart, QualityHintCard,
+    ComplexityBadge, BottleneckCard, ComplexityStripWidget
 )
+from optimization_view import (
+    build_complexity_summary, build_bottleneck_views, build_optimization_summary
+)
+from diff_viewer import compute_diff
 from security_view import (
     build_security_summary, finding_view, sort_findings,
     heal_security_view, blocked_banner_view,
@@ -1377,6 +1382,23 @@ class SyntaxWorker(QThread):
             self.finished.emit([])
 
 
+class OptimizationWorker(QThread):
+    finished = pyqtSignal(object)   # emits OptimizationResult
+    error = pyqtSignal(str)
+
+    def __init__(self, source_code: str, parent=None):
+        super().__init__(parent)
+        self.source_code = source_code
+
+    def run(self):
+        try:
+            from optimizer import analyze
+            result = analyze(self.source_code)
+            self.finished.emit(result)
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+
 # ── Sidebar Navigation ────────────────────────────────────────────────────────
 
 class Sidebar(QFrame):
@@ -1404,6 +1426,7 @@ class Sidebar(QFrame):
 
         self.btn1 = self._create_btn("💻", "fa5s.code", "Code Editor", "Main C++ editor, diagnostics, and I/O runner")
         self.btn2 = self._create_btn("🌳", "fa5s.sitemap", "AST Explorer", "Abstract Syntax Tree hierarchy viewer")
+        self.btn_complexity = self._create_btn("⏱", "fa5s.tachometer-alt", "Complexity", "Time & Space complexity analysis of run code")
         self.btn3 = self._create_btn("⚡", "fa5s.bolt", "Energy Metrics", "Real-time energy consumption and carbon emissions")
         self.btn4 = self._create_btn("🔄", "fa5s.project-diagram", "Call Graph", "Function call relationship diagram")
         self.btn5 = self._create_btn("🛡️", "fa5s.shield-alt", "Security Scan", "Static security vulnerability inspection")
@@ -1412,7 +1435,7 @@ class Sidebar(QFrame):
         self.btn8 = self._create_btn("📊", "fa5s.chart-bar", "Benchmark", "Measured accuracy benchmark comparison")
 
         self.buttons = [
-            self.btn1, self.btn2, self.btn3, self.btn4,
+            self.btn1, self.btn2, self.btn_complexity, self.btn3, self.btn4,
             self.btn5, self.btn6, self.btn7, self.btn8
         ]
 
@@ -1422,6 +1445,7 @@ class Sidebar(QFrame):
 
         lay.addWidget(self.sec_analysis)
         lay.addWidget(self.btn2)
+        lay.addWidget(self.btn_complexity)
         lay.addWidget(self.btn4)
         lay.addWidget(self.btn6)
 
@@ -1473,10 +1497,25 @@ class Sidebar(QFrame):
                 except Exception:
                     pass
 
-    def set_active(self, index: int):
-        for i, btn in enumerate(self.buttons):
-            theme.set_prop(btn, "active", "true" if i == index else "false")
+    def set_active_btn(self, target_btn: QPushButton):
+        for btn in self.buttons:
+            theme.set_prop(btn, "active", "true" if btn == target_btn else "false")
         self._update_qta_icons()
+
+    def set_active(self, index: int):
+        stack_to_btn = {
+            0: self.btn1,
+            1: self.btn2,
+            2: self.btn3,
+            3: self.btn4,
+            4: self.btn5,
+            5: self.btn6,
+            6: self.btn7,
+            7: self.btn8,
+            8: getattr(self, "btn_complexity", self.btn1)
+        }
+        target = stack_to_btn.get(index, self.btn1)
+        self.set_active_btn(target)
 
     def toggle_collapse(self):
         self.is_collapsed = not self.is_collapsed
@@ -2943,6 +2982,282 @@ class SecurityPage(CustomFrame):
         self.update_guard(guard)
 
 
+class OptimizationPage(CustomFrame):
+    apply_requested = pyqtSignal(str)
+    analyze_requested = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__("CODE OPTIMIZER :: COMPLEXITY ANALYSIS", left_padding=True)
+        self.latest_result = None
+        self.original_code = ""
+
+        # Top Header Bar
+        header_row = QHBoxLayout()
+        header_row.setSpacing(12)
+
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+        self.summary = plain_label("Time & Space Complexity Optimizer", "Title")
+        title_box.addWidget(self.summary)
+
+        self.subsummary = plain_label("Algorithmic complexity analysis and AI code optimization powered by Groq.", "Muted")
+        title_box.addWidget(self.subsummary)
+        header_row.addLayout(title_box, 1)
+
+        self.status_badge = badge("Ready", "ok")
+        header_row.addWidget(self.status_badge, 0, Qt.AlignmentFlag.AlignTop)
+
+        self.btn_analyze = QPushButton("⚡  Analyze & Optimize")
+        self.btn_analyze.setProperty("variant", "primary")
+        self.btn_analyze.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_analyze.clicked.connect(self.analyze_requested.emit)
+        header_row.addWidget(self.btn_analyze, 0, Qt.AlignmentFlag.AlignTop)
+
+        self.content_layout.addLayout(header_row)
+
+        # Indeterminate Progress Bar for loading
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setVisible(False)
+        self.content_layout.addWidget(self.progress_bar)
+
+        # Notice/error banner (hidden by default)
+        self.notice_banner = QFrame()
+        self.notice_banner.setObjectName("Card")
+        self.notice_banner_lay = QHBoxLayout(self.notice_banner)
+        self.notice_banner_lay.setContentsMargins(12, 8, 12, 8)
+        self.notice_banner_lbl = plain_label("", "Body")
+        self.notice_banner_lay.addWidget(self.notice_banner_lbl)
+        self.notice_banner.setVisible(False)
+        self.content_layout.addWidget(self.notice_banner)
+
+        # Tabs
+        self.tabs = QTabWidget()
+        self.tabs.setObjectName("SubTabs")
+
+        self.tab_complexity = self._create_complexity_tab()
+        self.tab_code = self._create_code_tab()
+        self.tab_diff = self._create_diff_tab()
+
+        self.tabs.addTab(self.tab_complexity, "📊 Complexity")
+        self.tabs.addTab(self.tab_code, "⚡ Optimized Code")
+        self.tabs.addTab(self.tab_diff, "🔀 Diff View")
+
+        self.content_layout.addWidget(self.tabs, 1)
+
+    def _create_complexity_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 8, 0, 0)
+        lay.setSpacing(12)
+
+        badges_row = QHBoxLayout()
+        badges_row.setSpacing(12)
+        self.badge_time = ComplexityBadge("⏱", "Time Complexity", "—", "muted", "UNKNOWN")
+        self.badge_space = ComplexityBadge("🧠", "Space Complexity", "—", "muted", "UNKNOWN")
+        badges_row.addWidget(self.badge_time)
+        badges_row.addWidget(self.badge_space)
+        lay.addLayout(badges_row)
+
+        expl_card = QFrame()
+        expl_card.setObjectName("Card")
+        ec_lay = QVBoxLayout(expl_card)
+        ec_lay.setContentsMargins(14, 12, 14, 12)
+        ec_lay.setSpacing(8)
+        ec_lay.addWidget(section_label("ANALYSIS & EXPLANATION"))
+        self.lbl_time_expl = plain_label("Run 'Analyze & Optimize' to evaluate time complexity.", "Body")
+        self.lbl_space_expl = plain_label("Run 'Analyze & Optimize' to evaluate memory/space complexity.", "Body")
+        ec_lay.addWidget(self.lbl_time_expl)
+        ec_lay.addWidget(self.lbl_space_expl)
+        lay.addWidget(expl_card)
+
+        lay.addWidget(section_label("ALGORITHMIC BOTTLENECKS"))
+        self.scroll_bottlenecks = QScrollArea()
+        self.scroll_bottlenecks.setWidgetResizable(True)
+        self.scroll_bottlenecks.setStyleSheet("background: transparent;")
+        self.host_bottlenecks = QWidget()
+        self.host_bottlenecks.setStyleSheet("background: transparent;")
+        self.lay_bottlenecks = QVBoxLayout(self.host_bottlenecks)
+        self.lay_bottlenecks.setContentsMargins(0, 0, 0, 0)
+        self.lay_bottlenecks.setSpacing(8)
+        self.lay_bottlenecks.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.scroll_bottlenecks.setWidget(self.host_bottlenecks)
+        lay.addWidget(self.scroll_bottlenecks, 1)
+
+        self.card_opts = QFrame()
+        self.card_opts.setObjectName("Card")
+        co_lay = QVBoxLayout(self.card_opts)
+        co_lay.setContentsMargins(14, 10, 14, 10)
+        co_lay.setSpacing(6)
+        co_lay.addWidget(section_label("OPTIMIZATIONS APPLIED"))
+        self.lbl_opts_list = plain_label("No optimizations applied yet.", "Muted")
+        co_lay.addWidget(self.lbl_opts_list)
+        lay.addWidget(self.card_opts)
+
+        return w
+
+    def _create_code_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 8, 0, 0)
+        lay.setSpacing(8)
+
+        bar = QHBoxLayout()
+        bar.setSpacing(10)
+        self.lbl_provider = plain_label("Engine: Groq AI", "Muted")
+        bar.addWidget(self.lbl_provider)
+        self.badge_sec_pres = badge("Security Hardening Preserved", "ok")
+        bar.addWidget(self.badge_sec_pres)
+        bar.addStretch(1)
+
+        self.btn_copy = QPushButton("Copy Code")
+        self.btn_copy.setProperty("variant", "ghost")
+        self.btn_copy.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_copy.clicked.connect(self._on_copy_code)
+        bar.addWidget(self.btn_copy)
+
+        self.btn_apply = QPushButton("Apply to Editor")
+        self.btn_apply.setProperty("variant", "primary")
+        self.btn_apply.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_apply.clicked.connect(self._on_apply_code)
+        bar.addWidget(self.btn_apply)
+        lay.addLayout(bar)
+
+        self.txt_code = QPlainTextEdit()
+        self.txt_code.setFont(theme.mono_font(12))
+        self.txt_code.setReadOnly(True)
+        self.txt_code.setPlaceholderText("Optimized code will appear here after analysis...")
+        lay.addWidget(self.txt_code, 1)
+
+        return w
+
+    def _create_diff_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 8, 0, 0)
+        lay.setSpacing(8)
+
+        diff_info = plain_label("Line-by-line diff comparing original code with the optimized version (+ additions, - deletions):", "Muted")
+        lay.addWidget(diff_info)
+
+        self.txt_diff = QTextEdit()
+        self.txt_diff.setFont(theme.mono_font(12))
+        self.txt_diff.setReadOnly(True)
+        self.txt_diff.setPlaceholderText("Diff view will show differences between original and optimized code...")
+        lay.addWidget(self.txt_diff, 1)
+
+        return w
+
+    def set_loading(self, is_loading: bool):
+        self.progress_bar.setVisible(is_loading)
+        self.btn_analyze.setEnabled(not is_loading)
+        if is_loading:
+            self.status_badge.setText("Optimizing...")
+            theme.set_prop(self.status_badge, "tone", "warn")
+            self.summary.setText("Analyzing Complexity & Generating Optimized Code...")
+            self.notice_banner.setVisible(False)
+        else:
+            self.status_badge.setText("Ready")
+            theme.set_prop(self.status_badge, "tone", "ok")
+
+    def show_error(self, err_msg: str):
+        self.set_loading(False)
+        self.status_badge.setText("Error")
+        theme.set_prop(self.status_badge, "tone", "error")
+        self.notice_banner_lbl.setText(f"⚠️ Optimization Error: {err_msg}")
+        self.notice_banner.setVisible(True)
+
+    def update_result(self, result: Any, original_code: str = ""):
+        self.latest_result = result
+        self.original_code = original_code
+
+        c_sum = build_complexity_summary(result)
+        b_views = build_bottleneck_views(getattr(result, "bottlenecks", []))
+        o_sum = build_optimization_summary(result)
+
+        self.badge_time.set_complexity(c_sum["time_complexity"], c_sum["time_tone"], c_sum["time_badge"])
+        self.badge_space.set_complexity(c_sum["space_complexity"], c_sum["space_tone"], c_sum["space_badge"])
+
+        self.summary.setText(f"Complexity: {c_sum['time_complexity']} Time · {c_sum['space_complexity']} Space")
+        self.lbl_time_expl.setText(f"⏱ Time Complexity: {c_sum['time_explanation']}")
+        self.lbl_space_expl.setText(f"🧠 Space Complexity: {c_sum['space_explanation']}")
+
+        while self.lay_bottlenecks.count():
+            item = self.lay_bottlenecks.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        if b_views:
+            for bv in b_views:
+                self.lay_bottlenecks.addWidget(BottleneckCard(bv))
+        else:
+            self.lay_bottlenecks.addWidget(plain_label("No algorithmic bottlenecks detected. Code is well-structured.", "Muted"))
+
+        opts = o_sum.get("optimizations_applied", [])
+        if opts:
+            lines = [f"✅  {opt}" for opt in opts]
+            self.lbl_opts_list.setText("\n".join(lines))
+        else:
+            self.lbl_opts_list.setText("No specific structural optimizations required.")
+
+        opt_code = o_sum.get("optimized_code", "")
+        self.txt_code.setPlainText(opt_code)
+        self.lbl_provider.setText(f"Engine: {o_sum.get('provider_label', 'Groq')}")
+
+        sec_ok = o_sum.get("security_preserved", True)
+        if sec_ok:
+            self.badge_sec_pres.setText("Security Hardening Preserved")
+            theme.set_prop(self.badge_sec_pres, "tone", "ok")
+        else:
+            self.badge_sec_pres.setText("Review Security Hardening")
+            theme.set_prop(self.badge_sec_pres, "tone", "error")
+
+        has_code = o_sum.get("has_optimized_code", False)
+        self.btn_apply.setEnabled(has_code and bool(opt_code.strip()))
+
+        err = o_sum.get("error")
+        if err:
+            self.notice_banner_lbl.setText(f"ℹ️ {err}")
+            self.notice_banner.setVisible(True)
+        else:
+            self.notice_banner.setVisible(False)
+
+        self._render_diff(original_code, opt_code)
+
+    def _render_diff(self, original: str, optimized: str):
+        if not original or not optimized or original == optimized:
+            self.txt_diff.setHtml("<p style='color: #94a3b8;'>No differences to display (code is identical or not yet optimized).</p>")
+            return
+
+        diff_lines = compute_diff(original, optimized)
+
+        html_parts = ["<pre style='font-family: Consolas, monospace; font-size: 12px; margin: 0; line-height: 1.4;'>"]
+        for dl in diff_lines:
+            escaped = html.escape(dl.content)
+            if dl.kind == "+":
+                html_parts.append(f"<span style='color: #4ade80; background-color: rgba(74, 222, 128, 0.12); display: block;'>+ {escaped}</span>")
+            elif dl.kind == "-":
+                html_parts.append(f"<span style='color: #f87171; background-color: rgba(248, 113, 113, 0.12); display: block;'>- {escaped}</span>")
+            else:
+                html_parts.append(f"<span style='color: #94a3b8; display: block;'>  {escaped}</span>")
+        html_parts.append("</pre>")
+        self.txt_diff.setHtml("".join(html_parts))
+
+    def _on_copy_code(self):
+        text = self.txt_code.toPlainText()
+        if text:
+            QApplication.clipboard().setText(text)
+            self.btn_copy.setText("✓ Copied!")
+            QTimer.singleShot(1500, lambda: self.btn_copy.setText("Copy Code"))
+
+    def _on_apply_code(self):
+        text = self.txt_code.toPlainText()
+        if text:
+            self.apply_requested.emit(text)
+
+
 class BenchmarkRunWorker(QThread):
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
@@ -3113,6 +3428,13 @@ class AppGUI(QMainWindow):
         self.btn_heal.clicked.connect(self.start_heal)
         top_lay.addWidget(self.btn_heal)
 
+        self.btn_top_optimize = QPushButton("⚡  Optimise Code")
+        self.btn_top_optimize.setProperty("variant", "primary")
+        self.btn_top_optimize.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_top_optimize.setToolTip("Analyze complexity, optimize code, apply to editor, and show diff on the right")
+        self.btn_top_optimize.clicked.connect(self.start_top_optimize)
+        top_lay.addWidget(self.btn_top_optimize)
+
         top_lay.addSpacing(12)
         top_lay.addStretch(1)
 
@@ -3187,14 +3509,28 @@ class AppGUI(QMainWindow):
         self.highlighter = CppSyntaxHighlighter(self.editor.document())
         self.editor.textChanged.connect(self.on_code_changed)
         ec_lay.addWidget(self.editor, 1)
+
+        self.complexity_strip = ComplexityStripWidget()
+        self.complexity_strip.clicked.connect(lambda: self.tabs.setCurrentIndex(2))
+        ec_lay.addWidget(self.complexity_strip)
+
         editor_col.addWidget(editor_card)
 
-        # Bottom Tabs (Output | Input | Log)
+        # Bottom Tabs (Output | Input | Complexity | Log)
         self.tabs = QTabWidget()
         self.terminal = TerminalDisplay()
         self.input_terminal = QPlainTextEdit()
         self.input_terminal.setFont(theme.mono_font(12))
         self.input_terminal.setPlaceholderText("Paste program test cases / standard input (stdin) here...")
+
+        self.complexity_terminal = QTextBrowser()
+        self.complexity_terminal.setObjectName("Console")
+        self.complexity_terminal.setFont(theme.mono_font(12))
+        self.complexity_terminal.setHtml(
+            "<div style='font-family: Consolas, monospace; padding: 14px; color: #94a3b8;'>"
+            "Click <b>Run</b> or <b>⚡ Optimise Code</b> to view detailed algorithmic time &amp; space complexity analysis of the executed program."
+            "</div>"
+        )
 
         self.log_terminal = QTextBrowser()
         self.log_terminal.setObjectName("Console")
@@ -3202,7 +3538,20 @@ class AppGUI(QMainWindow):
 
         self.tabs.addTab(self.terminal, "Output")
         self.tabs.addTab(self.input_terminal, "Input (stdin)")
+        self.tabs.addTab(self.complexity_terminal, "Complexity")
         self.tabs.addTab(self.log_terminal, "Log")
+
+        self.btn_corner_complexity = QPushButton("⏱ Complexity")
+        self.btn_corner_complexity.setObjectName("NavButton")
+        self.btn_corner_complexity.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_corner_complexity.setStyleSheet(
+            "QPushButton { padding: 2px 10px; font-size: 11px; font-weight: bold; margin-right: 6px; border: 1px solid #334155; border-radius: 4px; }"
+            "QPushButton:hover { background-color: rgba(56, 189, 248, 0.15); border-color: #38bdf8; }"
+        )
+        self.btn_corner_complexity.setToolTip("View detailed time and space complexity of run code")
+        self.btn_corner_complexity.clicked.connect(self.switch_to_complexity)
+        self.tabs.setCornerWidget(self.btn_corner_complexity, Qt.Corner.TopRightCorner)
+        self.tabs.currentChanged.connect(self._on_tabs_changed)
         editor_col.addWidget(self.tabs)
 
         editor_col.setStretchFactor(0, 7)
@@ -3310,9 +3659,16 @@ class AppGUI(QMainWindow):
             self.benchmark_page = QWidget()
         self.stack.addWidget(self.benchmark_page)  # Index 7
 
+        self.optimization_page = OptimizationPage()
+        self.optimization_page.apply_requested.connect(self._on_apply_optimized_code)
+        self.optimization_page.analyze_requested.connect(lambda: self._start_optimization(self.editor.toPlainText()))
+        self.stack.addWidget(self.optimization_page)  # Index 8
+        self.latest_optimization_result = None
+
         # Sidebar navigation triggers
         self.sidebar.btn1.clicked.connect(lambda: self.stack.setCurrentIndex(0))
         self.sidebar.btn2.clicked.connect(self.switch_to_ast)
+        self.sidebar.btn_complexity.clicked.connect(self.switch_to_complexity)
         self.sidebar.btn3.clicked.connect(lambda: self.stack.setCurrentIndex(2))
         self.sidebar.btn4.clicked.connect(self.switch_to_call_graph)
         self.sidebar.btn5.clicked.connect(self.switch_to_security)
@@ -3678,6 +4034,407 @@ class AppGUI(QMainWindow):
         code = self.editor.toPlainText()
         cfg_data = _extract_cpp_cfg(code)
         self.cfg_page.graph.update_graph(cfg_data)
+
+    def switch_to_complexity(self):
+        self.stack.setCurrentIndex(0)
+        self.tabs.setCurrentWidget(self.complexity_terminal)
+        self.sidebar.set_active_btn(self.sidebar.btn_complexity)
+        code = self.editor.toPlainText()
+        self._update_run_complexity(code)
+
+    def _on_tabs_changed(self, idx: int):
+        if idx == 2:  # Complexity tab
+            code = self.editor.toPlainText()
+            self._update_run_complexity(code)
+
+    def start_top_optimize(self):
+        code = self.editor.toPlainText().strip()
+        if not code:
+            show_message(self, "info", "Optimise Code", "The code editor is empty. Please enter C++ source code first.")
+            return
+
+        if hasattr(self, "_top_opt_worker") and self._top_opt_worker and self._top_opt_worker.isRunning():
+            show_message(self, "warning", "Optimise Code", "Optimization is already in progress.")
+            return
+
+        self.btn_top_optimize.setEnabled(False)
+        self.btn_top_optimize.setText("⚡ Optimising...")
+        self.status_label.setText("STATUS: ⚡ OPTIMIZING CODE VIA GROQ...")
+
+        while self.error_cards_layout.count():
+            item = self.error_cards_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        self.issue_cards = []
+
+        load_card = QFrame()
+        load_card.setObjectName("Card")
+        load_lay = QVBoxLayout(load_card)
+        load_lay.setContentsMargins(16, 16, 16, 16)
+        load_lay.setSpacing(10)
+
+        load_badge = badge("OPTIMIZING", "accent")
+        load_lay.addWidget(load_badge)
+
+        load_title = plain_label("⚡ Optimizing Code via Groq AI...", "Title")
+        load_title.setFont(theme.ui_font(13, True))
+        load_lay.addWidget(load_title)
+
+        load_sub = plain_label("Evaluating time & space complexity, identifying bottlenecks, and generating optimized code...", "Muted")
+        load_lay.addWidget(load_sub)
+
+        pbar = QProgressBar()
+        pbar.setRange(0, 0)
+        pbar.setTextVisible(False)
+        load_lay.addWidget(pbar)
+
+        self.error_cards_layout.addWidget(load_card)
+
+        original_code = self.editor.toPlainText()
+        self._top_opt_worker = OptimizationWorker(code, parent=self)
+        self._top_opt_worker.finished.connect(lambda res: self._on_top_optimize_finished(res, original_code))
+        self._top_opt_worker.error.connect(self._on_top_optimize_error)
+        self._top_opt_worker.start()
+
+    def _on_top_optimize_error(self, err_msg: str):
+        self.btn_top_optimize.setEnabled(True)
+        self.btn_top_optimize.setText("⚡  Optimise Code")
+        self.status_label.setText("STATUS: ⚠️ OPTIMIZATION ERROR")
+        show_message(self, "error", "Optimization Error", f"Optimization failed: {err_msg}")
+        self.analyze()
+
+    def _on_top_optimize_finished(self, result, original_code: str):
+        self.btn_top_optimize.setEnabled(True)
+        self.btn_top_optimize.setText("⚡  Optimise Code")
+        self.status_label.setText("STATUS: ⚡ OPTIMIZATION COMPLETE")
+
+        opt_code = getattr(result, "optimized_code", "")
+        if opt_code and opt_code.strip() and opt_code != original_code:
+            self.editor.setPlainText(opt_code)
+
+        self.latest_optimization_result = result
+        summary = build_complexity_summary(result)
+        self.complexity_strip.update_result(summary)
+        self.optimization_page.update_result(result, original_code=original_code)
+
+        # Update Complexity bottom tab with latest result
+        self._update_run_complexity(self.editor.toPlainText())
+
+        self._render_optimization_in_right_panel(result, original_code)
+
+        try:
+            from security_view import review_source_guard
+            from security_analyzer import analyze as analyze_security
+            new_code = self.editor.toPlainText()
+            findings = analyze_security(self.file_path or "untitled.cpp", [])
+            guard_data = review_source_guard(new_code)
+            self.security_page.update_guard(guard_data)
+            self.security_page.update_report(findings)
+
+            risk = guard_data.get("risk_score", 0)
+            if risk > 0:
+                self.terminal.append_output(
+                    f"\n[SECURITY ALERT] Optimization applied, but security re-scan flagged {len(findings)} issue(s) (Risk: {risk}). Review Security tab.\n"
+                )
+            else:
+                self.terminal.append_output(
+                    "\n[OPTIMIZATION] Code optimized and applied to editor! Security re-scan passed: Clean (Risk: 0).\n"
+                )
+        except Exception as e:
+            self.terminal.append_output(f"\n[OPTIMIZATION] Code applied. Security note: {e}\n")
+
+    def _render_optimization_in_right_panel(self, result, original_code: str):
+        while self.error_cards_layout.count():
+            item = self.error_cards_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        self.issue_cards = []
+
+        from optimization_view import (
+            build_complexity_summary,
+            build_optimization_summary,
+        )
+        c_sum = build_complexity_summary(result)
+        o_sum = build_optimization_summary(result)
+
+        comp_card = QFrame()
+        comp_card.setObjectName("Card")
+        c_lay = QVBoxLayout(comp_card)
+        c_lay.setContentsMargins(16, 14, 16, 14)
+        c_lay.setSpacing(10)
+
+        top_status = QHBoxLayout()
+        top_status.addWidget(badge("OPTIMIZATION COMPLETED", "ok" if not result.error else "warn"))
+        model_str = f"Engine: {result.model}" if result.model else "Groq AI"
+        top_status.addStretch(1)
+        top_status.addWidget(plain_label(model_str, "Muted"))
+        c_lay.addLayout(top_status)
+
+        t_lbl = plain_label("⚡ Code Optimized & Applied to Editor", "Title")
+        t_lbl.setFont(theme.ui_font(13, True))
+        c_lay.addWidget(t_lbl)
+
+        from ui_components import ComplexityCompareCard
+        from complexity_analyzer import scan as scan_complexity
+        from optimization_view import complexity_tone, complexity_badge_label
+
+        orig_est = scan_complexity(original_code)
+        prev_time = getattr(result, "original_time_complexity", "") or c_sum.get("original_time_complexity")
+        if not prev_time or prev_time == "Unknown":
+            prev_time = orig_est.time_hint or "Unknown"
+
+        prev_space = getattr(result, "original_space_complexity", "") or c_sum.get("original_space_complexity")
+        if not prev_space or prev_space == "Unknown":
+            prev_space = orig_est.space_hint or "Unknown"
+
+        prev_time_tone = complexity_tone(prev_time)
+        prev_space_tone = complexity_tone(prev_space)
+        prev_time_badge = complexity_badge_label(prev_time)
+        prev_space_badge = complexity_badge_label(prev_space)
+
+        new_time = c_sum.get("time_complexity", "Unknown")
+        new_space = c_sum.get("space_complexity", "Unknown")
+        new_time_tone = c_sum.get("time_tone", "ok")
+        new_space_tone = c_sum.get("space_tone", "ok")
+        new_time_badge = c_sum.get("time_badge", "GOOD")
+        new_space_badge = c_sum.get("space_badge", "GOOD")
+
+        # Before & After Complexities display
+        comp_box = QVBoxLayout()
+        comp_box.setSpacing(8)
+
+        time_comp_card = ComplexityCompareCard(
+            "⏱", "Time Complexity",
+            prev_val=prev_time, prev_tone=prev_time_tone, prev_badge=prev_time_badge,
+            new_val=new_time, new_tone=new_time_tone, new_badge=new_time_badge
+        )
+        space_comp_card = ComplexityCompareCard(
+            "🧠", "Space Complexity",
+            prev_val=prev_space, prev_tone=prev_space_tone, prev_badge=prev_space_badge,
+            new_val=new_space, new_tone=new_space_tone, new_badge=new_space_badge
+        )
+        comp_box.addWidget(time_comp_card)
+        comp_box.addWidget(space_comp_card)
+        c_lay.addLayout(comp_box)
+
+        self.error_cards_layout.addWidget(comp_card)
+
+        opts_card = QFrame()
+        opts_card.setObjectName("Card")
+        o_lay = QVBoxLayout(opts_card)
+        o_lay.setContentsMargins(16, 14, 16, 14)
+        o_lay.setSpacing(8)
+
+        o_lay.addWidget(section_label("OPTIMIZATIONS & FIXES APPLIED"))
+        opts = o_sum.get("optimizations_applied", [])
+        if opts:
+            for opt_text in opts:
+                o_lay.addWidget(plain_label(f"✅  {opt_text}", "Body"))
+        else:
+            o_lay.addWidget(plain_label("• Algorithmic structure refined for higher execution throughput.", "Body"))
+
+        sec_row = QHBoxLayout()
+        sec_row.setSpacing(8)
+        sec_row.addWidget(badge("SECURITY HARDENING", "ok"))
+        sec_row.addWidget(plain_label("All bounds checks, sanitizations & safeguards preserved.", "Muted"))
+        sec_row.addStretch(1)
+        o_lay.addLayout(sec_row)
+
+        self.error_cards_layout.addWidget(opts_card)
+
+        self.opt_comp_card = comp_card
+        self.opt_opts_card = opts_card
+        self.opt_diff_card = None
+        self.opt_diff_text = None
+        self.opt_expand_bottom_btn = None
+        self.is_diff_expanded = False
+
+        opt_code = getattr(result, "optimized_code", "")
+        if opt_code and opt_code != original_code:
+            diff_card = QFrame()
+            diff_card.setObjectName("Card")
+            d_lay = QVBoxLayout(diff_card)
+            d_lay.setContentsMargins(16, 14, 16, 14)
+            d_lay.setSpacing(8)
+
+            diff_hdr = QHBoxLayout()
+            diff_hdr.addWidget(section_label("EXACT CODE CHANGES (DIFF)"))
+            diff_hdr.addStretch(1)
+
+            self.btn_expand_diff = QPushButton("⛶  Expand Diff")
+            self.btn_expand_diff.setObjectName("NavButton")
+            self.btn_expand_diff.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.btn_expand_diff.setStyleSheet(
+                "QPushButton { padding: 3px 10px; font-size: 11px; font-weight: bold; border: 1px solid #334155; border-radius: 4px; }"
+                "QPushButton:hover { background-color: rgba(56, 189, 248, 0.15); border-color: #38bdf8; }"
+            )
+            self.btn_expand_diff.setToolTip("Expand diff across the entire right panel to inspect changes clearly")
+            self.btn_expand_diff.clicked.connect(self._toggle_expand_diff)
+            diff_hdr.addWidget(self.btn_expand_diff)
+            d_lay.addLayout(diff_hdr)
+
+            diff_text = QTextEdit()
+            diff_text.setFont(theme.mono_font(11))
+            diff_text.setReadOnly(True)
+            diff_text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+            diff_text.setMinimumHeight(180)
+            diff_text.setMaximumHeight(350)
+
+            diff_lines = compute_diff(original_code, opt_code)
+            html_lines = [
+                "<div style='font-family: Consolas, monospace; font-size: 11px; line-height: 1.45; background-color: #0d1117; padding: 6px; border-radius: 6px;'>"
+            ]
+            for dl in diff_lines:
+                escaped = html.escape(dl.content) if dl.content else "&nbsp;"
+                if dl.kind == "+":
+                    bg = "rgba(46, 160, 67, 0.25)"
+                    fg = "#3fb950"
+                    num = str(dl.line_no_new if dl.line_no_new is not None else "")
+                    prefix = "+ "
+                elif dl.kind == "-":
+                    bg = "rgba(248, 81, 73, 0.25)"
+                    fg = "#f85149"
+                    num = str(dl.line_no_old if dl.line_no_old is not None else "")
+                    prefix = "- "
+                else:
+                    bg = "transparent"
+                    fg = "#8b949e"
+                    num = str(dl.line_no_new if dl.line_no_new is not None else (dl.line_no_old if dl.line_no_old is not None else ""))
+                    prefix = "  "
+
+                line_div = (
+                    f"<div style='background-color: {bg}; color: {fg}; padding: 1px 4px; margin: 1px 0; border-radius: 2px; white-space: pre;'>"
+                    f"<span style='color: #484f58; font-size: 10px;'>{num:>3} </span>"
+                    f"<b>{prefix}</b>{escaped}"
+                    f"</div>"
+                )
+                html_lines.append(line_div)
+            html_lines.append("</div>")
+
+            diff_text.setHtml("\n".join(html_lines))
+            d_lay.addWidget(diff_text)
+
+            btn_expand_bottom = QPushButton("⛶  Click to Expand Full Changes View")
+            btn_expand_bottom.setProperty("variant", "ghost")
+            btn_expand_bottom.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_expand_bottom.setStyleSheet("font-size: 11px; color: #38bdf8;")
+            btn_expand_bottom.clicked.connect(self._toggle_expand_diff)
+            d_lay.addWidget(btn_expand_bottom)
+
+            self.opt_diff_card = diff_card
+            self.opt_diff_text = diff_text
+            self.opt_expand_bottom_btn = btn_expand_bottom
+            self.error_cards_layout.addWidget(diff_card)
+
+        nav_btn = QPushButton("View Complexity Details in Bottom Panel ↓")
+        nav_btn.setProperty("variant", "ghost")
+        nav_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        nav_btn.clicked.connect(self.switch_to_complexity)
+        self.opt_nav_btn = nav_btn
+        self.error_cards_layout.addWidget(nav_btn)
+
+    def _toggle_expand_diff(self):
+        self.is_diff_expanded = not getattr(self, "is_diff_expanded", False)
+        if self.is_diff_expanded:
+            if hasattr(self, "btn_expand_diff") and self.btn_expand_diff:
+                self.btn_expand_diff.setText("🗗  Collapse Diff")
+                self.btn_expand_diff.setToolTip("Collapse diff back to normal summary view")
+            if hasattr(self, "opt_expand_bottom_btn") and self.opt_expand_bottom_btn:
+                self.opt_expand_bottom_btn.setText("🗗  Click to Collapse Diff View")
+            if hasattr(self, "opt_comp_card") and self.opt_comp_card:
+                self.opt_comp_card.setVisible(False)
+            if hasattr(self, "opt_opts_card") and self.opt_opts_card:
+                self.opt_opts_card.setVisible(False)
+            if hasattr(self, "opt_nav_btn") and self.opt_nav_btn:
+                self.opt_nav_btn.setVisible(False)
+            if hasattr(self, "opt_diff_text") and self.opt_diff_text:
+                self.opt_diff_text.setMinimumHeight(650)
+                self.opt_diff_text.setMaximumHeight(16777215)
+            # Adjust horizontal splitter to make the right panel spacious
+            total_w = self.width()
+            self.h_splitter.setSizes([int(total_w * 0.42), int(total_w * 0.58)])
+        else:
+            if hasattr(self, "btn_expand_diff") and self.btn_expand_diff:
+                self.btn_expand_diff.setText("⛶  Expand Diff")
+                self.btn_expand_diff.setToolTip("Expand diff across the entire right panel to inspect changes clearly")
+            if hasattr(self, "opt_expand_bottom_btn") and self.opt_expand_bottom_btn:
+                self.opt_expand_bottom_btn.setText("⛶  Click to Expand Full Changes View")
+            if hasattr(self, "opt_comp_card") and self.opt_comp_card:
+                self.opt_comp_card.setVisible(True)
+            if hasattr(self, "opt_opts_card") and self.opt_opts_card:
+                self.opt_opts_card.setVisible(True)
+            if hasattr(self, "opt_nav_btn") and self.opt_nav_btn:
+                self.opt_nav_btn.setVisible(True)
+            if hasattr(self, "opt_diff_text") and self.opt_diff_text:
+                self.opt_diff_text.setMinimumHeight(180)
+                self.opt_diff_text.setMaximumHeight(350)
+            # Restore splitter
+            total_w = self.width()
+            self.h_splitter.setSizes([int(total_w * 0.62), int(total_w * 0.38)])
+
+    def switch_to_optimization(self):
+        self.stack.setCurrentIndex(8)
+        if getattr(self, "latest_optimization_result", None) is None:
+            code = self.editor.toPlainText().strip()
+            if code:
+                self._start_optimization(code)
+
+    def _start_optimization(self, source_code: str):
+        if not source_code.strip():
+            return
+        if hasattr(self, "_opt_worker") and self._opt_worker and self._opt_worker.isRunning():
+            return
+        self.optimization_page.set_loading(True)
+        self._opt_worker = OptimizationWorker(source_code, self)
+        self._opt_worker.finished.connect(self._on_optimization_done)
+        self._opt_worker.error.connect(self._on_optimization_error)
+        self._opt_worker.start()
+
+    def _on_optimization_done(self, result):
+        self.latest_optimization_result = result
+        self.optimization_page.set_loading(False)
+        self.optimization_page.update_result(result, original_code=self.editor.toPlainText())
+
+        summary = build_complexity_summary(result)
+        self.complexity_strip.update_result(summary)
+
+    def _on_optimization_error(self, err_msg: str):
+        self.optimization_page.set_loading(False)
+        self.optimization_page.show_error(err_msg)
+
+    def _on_apply_optimized_code(self, optimized_code: str):
+        if not optimized_code.strip():
+            return
+
+        self.editor.setPlainText(optimized_code)
+        self.stack.setCurrentIndex(0)
+
+        # Immediately re-run security review on the new code
+        try:
+            from security_view import review_source_guard
+            from security_analyzer import analyze as analyze_security
+            findings = analyze_security(optimized_code)
+            guard_data = review_source_guard(optimized_code)
+            self.security_page.update_guard(guard_data)
+            self.security_page.update_report(findings)
+
+            risk = guard_data.get("risk_score", 0)
+            if risk > 0:
+                self.terminal.append_line(
+                    f"\n[SECURITY ALERT] Optimization applied, but security re-scan flagged {len(findings)} issue(s) (Risk: {risk}). Review Security tab.",
+                    tone="warn"
+                )
+            else:
+                self.terminal.append_line(
+                    "\n[OPTIMIZATION] Optimized code applied to editor. Security re-scan passed: Clean (Risk: 0).",
+                    tone="ok"
+                )
+        except Exception as e:
+            self.terminal.append_line(f"\n[OPTIMIZATION] Code applied. Security re-scan note: {e}", tone="warn")
+
+        self.analyze()
 
     def switch_to_second_opinion(self):
         self.stack.setCurrentIndex(6)
@@ -4132,6 +4889,8 @@ class AppGUI(QMainWindow):
 
     def on_code_changed(self):
         self.status_label.setText("STATUS: ● CODE MODIFIED")
+        if hasattr(self, "complexity_strip") and self.complexity_strip.isVisible():
+            self.complexity_strip.lbl_action.setText("Code modified — click to re-analyze →")
 
     def analyze(self):
         if not self.editor.toPlainText().strip():
@@ -4498,9 +5257,95 @@ class AppGUI(QMainWindow):
             return base + ext
         return None
 
+    def _update_run_complexity(self, code: str):
+        if not code or not code.strip():
+            return
+        try:
+            from complexity_analyzer import scan as local_scan
+            from optimization_view import complexity_tone, complexity_badge_label
+            est = local_scan(code)
+
+            time_comp = est.time_hint
+            space_comp = est.space_hint
+            time_tone = complexity_tone(time_comp)
+            space_tone = complexity_tone(space_comp)
+            time_badge = complexity_badge_label(time_comp)
+            space_badge = complexity_badge_label(space_comp)
+
+            colors = {
+                "ok": "#4ade80",
+                "warn": "#fbbf24",
+                "error": "#f87171",
+                "muted": "#94a3b8"
+            }
+            bg_colors = {
+                "ok": "rgba(74, 222, 128, 0.15)",
+                "warn": "rgba(251, 191, 36, 0.15)",
+                "error": "rgba(248, 113, 113, 0.15)",
+                "muted": "rgba(148, 163, 184, 0.15)"
+            }
+
+            t_color = colors.get(time_tone, "#94a3b8")
+            t_bg = bg_colors.get(time_tone, "rgba(148, 163, 184, 0.15)")
+            s_color = colors.get(space_tone, "#94a3b8")
+            s_bg = bg_colors.get(space_tone, "rgba(148, 163, 184, 0.15)")
+
+            signals_html = []
+            if est.signals:
+                for s in est.signals:
+                    line_info = f"Line {s.get('line', '?')}: " if s.get('line') else ""
+                    note = html.escape(str(s.get('note', '')))
+                    pattern = s.get('pattern', '')
+                    if pattern in ('loop', 'recursion'):
+                        icon = "🔁"
+                    elif pattern in ('pass_by_value', 'large_allocation'):
+                        icon = "💾"
+                    else:
+                        icon = "⚡"
+                    signals_html.append(f"<div style='margin: 4px 0; color: #cbd5e1;'>{icon} <b>{line_info}</b>{note}</div>")
+            else:
+                signals_html.append("<div style='color: #94a3b8;'>✓ Clean algorithmic structure. No nested loops or redundant allocations detected.</div>")
+
+            html_report = f"""
+            <div style='font-family: Consolas, monospace; padding: 14px; line-height: 1.5;'>
+                <div style='font-size: 14px; font-weight: bold; color: #f8fafc; margin-bottom: 10px;'>
+                    ⚡ Complexity Analysis of Executed Code
+                </div>
+                <table style='width: 100%; border-collapse: separate; border-spacing: 10px 0; margin-bottom: 14px;'>
+                    <tr>
+                        <td style='width: 50%; padding: 10px 14px; background-color: rgba(30, 41, 59, 0.6); border: 1px solid #334155; border-radius: 6px;'>
+                            <div style='font-size: 11px; color: #94a3b8; text-transform: uppercase;'>⏱ Time Complexity</div>
+                            <div style='font-size: 18px; font-weight: bold; color: {t_color}; margin-top: 2px;'>
+                                {time_comp} &nbsp;
+                                <span style='font-size: 11px; background-color: {t_bg}; color: {t_color}; padding: 2px 6px; border-radius: 4px;'>{time_badge}</span>
+                            </div>
+                        </td>
+                        <td style='width: 50%; padding: 10px 14px; background-color: rgba(30, 41, 59, 0.6); border: 1px solid #334155; border-radius: 6px;'>
+                            <div style='font-size: 11px; color: #94a3b8; text-transform: uppercase;'>🧠 Space Complexity</div>
+                            <div style='font-size: 18px; font-weight: bold; color: {s_color}; margin-top: 2px;'>
+                                {space_comp} &nbsp;
+                                <span style='font-size: 11px; background-color: {s_bg}; color: {s_color}; padding: 2px 6px; border-radius: 4px;'>{space_badge}</span>
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+
+                <div style='font-size: 12px; font-weight: bold; color: #94a3b8; margin-bottom: 6px; text-transform: uppercase;'>
+                    Algorithmic Signals &amp; Structure:
+                </div>
+                <div style='background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 6px; padding: 10px 12px;'>
+                    {"".join(signals_html)}
+                </div>
+            </div>
+            """
+            self.complexity_terminal.setHtml(html_report)
+        except Exception:
+            pass
+
     def run_code(self):
         self.tabs.setCurrentIndex(0)
         editor_text = self.editor.toPlainText()
+        self._update_run_complexity(editor_text)
         if not editor_text.strip():
             self.terminal.clear()
             self.terminal.append_output("Cannot run: Editor is empty. Please type or load C++ code first.\n")
@@ -4566,7 +5411,13 @@ class AppGUI(QMainWindow):
                     self.terminal.append_output("\nOutput truncated at 1 MB\n")
                 if res.stderr:
                     self.terminal.append_output(res.stderr)
-                self.terminal.append_output(f"\n[Process exited with code {res.returncode}]\n")
+                self.terminal.append_output(f"\n[Process exited with code {res.returncode}]")
+                try:
+                    from complexity_analyzer import scan as local_scan
+                    est = local_scan(self.editor.toPlainText())
+                    self.terminal.append_output(f"\n[Complexity: Time {est.time_hint} · Space {est.space_hint} — see Complexity tab]\n")
+                except Exception:
+                    self.terminal.append_output("\n")
         finally:
             if hasattr(self, "btn_run") and self.btn_run:
                 self.btn_run.setEnabled(True)

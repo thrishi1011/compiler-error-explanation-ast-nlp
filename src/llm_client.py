@@ -77,20 +77,26 @@ DEFAULT_GEMINI_MODEL = DEFAULT_GEMINI_MODELS[0]
 
 DEFAULT_GROQ_EXPLAIN_MODELS = [
     "openai/gpt-oss-20b",
-    "llama-3.1-8b-instant",
     "openai/gpt-oss-120b",
+    "qwen/qwen3.8-27b",
 ]
 DEFAULT_GROQ_HEAL_MODELS = [
     "openai/gpt-oss-120b",
     "openai/gpt-oss-20b",
-    "llama-3.1-8b-instant",
+    "qwen/qwen3.8-27b",
 ]
 DEFAULT_GROQ_MODELS = [
-    "openai/gpt-oss-20b",
-    "llama-3.1-8b-instant",
     "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b",
 ]
 DEFAULT_GROQ_MODEL = DEFAULT_GROQ_MODELS[0]
+
+DEFAULT_GROQ_OPTIMIZE_MODELS = [
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b",
+]
 
 # Prompt injection safety system prefix
 SYSTEM_SAFETY_PREFIX = (
@@ -183,7 +189,7 @@ class TokenBucket:
         rpm = self._get_rpm()
         # Reserve capacity for heal: skip AI explanation when budget is low, never heal
         reserved = min(2.0, rpm * 0.25)
-        if kind != "heal" and self.tokens <= reserved:
+        if kind not in ("heal", "optimize") and self.tokens <= reserved:
             return False, f"budget low ({self.tokens:.1f} <= {reserved:.1f} tokens, reserved for heal)"
         if self.tokens >= 1.0:
             self.tokens -= 1.0
@@ -288,7 +294,12 @@ def get_groq_models(kind: str = "explain") -> List[str]:
     custom = os.environ.get("GROQ_MODEL", "").strip()
     if custom and len(custom) <= 64 and _GROQ_MODEL_RE.match(custom):
         return [custom]
-    base = list(DEFAULT_GROQ_HEAL_MODELS if kind == "heal" else DEFAULT_GROQ_EXPLAIN_MODELS)
+    if kind == "optimize":
+        base = list(DEFAULT_GROQ_OPTIMIZE_MODELS)
+    elif kind == "heal":
+        base = list(DEFAULT_GROQ_HEAL_MODELS)
+    else:
+        base = list(DEFAULT_GROQ_EXPLAIN_MODELS)
     working = _WORKING_MODELS.get(f"groq_{kind}") or _WORKING_MODELS.get("groq")
     if working and working in base:
         base.remove(working)
@@ -524,11 +535,19 @@ def _call_gemini(
 
     models = get_gemini_models(kind)
     if call_timeout is not None:
-        read_timeout = max(1.0, min(3.5 if kind == "heal" else 5.0, call_timeout - 1.0))
-        conn_timeout = min(2.5, call_timeout)
+        if kind == "optimize":
+            read_timeout = max(5.0, min(25.0, call_timeout - 1.0))
+            conn_timeout = min(5.0, call_timeout)
+        else:
+            read_timeout = max(1.0, min(3.5 if kind == "heal" else 5.0, call_timeout - 1.0))
+            conn_timeout = min(2.5, call_timeout)
     else:
-        read_timeout = 3.5 if kind == "heal" else 4.0
-        conn_timeout = 2.5
+        if kind == "optimize":
+            read_timeout = 20.0
+            conn_timeout = 5.0
+        else:
+            read_timeout = 3.5 if kind == "heal" else 4.0
+            conn_timeout = 2.5
     timeout_tuple = (conn_timeout, read_timeout)
 
     last_err = ""
@@ -826,16 +845,18 @@ def ask(
         if budget_rem < 2.0:
             return LLMResult(None, None, "AI heal time budget exhausted (20s limit reached)")
         max_call_sec = min(float(os.environ.get("HEAL_AI_CALL_MAX_SEC", "4.5")), budget_rem)
+    elif kind == "optimize":
+        max_call_sec = float(os.environ.get("OPTIMIZE_AI_CALL_MAX_SEC", "25.0"))
     else:
         # explain: at most 6s total
         max_call_sec = 6.0
 
     errors_encountered = []
 
-    # 3. Check if Gemini can be attempted
+    # 3. Check if Gemini can be attempted (skip for optimize)
     g_key = get_gemini_key()
     g_avail, g_reason = _GEMINI_STATE.is_available()
-    if g_key and g_avail:
+    if kind != "optimize" and g_key and g_avail:
         elapsed_so_far = time.time() - start_time
         remaining_timeout = max_call_sec - elapsed_so_far
         if remaining_timeout >= 1.0:
@@ -859,6 +880,8 @@ def ask(
         if kind == "heal":
             budget_rem = get_heal_ai_budget_remaining()
             groq_timeout = min(float(os.environ.get("HEAL_AI_CALL_MAX_SEC", "4.5")), budget_rem)
+        elif kind == "optimize":
+            groq_timeout = max_call_sec
         else:
             groq_timeout = 6.0
         if groq_timeout >= 1.0:

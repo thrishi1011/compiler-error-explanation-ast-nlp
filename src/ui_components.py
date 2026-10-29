@@ -825,3 +825,198 @@ class SecurityBarChart(QWidget):
         painter.fillRect(QRect(leg_x + 95, 8, 12, 10), theme.qcolor("ok"))
         painter.drawText(leg_x + 111, 17, "Defended ASR")
 
+
+
+# ── Complexity & Optimization Components ────────────────────────────────────
+
+class ComplexityBadge(QFrame):
+    """
+    Displays one complexity metric: icon + metric name + Big-O value + colored badge.
+    Example: ⏱ Time Complexity: O(n²) [SLOW]
+    """
+    def __init__(self, icon: str, label: str, big_o: str = "Unknown", tone: str = "muted", badge_text: str = "UNKNOWN", parent=None):
+        super().__init__(parent)
+        self.setObjectName("Card")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(12, 8, 12, 8)
+        lay.setSpacing(10)
+
+        self.lbl_title = plain_label(f"{icon}  {label.upper()}:", "Section")
+        f = self.lbl_title.font()
+        f.setBold(True)
+        self.lbl_title.setFont(f)
+        lay.addWidget(self.lbl_title)
+
+        self.lbl_val = plain_label(big_o, "IssueTitle")
+        f_val = theme.mono_font(12)
+        f_val.setBold(True)
+        self.lbl_val.setFont(f_val)
+        lay.addWidget(self.lbl_val)
+
+        self.badge_lbl = badge(badge_text, tone)
+        lay.addWidget(self.badge_lbl)
+        lay.addStretch(1)
+
+    def set_complexity(self, big_o: str, tone: str, badge_text: str):
+        self.lbl_val.setText(big_o or "Unknown")
+        self.badge_lbl.setText(badge_text or "UNKNOWN")
+        theme.set_prop(self.badge_lbl, "tone", tone or "muted")
+
+
+class ComplexityCompareCard(QFrame):
+    """
+    Displays a Before -> After comparison for time or space complexity.
+    Example:
+    ⏱ TIME COMPLEXITY
+    Before: O(2^n) [DANGER]  ➔  After: O(log n) [FAST]
+    """
+    def __init__(self, icon: str, title: str,
+                 prev_val: str, prev_tone: str, prev_badge: str,
+                 new_val: str, new_tone: str, new_badge: str,
+                 parent=None):
+        super().__init__(parent)
+        self.setObjectName("Card")
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(12, 8, 12, 8)
+        lay.setSpacing(6)
+
+        hdr = plain_label(f"{icon}  {title.upper()}", "Section")
+        f_h = hdr.font()
+        f_h.setBold(True)
+        hdr.setFont(f_h)
+        lay.addWidget(hdr)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+
+        # Before section
+        lbl_prev_title = plain_label("Before:", "Muted")
+        row.addWidget(lbl_prev_title)
+
+        lbl_prev_val = plain_label(prev_val or "Unknown", "Body")
+        f_pv = theme.mono_font(11)
+        f_pv.setBold(True)
+        lbl_prev_val.setFont(f_pv)
+        row.addWidget(lbl_prev_val)
+
+        if prev_badge and prev_badge != "UNKNOWN":
+            row.addWidget(badge(prev_badge, prev_tone or "muted"))
+
+        # Arrow indicator
+        lbl_arrow = plain_label("➔", "Title")
+        f_arr = lbl_arrow.font()
+        f_arr.setBold(True)
+        lbl_arrow.setFont(f_arr)
+        lbl_arrow.setStyleSheet("color: #38bdf8; font-weight: bold; margin: 0 4px;")
+        row.addWidget(lbl_arrow)
+
+        # After section
+        lbl_new_title = plain_label("After:", "Muted")
+        row.addWidget(lbl_new_title)
+
+        lbl_new_val = plain_label(new_val or "Unknown", "IssueTitle")
+        f_nv = theme.mono_font(11)
+        f_nv.setBold(True)
+        lbl_new_val.setFont(f_nv)
+        row.addWidget(lbl_new_val)
+
+        if new_badge and new_badge != "UNKNOWN":
+            row.addWidget(badge(new_badge, new_tone or "ok"))
+
+        row.addStretch(1)
+        lay.addLayout(row)
+
+
+class BottleneckCard(QFrame):
+    """
+    Card displaying a single efficiency bottleneck with severity badge and description.
+    """
+    def __init__(self, b_view: dict, parent=None):
+        super().__init__(parent)
+        self.setObjectName("IssueCard")
+        tone = b_view.get("tone", "warn")
+        self.setProperty("sev", tone)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(6)
+
+        hdr = QHBoxLayout()
+        hdr.setSpacing(8)
+
+        sev = b_view.get("severity", "Medium")
+        hdr.addWidget(badge(sev.upper(), tone))
+
+        line_str = b_view.get("line_str", "")
+        if line_str:
+            hdr.addWidget(plain_label(line_str, "Muted"))
+
+        hdr.addStretch(1)
+        lay.addLayout(hdr)
+
+        desc = b_view.get("description", "")
+        if desc:
+            lbl_desc = plain_label(desc, "Body")
+            lay.addWidget(lbl_desc)
+
+
+class ComplexityStripWidget(QFrame):
+    """
+    Thin horizontal status strip that can sit below the code editor.
+    Displays: 📊 Complexity: ⏱ O(n²) · 🧠 O(n) · ⚡ N bottleneck(s) · [View Report →]
+    Clicking emits the clicked signal to navigate to the Optimization page.
+    """
+    clicked = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("Card")
+        self.setVisible(False)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(12, 6, 12, 6)
+        lay.setSpacing(10)
+
+        lbl_icon = plain_label("📊 Complexity:", "Section")
+        f = lbl_icon.font()
+        f.setBold(True)
+        lbl_icon.setFont(f)
+        lay.addWidget(lbl_icon)
+
+        self.lbl_time = plain_label("⏱ —", "Body")
+        self.lbl_space = plain_label("🧠 —", "Body")
+        self.lbl_bottlenecks = plain_label("⚡ —", "Body")
+        self.lbl_action = plain_label("Click to view details →", "Muted")
+
+        lay.addWidget(self.lbl_time)
+        lay.addWidget(plain_label("·", "Muted"))
+        lay.addWidget(self.lbl_space)
+        lay.addWidget(plain_label("·", "Muted"))
+        lay.addWidget(self.lbl_bottlenecks)
+        lay.addStretch(1)
+        lay.addWidget(self.lbl_action)
+
+    def update_result(self, summary: dict):
+        if not summary:
+            return
+        t_val = summary.get("time_complexity", "—")
+        t_badge = summary.get("time_badge", "")
+        s_val = summary.get("space_complexity", "—")
+        s_badge = summary.get("space_badge", "")
+        count = summary.get("bottleneck_count", 0)
+
+        t_text = f"⏱ Time: {t_val}" + (f" ({t_badge})" if t_badge and t_badge != "UNKNOWN" else "")
+        s_text = f"🧠 Space: {s_val}" + (f" ({s_badge})" if s_badge and s_badge != "UNKNOWN" else "")
+        b_text = f"⚡ {count} bottleneck{'s' if count != 1 else ''}"
+
+        self.lbl_time.setText(t_text)
+        self.lbl_space.setText(s_text)
+        self.lbl_bottlenecks.setText(b_text)
+        self.lbl_action.setText("Click to view full optimization report →")
+        self.setVisible(True)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
