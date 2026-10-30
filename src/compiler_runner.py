@@ -108,7 +108,7 @@ def run_cpp_compiler(file_path, permissions=None):
             except OSError:
                 pass
         res = safe_run(
-            ["g++", "-std=c++17", "-Wall", "-Wextra", "-Wshadow", "-Wnull-dereference", file_path, "-o", exe_target],
+            ["g++", "-std=c++17", "-O0", "-pipe", "-Wall", "-Wextra", "-Wshadow", "-Wnull-dereference", file_path, "-o", exe_target],
             kind="compile",
         )
         if res.timed_out:

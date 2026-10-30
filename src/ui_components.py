@@ -10,6 +10,8 @@ be rendered as HTML.
 """
 from __future__ import annotations
 
+import re
+
 from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
@@ -862,12 +864,25 @@ class ComplexityBadge(QFrame):
         self.badge_lbl.setVisible(False)
 
 
+def _parse_formula_and_reason(val: str) -> tuple[str, str]:
+    if not val:
+        return ("Unknown", "")
+    val = val.strip()
+    m = re.match(r'^(O\([^)]+\)|Θ\([^)]+\)|Ω\([^)]+\)|O\(1\)|[A-Za-z0-9_()^ ]+?)(?:\s+(where\b.*|\(unchanged\)|due to\b.*|because\b.*|for\b.*|\(.*\))|$)', val, re.IGNORECASE)
+    if m:
+        formula = m.group(1).strip()
+        reason = (m.group(2) or "").strip()
+        return formula, reason
+    parts = re.split(r'\s+(?=where\b|because\b|\(unchanged\)|due to\b)', val, maxsplit=1, flags=re.IGNORECASE)
+    if len(parts) == 2:
+        return parts[0].strip(), parts[1].strip()
+    return val, ""
+
+
 class ComplexityCompareCard(QFrame):
     """
-    Displays a Before -> After comparison for time or space complexity.
-    Example:
-    ⏱ TIME COMPLEXITY
-    Before: O(2^n) [DANGER]  ➔  After: O(log n) [FAST]
+    Displays a Before -> After comparison for time or space complexity with
+    visually distinguished fonts for Big-O formula vs explanation rationale.
     """
     def __init__(self, icon: str, title: str,
                  prev_val: str, prev_tone: str, prev_badge: str,
@@ -880,44 +895,64 @@ class ComplexityCompareCard(QFrame):
         lay.setSpacing(6)
 
         hdr = plain_label(f"{icon}  {title.upper()}", "Section")
-        f_h = hdr.font()
-        f_h.setBold(True)
-        hdr.setFont(f_h)
+        hdr.setFont(theme.ui_font(12, True))
         lay.addWidget(hdr)
 
+        prev_formula, prev_reason = _parse_formula_and_reason(prev_val)
+        new_formula, new_reason = _parse_formula_and_reason(new_val)
+
+        # Formula row: Bold monospace Big-O formulas
         row = QHBoxLayout()
         row.setSpacing(8)
 
-        # Before section
         lbl_prev_title = plain_label("Before:", "Muted")
         row.addWidget(lbl_prev_title)
 
-        lbl_prev_val = plain_label(prev_val or "Unknown", "Body")
-        f_pv = theme.mono_font(11)
-        f_pv.setBold(True)
-        lbl_prev_val.setFont(f_pv)
-        row.addWidget(lbl_prev_val)
+        lbl_prev_formula = QLabel(prev_formula or "Unknown")
+        lbl_prev_formula.setStyleSheet(
+            "font-family: Consolas, 'Fira Code', monospace; font-size: 13px; font-weight: bold; color: #f1f5f9;"
+        )
+        row.addWidget(lbl_prev_formula)
 
-        # Arrow indicator
-        lbl_arrow = plain_label("➔", "Title")
-        f_arr = lbl_arrow.font()
-        f_arr.setBold(True)
-        lbl_arrow.setFont(f_arr)
-        lbl_arrow.setStyleSheet("color: #38bdf8; font-weight: bold; margin: 0 4px;")
+        lbl_arrow = QLabel("➔")
+        lbl_arrow.setStyleSheet("color: #38bdf8; font-size: 14px; font-weight: bold; margin: 0 4px;")
         row.addWidget(lbl_arrow)
 
-        # After section
         lbl_new_title = plain_label("After:", "Muted")
         row.addWidget(lbl_new_title)
 
-        lbl_new_val = plain_label(new_val or "Unknown", "IssueTitle")
-        f_nv = theme.mono_font(11)
-        f_nv.setBold(True)
-        lbl_new_val.setFont(f_nv)
-        row.addWidget(lbl_new_val)
+        lbl_new_formula = QLabel(new_formula or "Unknown")
+        lbl_new_formula.setStyleSheet(
+            "font-family: Consolas, 'Fira Code', monospace; font-size: 13px; font-weight: bold; color: #4ade80;"
+        )
+        row.addWidget(lbl_new_formula)
 
         row.addStretch(1)
         lay.addLayout(row)
+
+        # Explanations/Reasons in distinct italic secondary font
+        if prev_reason or new_reason:
+            reasons_lay = QVBoxLayout()
+            reasons_lay.setSpacing(2)
+            reasons_lay.setContentsMargins(2, 2, 2, 2)
+
+            if prev_reason:
+                lbl_pr = QLabel(f"• Prior: {prev_reason}")
+                lbl_pr.setWordWrap(True)
+                lbl_pr.setStyleSheet(
+                    "font-family: 'Segoe UI', sans-serif; font-size: 11px; font-style: italic; color: #94a3b8;"
+                )
+                reasons_lay.addWidget(lbl_pr)
+
+            if new_reason and new_reason != prev_reason:
+                lbl_nr = QLabel(f"• Optimized: {new_reason}")
+                lbl_nr.setWordWrap(True)
+                lbl_nr.setStyleSheet(
+                    "font-family: 'Segoe UI', sans-serif; font-size: 11px; font-style: italic; color: #38bdf8;"
+                )
+                reasons_lay.addWidget(lbl_nr)
+
+            lay.addLayout(reasons_lay)
 
 
 class BottleneckCard(QFrame):
@@ -991,23 +1026,7 @@ class ComplexityStripWidget(QFrame):
         lay.addWidget(self.lbl_action)
 
     def update_result(self, summary: dict):
-        if not summary:
-            return
-        t_val = summary.get("time_complexity", "—")
-        t_badge = summary.get("time_badge", "")
-        s_val = summary.get("space_complexity", "—")
-        s_badge = summary.get("space_badge", "")
-        count = summary.get("bottleneck_count", 0)
-
-        t_text = f"⏱ Time: {t_val}"
-        s_text = f"🧠 Space: {s_val}"
-        b_text = f"⚡ {count} bottleneck{'s' if count != 1 else ''}"
-
-        self.lbl_time.setText(t_text)
-        self.lbl_space.setText(s_text)
-        self.lbl_bottlenecks.setText(b_text)
-        self.lbl_action.setText("Click to view full optimization report →")
-        self.setVisible(True)
+        self.setVisible(False)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

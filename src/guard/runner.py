@@ -40,7 +40,7 @@ def build_and_run(
             f.write(source)
 
         build_res = safe_run(
-            ["g++", "-std=c++17", src_file, "-o", exe_path],
+            ["g++", "-std=c++17", "-O0", "-pipe", src_file, "-o", exe_path],
             kind="build",
             cwd=temp_dir,
         )

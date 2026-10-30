@@ -3428,11 +3428,11 @@ class AppGUI(QMainWindow):
         top_lay.addWidget(app_title)
         top_lay.addSpacing(16)
 
-        btn_compile = QPushButton("Compile")
-        btn_compile.setProperty("variant", "primary")
-        btn_compile.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_compile.clicked.connect(self.analyze)
-        top_lay.addWidget(btn_compile)
+        self.btn_compile = QPushButton("Compile")
+        self.btn_compile.setProperty("variant", "primary")
+        self.btn_compile.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_compile.clicked.connect(self.analyze)
+        top_lay.addWidget(self.btn_compile)
 
         self.btn_run = QPushButton("Run")
         self.btn_run.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -3529,13 +3529,12 @@ class AppGUI(QMainWindow):
         self.editor.textChanged.connect(self.on_code_changed)
         ec_lay.addWidget(self.editor, 1)
 
-        self.complexity_strip = ComplexityStripWidget()
-        self.complexity_strip.clicked.connect(lambda: self.tabs.setCurrentIndex(2))
-        ec_lay.addWidget(self.complexity_strip)
+        self.complexity_strip = ComplexityStripWidget(self)
+        self.complexity_strip.setVisible(False)
 
         editor_col.addWidget(editor_card)
 
-        # Bottom Tabs (Output | Input | Complexity | Log)
+        # Bottom Tabs (Output | Input | Log)
         self.tabs = QTabWidget()
         self.terminal = TerminalDisplay()
         self.input_terminal = QPlainTextEdit()
@@ -3545,11 +3544,6 @@ class AppGUI(QMainWindow):
         self.complexity_terminal = QTextBrowser()
         self.complexity_terminal.setObjectName("Console")
         self.complexity_terminal.setFont(theme.mono_font(12))
-        self.complexity_terminal.setHtml(
-            "<div style='font-family: Consolas, monospace; padding: 14px; color: #94a3b8;'>"
-            "Click <b>Run</b> or <b>⚡ Optimise Code</b> to view detailed algorithmic time &amp; space complexity analysis of the executed program."
-            "</div>"
-        )
 
         self.log_terminal = QTextBrowser()
         self.log_terminal.setObjectName("Console")
@@ -3557,19 +3551,8 @@ class AppGUI(QMainWindow):
 
         self.tabs.addTab(self.terminal, "Output")
         self.tabs.addTab(self.input_terminal, "Input (stdin)")
-        self.tabs.addTab(self.complexity_terminal, "Complexity")
         self.tabs.addTab(self.log_terminal, "Log")
 
-        self.btn_corner_complexity = QPushButton("⏱ Complexity")
-        self.btn_corner_complexity.setObjectName("NavButton")
-        self.btn_corner_complexity.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_corner_complexity.setStyleSheet(
-            "QPushButton { padding: 2px 10px; font-size: 11px; font-weight: bold; margin-right: 6px; border: 1px solid #334155; border-radius: 4px; }"
-            "QPushButton:hover { background-color: rgba(56, 189, 248, 0.15); border-color: #38bdf8; }"
-        )
-        self.btn_corner_complexity.setToolTip("View detailed time and space complexity of run code")
-        self.btn_corner_complexity.clicked.connect(self.switch_to_complexity)
-        self.tabs.setCornerWidget(self.btn_corner_complexity, Qt.Corner.TopRightCorner)
         self.tabs.currentChanged.connect(self._on_tabs_changed)
         editor_col.addWidget(self.tabs)
 
@@ -4055,16 +4038,13 @@ class AppGUI(QMainWindow):
         self.cfg_page.graph.update_graph(cfg_data)
 
     def switch_to_complexity(self):
-        self.stack.setCurrentIndex(0)
-        self.tabs.setCurrentWidget(self.complexity_terminal)
+        self.stack.setCurrentIndex(8)  # Optimization & Complexity page
         self.sidebar.set_active_btn(self.sidebar.btn_complexity)
         code = self.editor.toPlainText()
         self._update_run_complexity(code)
 
     def _on_tabs_changed(self, idx: int):
-        if idx == 2:  # Complexity tab
-            code = self.editor.toPlainText()
-            self._update_run_complexity(code)
+        pass
 
     def start_top_optimize(self):
         code = self.editor.toPlainText().strip()
@@ -4130,11 +4110,25 @@ class AppGUI(QMainWindow):
 
         has_using_std = uses_namespace_std(original_code)
         opt_code = getattr(result, "optimized_code", "")
-        if opt_code and opt_code.strip():
+
+        orig_lines = original_code.splitlines()
+        opt_lines = opt_code.splitlines() if opt_code else []
+        has_main_orig = ("main(" in original_code or "main (" in original_code)
+        has_main_opt = ("main(" in opt_code or "main (" in opt_code) if opt_code else False
+
+        is_safe_code = True
+        if has_main_orig and not has_main_opt:
+            is_safe_code = False
+        elif len(orig_lines) > 25 and len(opt_lines) < 0.65 * len(orig_lines):
+            is_safe_code = False
+
+        if opt_code and opt_code.strip() and is_safe_code:
             opt_code = enforce_std_namespace_style(opt_code, target_has_using_std=has_using_std)
             result.optimized_code = opt_code
             if opt_code != original_code:
                 self.editor.setPlainText(opt_code)
+        else:
+            result.optimized_code = original_code
 
         self.latest_optimization_result = result
         summary = build_complexity_summary(result)
@@ -4957,6 +4951,44 @@ class AppGUI(QMainWindow):
         self.terminal.clear()
         self.editor.clear_fixed_lines()
 
+        if hasattr(self, "btn_compile") and self.btn_compile:
+            self.btn_compile.setEnabled(False)
+            self.btn_compile.setText("Compiling...")
+
+        # Loading banner with animated indeterminate progress bar
+        while self.error_cards_layout.count():
+            item = self.error_cards_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        self.issue_cards = []
+
+        self.compile_loading_card = QFrame()
+        self.compile_loading_card.setObjectName("Card")
+        load_lay = QVBoxLayout(self.compile_loading_card)
+        load_lay.setContentsMargins(16, 14, 16, 14)
+        load_lay.setSpacing(10)
+
+        load_head = QHBoxLayout()
+        load_head.addWidget(badge("COMPILING & ANALYZING", "accent"))
+        load_head.addStretch(1)
+        load_lay.addLayout(load_head)
+
+        load_title = plain_label("⚙ Compiling Source Code...", "Title")
+        load_title.setFont(theme.ui_font(13, True))
+        load_lay.addWidget(load_title)
+
+        self.compile_progress_bar = QProgressBar()
+        self.compile_progress_bar.setRange(0, 0)
+        self.compile_progress_bar.setFixedHeight(6)
+        self.compile_progress_bar.setTextVisible(False)
+        load_lay.addWidget(self.compile_progress_bar)
+
+        load_sub = plain_label("Running GCC compiler, analyzing AST syntax, and checking security...", "Muted")
+        load_lay.addWidget(load_sub)
+
+        self.error_cards_layout.addWidget(self.compile_loading_card)
+
         script_dir = os.path.dirname(os.path.abspath(__file__))
         main_script = os.path.join(script_dir, "main.py")
         cmd = [sys.executable, main_script, self.file_path, "-j", "-v"]
@@ -4968,6 +5000,9 @@ class AppGUI(QMainWindow):
 
     def _on_analysis_finished(self, stdout: str, stderr: str, returncode: int):
         get_energy_monitor().end_action("Compile")
+        if hasattr(self, "btn_compile") and self.btn_compile:
+            self.btn_compile.setEnabled(True)
+            self.btn_compile.setText("Compile")
         data = {}
         try:
             data = json.loads(stdout)
@@ -5453,7 +5488,7 @@ class AppGUI(QMainWindow):
                 try:
                     from complexity_analyzer import scan as local_scan
                     est = local_scan(self.editor.toPlainText())
-                    self.terminal.append_output(f"\n[Complexity: Time {est.time_hint} · Space {est.space_hint} — see Complexity tab]\n")
+                    self.terminal.append_output(f"\n[Complexity: Time {est.time_hint} · Space {est.space_hint}]\n")
                 except Exception:
                     self.terminal.append_output("\n")
         finally:

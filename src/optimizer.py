@@ -25,6 +25,15 @@ import llm_client
 from guard.output_safe import safe_text
 
 
+def _clean_text(s: str) -> str:
+    if not s:
+        return ""
+    s = s.replace("\u2010", "-").replace("\u2011", "-").replace("\u2012", "-")
+    s = s.replace("\u2013", "-").replace("\u2014", "-").replace("\u2015", "-")
+    s = s.replace("\u2018", "'").replace("\u2019", "'").replace("\u201c", '"').replace("\u201d", '"')
+    return safe_text(s)
+
+
 @dataclass
 class ComplexityBottleneck:
     line: Optional[int]
@@ -66,11 +75,15 @@ SYSTEM_OPTIMIZER_PROMPT = (
     "You are an expert C++ performance optimization engineer and algorithms specialist.\n"
     "Your objective is to optimize the provided C++ code for peak algorithmic efficiency and minimal memory footprint.\n"
     "CRITICAL CONSTRAINTS:\n"
-    "1. Preserve ALL existing functionality, inputs/outputs, and algorithmic correctness.\n"
+    "1. Preserve ALL existing functionality, inputs/outputs, classes, structs, helper functions, and algorithmic correctness.\n"
     "2. Preserve ALL security hardening: do NOT reintroduce unsafe functions like strcpy/gets/sprintf, do NOT remove bounds checks, do NOT introduce memory leaks.\n"
     "3. Respond ONLY with a valid JSON object matching the requested schema. Do NOT include markdown code fences or conversational text outside the JSON.\n"
     "4. In the optimized_code, include brief, clear inline C++ comments (// Why: ...) explaining why key lines or structures were modified or added so the user understands the rationale.\n"
-    "5. NAMESPACE CONVENTION:\n"
+    "5. CODE COMPLETENESS (VERY IMPORTANT):\n"
+    "   - You MUST include the ENTIRE, COMPLETE source code in 'optimized_code', including all classes, methods, helper functions, and main().\n"
+    "   - NEVER truncate, omit, or replace functions with comments like '// ... rest of code ...'.\n"
+    "   - If the code is already optimal or too large to rewrite entirely without truncation, return the original code completely intact.\n"
+    "6. NAMESPACE CONVENTION:\n"
     "   - If the input code has 'using namespace std;', the optimized_code MUST preserve 'using namespace std;' and keep standard library symbols unqualified (e.g. vector, cout, cin, unordered_map, pair).\n"
     "   - If the input code does NOT have 'using namespace std;', the optimized_code MUST NOT add 'using namespace std;'. Prefix all standard library symbols with std:: (e.g. std::vector, std::cout, std::cin, std::unordered_map, std::pair).\n\n"
     "JSON Schema:\n"
@@ -180,7 +193,7 @@ def analyze(source_code: str) -> OptimizationResult:
             system=SYSTEM_OPTIMIZER_PROMPT,
             prompt=user_prompt,
             kind="optimize",
-            max_tokens=3500,
+            max_tokens=6000,
             code_to_check=source_code
         )
     except Exception as exc:
@@ -220,7 +233,7 @@ def analyze(source_code: str) -> OptimizationResult:
             if isinstance(b, dict):
                 bottlenecks.append(ComplexityBottleneck(
                     line=b.get("line"),
-                    description=safe_text(str(b.get("description", "Bottleneck detected"))),
+                    description=_clean_text(str(b.get("description", "Bottleneck detected"))),
                     severity=str(b.get("severity", "Medium")).capitalize()
                 ))
 
@@ -228,13 +241,29 @@ def analyze(source_code: str) -> OptimizationResult:
     if not optimized_code.strip():
         optimized_code = source_code
     else:
-        optimized_code = enforce_std_namespace_style(optimized_code, target_has_using_std=has_using_std)
+        # Structural integrity verification to prevent truncation of large files
+        src_lines = source_code.splitlines()
+        opt_lines = optimized_code.splitlines()
+        has_main_src = ("main(" in source_code or "main (" in source_code)
+        has_main_opt = ("main(" in optimized_code or "main (" in optimized_code)
+
+        is_truncated = False
+        if has_main_src and not has_main_opt:
+            is_truncated = True
+        elif len(src_lines) > 25 and len(opt_lines) < 0.65 * len(src_lines):
+            is_truncated = True
+
+        if is_truncated:
+            # LLM truncated or omitted the code body - preserve original code
+            optimized_code = source_code
+        else:
+            optimized_code = enforce_std_namespace_style(optimized_code, target_has_using_std=has_using_std)
 
     raw_optimizations = data.get("optimizations_applied") or []
     optimizations_applied: List[str] = []
     if isinstance(raw_optimizations, list):
         for opt in raw_optimizations:
-            optimizations_applied.append(safe_text(str(opt)))
+            optimizations_applied.append(_clean_text(str(opt)))
 
     security_preserved = bool(data.get("security_preserved", True))
     model_name = llm_client.get_groq_model()
