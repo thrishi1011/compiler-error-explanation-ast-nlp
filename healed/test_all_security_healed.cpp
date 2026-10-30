@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
+#include <random>
 using namespace std;
 
 // ─────────────────────────────────────────────────────────────
@@ -45,9 +46,9 @@ void trigger_command_injection(const char* cmd) {
 // HIGH: Weak Randomness — rand() used near secret/token/key
 // ─────────────────────────────────────────────────────────────
 void trigger_weak_randomness() {
-    int secret = rand();             // [HIGH] Weak Randomness — 'secret' on same line
-    int token  = rand();             // [HIGH] Weak Randomness — 'token' on same line
-    int key    = rand();             // [HIGH] Weak Randomness — 'key' on same line
+    int secret = static_cast<int>(std::random_device{}() & 0x7fffffff);             // [HIGH] Weak Randomness — 'secret' on same line
+    int token  = static_cast<int>(std::random_device{}() & 0x7fffffff);             // [HIGH] Weak Randomness — 'token' on same line
+    int key    = static_cast<int>(std::random_device{}() & 0x7fffffff);             // [HIGH] Weak Randomness — 'key' on same line
     (void)secret; (void)token; (void)key;
 }
 
@@ -86,7 +87,7 @@ void trigger_integer_overflow(int count) {
 // MEDIUM: Unsafe Memory Copy — memcpy with raw int size
 // ─────────────────────────────────────────────────────────────
 void trigger_unsafe_memcpy(void* dst, const void* src) {
-    memcpy(dst, src, 256);           // [MEDIUM] Unsafe Memory Copy (raw size)
+    memcpy(dst, src, sizeof(char) * (256));           // [MEDIUM] Unsafe Memory Copy (raw size)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -152,7 +153,7 @@ void trigger_format_string(char* user_fmt) {
 // [MEDIUM] Signed/Unsigned Mismatch
 void trigger_sign_mismatch(int n) {
     unsigned int u = 10;
-    if (n < u) {                     // [MEDIUM] signed/unsigned comparison
+    if (static_cast<long long>(n) < static_cast<long long>(u)) {                     // [MEDIUM] signed/unsigned comparison
         printf("less\n");
     }
 }

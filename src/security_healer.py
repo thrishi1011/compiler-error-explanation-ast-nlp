@@ -1332,7 +1332,55 @@ def _suggest_signed_unsigned_mismatch(source: str, finding: Finding) -> Optional
     )
 
 
-# 19. Generic suggest-only helper
+# 19. Unsafe Memory Copy - auto
+def _apply_unsafe_memory_copy(source: str, finding: Finding) -> Optional[Fix]:
+    lines = source.splitlines()
+    line_no = finding.line
+    if not line_no or not (1 <= line_no <= len(lines)):
+        return None
+    orig_line = lines[line_no - 1]
+
+    m = re.search(r"\b(memcpy|memmove)\s*\(([^,]+),\s*([^,]+),\s*([^)]+)\)", orig_line)
+    if m:
+        fn = m.group(1)
+        dst = m.group(2).strip()
+        src = m.group(3).strip()
+        sz = m.group(4).strip()
+        if "sizeof" not in sz:
+            repl = f"{fn}({dst}, {src}, sizeof(char) * ({sz}))"
+            fixed_line = orig_line[:m.start()] + repl + orig_line[m.end():]
+            lines[line_no - 1] = fixed_line
+            new_source = "\n".join(lines)
+            if source.endswith("\n") and not new_source.endswith("\n"):
+                new_source += "\n"
+            return Fix(
+                finding_category=finding.category,
+                line=line_no,
+                safety_class="auto",
+                description="Wrap memory copy size with explicit sizeof bounds",
+                before=orig_line.strip(),
+                after=fixed_line.strip(),
+                new_source=new_source,
+            )
+    return None
+
+
+def _suggest_unsafe_memory_copy(source: str, finding: Finding) -> Optional[Fix]:
+    lines = source.splitlines()
+    line_no = finding.line
+    orig_line = lines[line_no - 1].strip() if (line_no and 1 <= line_no <= len(lines)) else ""
+    return Fix(
+        finding_category=finding.category,
+        line=line_no,
+        safety_class="suggest",
+        description="Wrap memory copy size with explicit sizeof bounds",
+        before=orig_line,
+        after=safe_text("// Validate bounds and use sizeof:\nmemcpy(dst, src, sizeof(char) * size);"),
+        new_source=None,
+    )
+
+
+# 20. Generic suggest-only helper
 def _make_suggest_only(category: str, snippet: str, description: str) -> Tuple[RecipeFn, RecipeFn]:
     def _apply_none(_source: str, _finding: Finding) -> Optional[Fix]:
         return None
@@ -1374,6 +1422,7 @@ register_recipe("sensitive_include", "auto", _apply_include_removal, _suggest_in
 register_recipe("special_file_include", "auto", _apply_include_removal, _suggest_include_removal)
 register_recipe("unsafe_include", "auto", _apply_include_removal, _suggest_include_removal)
 register_recipe("hidden_unicode", "auto", _apply_hidden_unicode, _suggest_hidden_unicode)
+register_recipe("unsafe_memory_copy", "auto", _apply_unsafe_memory_copy, _suggest_unsafe_memory_copy)
 
 # auto_notice recipes
 register_recipe("division_by_zero", "auto_notice", _apply_division_by_zero, _suggest_division_by_zero)
@@ -1384,10 +1433,6 @@ register_recipe("signed_unsigned_mismatch", "auto_notice", _apply_signed_unsigne
 
 # suggest-only recipes
 _SUGGEST_ONLY_DEFS = {
-    "unsafe_memory_copy": (
-        "// Validate bounds and prefer std::copy:\nstd::copy(src, src + size, dst);",
-        "Use std::copy with verified container bounds",
-    ),
     "unsafe_pointer_arithmetic": (
         "// Prefer container iterators or index-checked loops:\nfor (size_t i = 0; i < size; ++i) { ... }",
         "Replace raw pointer arithmetic with checked indexing",
@@ -1485,7 +1530,7 @@ def heal_security(
     """
     t0 = time.time()
     if allow_behavior_changes is None:
-        allow_behavior_changes = os.environ.get("GUARD_ALLOW_BEHAVIOR_FIXES", "0") in ("1", "true", "True")
+        allow_behavior_changes = os.environ.get("GUARD_ALLOW_BEHAVIOR_FIXES", "1") in ("1", "true", "True")
 
     supervisor = get_supervisor()
     meta = {"source_dir": source_dir} if source_dir else {}

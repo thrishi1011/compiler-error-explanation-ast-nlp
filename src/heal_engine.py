@@ -99,11 +99,11 @@ def compile_source(source: str, syntax_only: bool = True) -> Tuple[List[dict], L
     out_exe = None
     try:
         if syntax_only:
-            cmd = ["g++", "-fsyntax-only", "-std=c++17", "-Wall", tmp_path]
+            cmd = ["g++", "-fsyntax-only", "-std=c++17", "-pipe", "-Wall", tmp_path]
             run_kind = "syntax"
         else:
             out_exe = tmp_path + (".exe" if os.name == "nt" else ".out")
-            cmd = ["g++", "-std=c++17", "-Wall", tmp_path, "-o", out_exe]
+            cmd = ["g++", "-std=c++17", "-O0", "-pipe", "-Wall", tmp_path, "-o", out_exe]
             run_kind = "compile"
 
         res = safe_run(
@@ -374,7 +374,7 @@ def heal_until_clean(
                                 break
                     # Security and runtime flaw healing
                     import security_healer
-                    sec_result = security_healer.heal_security(current_source, source_dir=None)
+                    sec_result = security_healer.heal_security(current_source, allow_behavior_changes=True, source_dir=None)
                     current_source = sec_result.source_after
                     for fix in sec_result.applied:
                         diff = compute_diff(fix.before, fix.after)
@@ -392,6 +392,9 @@ def heal_until_clean(
                             "diff_html": diff_html,
                         })
                     sec_findings = sec_result.findings_after
+                    if sec_result.applied:
+                        _, f_warns, _ = compile_source(current_source, syntax_only=True)
+                        full_warnings = _classify_error_list(f_warns, classifier)
 
                     is_clean = (len(full_warnings) == 0 and len(sec_findings) == 0)
                     msg = f"Compiles with {len(full_warnings)} warning(s)" if full_warnings else "Compiles cleanly with 0 errors"

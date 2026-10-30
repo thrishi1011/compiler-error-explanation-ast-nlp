@@ -1459,6 +1459,7 @@ class Sidebar(QFrame):
         self.btn1 = self._create_btn("editor", "Code Editor", "Main C++ editor, diagnostics, and I/O runner")
         self.btn2 = self._create_btn("ast", "AST Explorer", "Abstract Syntax Tree hierarchy viewer")
         self.btn_complexity = self._create_btn("complexity", "Complexity", "Time & Space complexity analysis of run code")
+        self.btn_complexity.setVisible(False)
         self.btn3 = self._create_btn("energy", "Energy Metrics", "Real-time energy consumption and carbon emissions")
         self.btn4 = self._create_btn("callgraph", "Call Graph", "Function call relationship diagram")
         self.btn5 = self._create_btn("security", "Security Scan", "Static security vulnerability inspection")
@@ -1467,7 +1468,7 @@ class Sidebar(QFrame):
         self.btn8 = self._create_btn("benchmark", "Benchmark", "Measured accuracy benchmark comparison")
 
         self.buttons = [
-            self.btn1, self.btn2, self.btn_complexity, self.btn3, self.btn4,
+            self.btn1, self.btn2, self.btn3, self.btn4,
             self.btn5, self.btn6, self.btn7, self.btn8
         ]
 
@@ -1477,7 +1478,6 @@ class Sidebar(QFrame):
 
         lay.addWidget(self.sec_analysis)
         lay.addWidget(self.btn2)
-        lay.addWidget(self.btn_complexity)
         lay.addWidget(self.btn4)
         lay.addWidget(self.btn6)
 
@@ -4039,7 +4039,6 @@ class AppGUI(QMainWindow):
 
     def switch_to_complexity(self):
         self.stack.setCurrentIndex(8)  # Optimization & Complexity page
-        self.sidebar.set_active_btn(self.sidebar.btn_complexity)
         code = self.editor.toPlainText()
         self._update_run_complexity(code)
 
