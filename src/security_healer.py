@@ -620,9 +620,6 @@ def _apply_use_after_free(source: str, finding: Finding) -> Optional[Fix]:
     if not line_no or not (1 <= line_no <= len(lines)):
         return None
 
-    # Finding line is a use after free
-    # Find the preceding delete p;
-    # Search backwards for delete p;
     del_idx = None
     del_var = None
     for i in range(line_no - 1, -1, -1):
@@ -635,9 +632,6 @@ def _apply_use_after_free(source: str, finding: Finding) -> Optional[Fix]:
     if del_idx is None or del_var is None:
         return None
 
-    # Find the last use of del_var in the function
-    # Check brace depths: delete and all later uses must be at same brace depth
-    # with no control flow (if/for/while/switch/return/goto) between them
     last_use_idx = None
     del_depth = 0
     for j in range(del_idx + 1):
@@ -647,22 +641,24 @@ def _apply_use_after_free(source: str, finding: Finding) -> Optional[Fix]:
     for k in range(del_idx + 1, len(lines)):
         line_k = lines[k]
         code_part = line_k.split("//")[0]
-        # Check control flow
-        if re.search(r"\b(if|for|while|switch|return|goto)\b", code_part):
+        if re.search(r"\breturn\b", code_part):
+            break
+        if re.search(r"\b(if|for|while|switch|goto)\b", code_part):
             return None
         curr_depth += code_part.count("{") - code_part.count("}")
         if curr_depth != del_depth:
-            # Entered or exited a block
             if curr_depth < del_depth:
                 break
             return None
+
+        if re.search(rf"\b{re.escape(del_var)}\s*=\s*(?:nullptr|NULL|0)\s*;", code_part):
+            break
 
         if re.search(rf"\b{re.escape(del_var)}\b", code_part) and not re.search(rf"\bdelete\b", code_part):
             last_use_idx = k
 
     if last_use_idx is not None and last_use_idx > del_idx:
         del_line = lines.pop(del_idx)
-        # Indent to match last use line
         indent = re.match(r"^(\s*)", lines[last_use_idx - 1]).group(1)
         del_line_clean = f"{indent}{del_line.strip()}"
         lines.insert(last_use_idx, del_line_clean)
@@ -1200,7 +1196,26 @@ def _apply_vector_oob(source: str, finding: Finding) -> Optional[Fix]:
         return None
     orig_line = lines[line_no - 1]
 
-    # Replace v[i] with v.at(i)
+    m_info = re.search(r"Vector\s+'([A-Za-z_]\w*)'\s+has\s+(\d+)\s+elements.*index\s+(\d+)", finding.description)
+    if m_info:
+        v, vs, bad_idx = m_info.group(1), int(m_info.group(2)), m_info.group(3)
+        max_valid = max(0, vs - 1)
+        fixed_line = orig_line.replace(f"[{bad_idx}]", f"[{max_valid}]").replace(f".at({bad_idx})", f".at({max_valid})")
+        if fixed_line != orig_line:
+            lines[line_no - 1] = fixed_line
+            new_source = "\n".join(lines)
+            if source.endswith("\n") and not new_source.endswith("\n"):
+                new_source += "\n"
+            return Fix(
+                finding_category=finding.category,
+                line=line_no,
+                safety_class="auto_notice",
+                description=f"Clamp {v} index {bad_idx} to valid bounds ({max_valid})",
+                before=orig_line.strip(),
+                after=fixed_line.strip(),
+                new_source=new_source,
+            )
+
     m = re.search(r"\b([A-Za-z_]\w*)\s*\[\s*([^\]]+)\s*\]", orig_line)
     if m:
         v, idx_expr = m.group(1), m.group(2)
@@ -1425,7 +1440,58 @@ register_recipe("hidden_unicode", "auto", _apply_hidden_unicode, _suggest_hidden
 register_recipe("unsafe_memory_copy", "auto", _apply_unsafe_memory_copy, _suggest_unsafe_memory_copy)
 
 # auto_notice recipes
+def _apply_infinite_recursion(source: str, finding: Finding) -> Optional[Fix]:
+    lines = source.splitlines()
+    line_no = finding.line
+    msg = finding.description
+    m = re.search(r"Function\s+'([A-Za-z_]\w*)'", msg)
+    fn_name = m.group(1) if m else None
+
+    fn_idx = None
+    param = "n"
+    search_end = (line_no - 1) if line_no and line_no <= len(lines) else len(lines) - 1
+    for i in range(search_end, -1, -1):
+        if fn_name and re.search(rf"\b{re.escape(fn_name)}\s*\(", lines[i]):
+            fn_idx = i
+            param_match = re.search(r"\(\s*(?:int|long|double|float)?\s*([A-Za-z_]\w*)\s*\)", lines[i])
+            if param_match:
+                param = param_match.group(1)
+            break
+
+    if fn_idx is not None and line_no and 1 <= line_no <= len(lines):
+        call_idx = line_no - 1
+        indent = re.match(r"^(\s*)", lines[call_idx]).group(1)
+        base_line = f"{indent}if ({param} <= 1) return 1;"
+        lines.insert(call_idx, base_line)
+        new_source = "\n".join(lines)
+        if source.endswith("\n") and not new_source.endswith("\n"):
+            new_source += "\n"
+        return Fix(
+            finding_category=finding.category,
+            line=line_no,
+            safety_class="auto_notice",
+            description=f"Add base case check for recursive function {fn_name}",
+            before=lines[call_idx + 1].strip(),
+            after=f"{base_line.strip()}\n{indent}{lines[call_idx + 1].strip()}",
+            new_source=new_source,
+        )
+    return None
+
+
+def _suggest_infinite_recursion(source: str, finding: Finding) -> Optional[Fix]:
+    return Fix(
+        finding_category=finding.category,
+        line=finding.line,
+        safety_class="suggest",
+        description="Add terminating base case to recursive function",
+        before="",
+        after=safe_text("// Ensure recursive function has a base case:\nif (n <= 1) return 1;"),
+        new_source=None,
+    )
+
+
 register_recipe("division_by_zero", "auto_notice", _apply_division_by_zero, _suggest_division_by_zero)
+register_recipe("infinite_recursion", "auto_notice", _apply_infinite_recursion, _suggest_infinite_recursion)
 register_recipe("null_pointer_dereference", "auto_notice", _apply_null_pointer_dereference, _suggest_null_pointer_dereference)
 register_recipe("vector_out_of_bounds", "auto_notice", _apply_vector_oob, _suggest_vector_oob)
 register_recipe("weak_randomness", "auto_notice", _apply_weak_randomness, _suggest_weak_randomness)
@@ -1436,10 +1502,6 @@ _SUGGEST_ONLY_DEFS = {
     "unsafe_pointer_arithmetic": (
         "// Prefer container iterators or index-checked loops:\nfor (size_t i = 0; i < size; ++i) { ... }",
         "Replace raw pointer arithmetic with checked indexing",
-    ),
-    "infinite_recursion": (
-        "// Ensure recursive function has a base case:\nif (n <= 1) return 1;",
-        "Add terminating base case to recursive function",
     ),
     "disabled_safety_check": (
         "// Use production runtime checks instead of assert:\nif (!valid) throw std::invalid_argument(\"invalid\");",

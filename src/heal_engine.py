@@ -99,11 +99,11 @@ def compile_source(source: str, syntax_only: bool = True) -> Tuple[List[dict], L
     out_exe = None
     try:
         if syntax_only:
-            cmd = ["g++", "-fsyntax-only", "-std=c++17", "-pipe", "-Wall", tmp_path]
+            cmd = ["g++", "-fsyntax-only", "-std=c++17", "-pipe", "-Wall", "-Wextra", "-Wshadow", "-Wnull-dereference", tmp_path]
             run_kind = "syntax"
         else:
             out_exe = tmp_path + (".exe" if os.name == "nt" else ".out")
-            cmd = ["g++", "-std=c++17", "-O0", "-pipe", "-Wall", tmp_path, "-o", out_exe]
+            cmd = ["g++", "-std=c++17", "-O0", "-pipe", "-Wall", "-Wextra", "-Wshadow", "-Wnull-dereference", tmp_path, "-o", out_exe]
             run_kind = "compile"
 
         res = safe_run(
@@ -332,7 +332,8 @@ def heal_until_clean(
                     if full_warnings:
                         full_warnings = _classify_error_list(full_warnings, classifier)
                         warn_rounds = 0
-                        while full_warnings and warn_rounds < 5:
+                        max_w_rounds = max(10, len(full_warnings) + 3)
+                        while full_warnings and warn_rounds < max_w_rounds:
                             target_warn = pick_offline_target(full_warnings, current_source)
                             if not target_warn:
                                 break
@@ -410,9 +411,10 @@ def heal_until_clean(
                     if tracker:
                         try: emissions = tracker.stop() or 0.0
                         except: pass
+                    final_status = "healed" if is_clean else ("nothing_changed" if current_source == source else "partially_healed")
                     return HealResult(
                         code=current_source,
-                        status="healed" if is_clean else "partially_healed",
+                        status=final_status,
                         clean=is_clean,
                         rounds=rounds_history,
                         attempts=all_attempts_flat,

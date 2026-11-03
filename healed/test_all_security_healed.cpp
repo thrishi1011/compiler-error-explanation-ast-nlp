@@ -39,6 +39,7 @@ void trigger_unbounded_scanf() {
 // HIGH: Command Injection — system_fn() with shell execution
 // ─────────────────────────────────────────────────────────────
 void trigger_command_injection(const char* cmd) {
+    (void)cmd;
     // [Unsafe system call neutralized for security]
 }
 

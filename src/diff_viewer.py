@@ -125,11 +125,12 @@ def has_changes(diff: List[DiffLine]) -> bool:
 def infer_line_rationale(
     new_line: Optional[str],
     old_line: Optional[str] = None,
-    optimizations: Optional[List[str]] = None
+    optimizations: Optional[List[str]] = None,
+    mode: str = "optimize"
 ) -> Optional[str]:
     """
     Infers a brief, user-understandable explanation comment for why a C++ code line
-    was added, modified, or removed during optimization.
+    was added, modified, or removed during optimization or auto-healing.
     """
     nl = new_line.strip() if new_line else ""
     ol = old_line.strip() if old_line else ""
@@ -137,6 +138,64 @@ def infer_line_rationale(
     # Ignore standalone structural braces/keywords
     if nl in ("}", "};", "{", "} else {", "else {", "else", "try {", "} catch(...) {"):
         return None
+
+    # Heal-specific rationales
+    if mode == "heal":
+        # 1. Variable Shadowing / Redeclaration (e.g. x -> x_local or local_x or x_22)
+        if any(tok in nl for tok in ["_local", "local_", "_renamed"]) or re.search(r'\b[a-zA-Z_]\w*_\d+\b', nl):
+            return "Why: Renamed variable to resolve variable shadowing or redeclaration conflict."
+
+        # 2. Void cast / suppressing unused variable warning
+        if "(void)" in nl:
+            return "Why: Cast identifier to void to suppress unused variable or parameter warning."
+
+        # 3. Pointer initialization / nulling
+        if any(term in nl for term in ["nullptr", "NULL", "= 0;"]) and ("*" in nl or "ptr" in nl):
+            return "Why: Initialized pointer safely to eliminate uninitialized memory risks."
+
+        # 4. Missing semicolon at statement end
+        if nl.endswith(";") and ol and not ol.endswith(";") and nl[:-1].strip() == ol.strip():
+            return "Why: Added missing semicolon to resolve compiler syntax error."
+
+        # 5. Header inclusion
+        if nl.startswith("#include"):
+            hdr = re.search(r'#include\s*<([^>]+)>', nl)
+            if hdr:
+                return f"Why: Included <{hdr.group(1)}> to supply required declarations."
+            return "Why: Included required header to resolve undeclared identifier."
+
+        # 6. Missing return statement
+        if nl.startswith("return") and not ol:
+            return "Why: Added return statement to satisfy function return type."
+
+        # 7. Constructor or struct definition
+        if "(" in nl and ")" in nl and ("{}" in nl or "{" in nl) and not ol:
+            return "Why: Defined constructor to enable object instantiation."
+
+        # 8. Pointer dereference or address-of
+        if ol and ("*" in nl or "&" in nl or "->" in nl or "." in nl):
+            return "Why: Corrected pointer type, address, or member access syntax."
+
+        # 9. Type mismatch / cast
+        if ol and ("(" in nl and ")" in nl and any(t in nl for t in ["int", "char*", "void*", "float", "double", "long"])):
+            return "Why: Explicitly converted type to resolve compiler type mismatch."
+
+        # 10. Security hardening
+        if ol and "strcpy" in ol and "strcpy" not in nl:
+            return "Why: Replaced unsafe strcpy with bounds-checked alternative to prevent buffer overflow."
+        if ol and "gets(" in ol and "gets(" not in nl:
+            return "Why: Replaced dangerous gets() with safe bounded input handling."
+        if ol and "sprintf" in ol and ("snprintf" in nl or "string" in nl):
+            return "Why: Replaced sprintf with snprintf to enforce buffer limits."
+
+        # 11. Removed statement
+        if ol and not nl:
+            return "Why: Removed conflicting or invalid statement causing compiler error."
+
+        # 12. Fallback for heal
+        if ol:
+            return "Why: Corrected statement syntax and types to resolve compiler diagnostic."
+        return "Why: Added statement to satisfy compiler requirements."
 
     # Check against explicit optimizations provided by the AI/engine
     if optimizations:
@@ -241,7 +300,8 @@ def format_annotated_diff_html(
     patched: str,
     optimizations: Optional[List[str]] = None,
     expanded: bool = False,
-    context: int = 3
+    context: int = 3,
+    mode: str = "optimize"
 ) -> str:
     """
     Renders an HTML-formatted diff view with line-by-line brief explanatory comments
@@ -263,13 +323,15 @@ def format_annotated_diff_html(
     ]
 
     if expanded:
+        title = "Line-by-Line Fix Rationale:" if mode == "heal" else "Line-by-Line Optimization Rationale:"
         html_lines.append(
-            "<div style='background-color: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 7px 10px; margin-bottom: 8px; color: #bae6fd; font-size: 11px;'>"
-            "<b>Line-by-Line Optimization Rationale:</b> Brief comments explain why each change was made so you can understand the edits."
+            f"<div style='background-color: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 7px 10px; margin-bottom: 8px; color: #bae6fd; font-size: 11px;'>"
+            f"<b>{title}</b> Brief comments explain why each change was made so you can understand the edits."
             "</div>"
         )
 
-    for group in matcher.get_grouped_opcodes(context):
+    actual_context = 10000 if expanded else context
+    for group in matcher.get_grouped_opcodes(actual_context):
         for tag, i1, i2, j1, j2 in group:
             if tag == "equal":
                 for k, (o, n) in enumerate(zip(orig_lines[i1:i2], new_lines[j1:j2])):
@@ -291,7 +353,7 @@ def format_annotated_diff_html(
                         f"<b>- </b>{escaped}"
                         f"</div>"
                     )
-                    r = infer_line_rationale(None, line, optimizations)
+                    r = infer_line_rationale(None, line, optimizations, mode=mode)
                     if r:
                         html_lines.append(
                             f"<div style='color: #38bdf8; font-style: italic; font-size: 10.5px; margin: 1px 0 3px 26px; padding: 2px 8px; background-color: rgba(56, 189, 248, 0.08); border-left: 2px solid #38bdf8; border-radius: 3px; white-space: normal;'>"
@@ -308,7 +370,7 @@ def format_annotated_diff_html(
                         f"<b>+ </b>{escaped}"
                         f"</div>"
                     )
-                    r = infer_line_rationale(line, None, optimizations)
+                    r = infer_line_rationale(line, None, optimizations, mode=mode)
                     if r:
                         html_lines.append(
                             f"<div style='color: #38bdf8; font-style: italic; font-size: 10.5px; margin: 1px 0 3px 26px; padding: 2px 8px; background-color: rgba(56, 189, 248, 0.08); border-left: 2px solid #38bdf8; border-radius: 3px; white-space: normal;'>"
@@ -337,7 +399,7 @@ def format_annotated_diff_html(
                         f"</div>"
                     )
                     old_corresp = old_chunk[k] if k < len(old_chunk) else (old_chunk[0] if old_chunk else None)
-                    r = infer_line_rationale(line, old_corresp, optimizations)
+                    r = infer_line_rationale(line, old_corresp, optimizations, mode=mode)
                     if r:
                         html_lines.append(
                             f"<div style='color: #38bdf8; font-style: italic; font-size: 10.5px; margin: 1px 0 3px 26px; padding: 2px 8px; background-color: rgba(56, 189, 248, 0.08); border-left: 2px solid #38bdf8; border-radius: 3px; white-space: normal;'>"

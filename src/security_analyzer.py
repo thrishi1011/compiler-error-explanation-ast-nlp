@@ -509,15 +509,21 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
 
         for np, n_decl in list(null_ptrs.items()):
             if line_no > n_decl and re.search(rf"\*\s*{re.escape(np)}\b|{re.escape(np)}\s*->", code_line):
-                emit(
-                    line_no,
-                    "Null Pointer Dereference",
-                    "Critical",
-                    f"Pointer '{np}' initialized to nullptr at line {n_decl} is dereferenced.",
-                    f"Allocate memory or check 'if ({np} != nullptr)' before dereferencing.",
-                )
+                is_guarded = False
+                for prev_i in range(max(0, line_no - 4), line_no):
+                    prev_line = lines[prev_i] if prev_i < len(lines) else ""
+                    if re.search(rf"\bif\s*\(\s*(?:{re.escape(np)}\s*!=\s*(?:nullptr|NULL|0)|(?:nullptr|NULL|0)\s*!=\s*{re.escape(np)}|{re.escape(np)})\s*\)", prev_line):
+                        is_guarded = True
+                        break
+                if not is_guarded:
+                    emit(
+                        line_no,
+                        "Null Pointer Dereference",
+                        "Critical",
+                        f"Pointer '{np}' initialized to nullptr at line {n_decl} is dereferenced.",
+                        f"Allocate memory or check 'if ({np} != nullptr)' before dereferencing.",
+                    )
                 del null_ptrs[np]
-
         # ── 6. Vector Out of Bounds ───────────────────────────────────────────
         vec_init = re.search(r"\bvector\s*<[^>]+>\s*([A-Za-z_]\w*)\s*=\s*\{([^}]+)\}", code_line)
         if vec_init:
@@ -530,14 +536,20 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
             if v_idx:
                 accessed_idx = int(v_idx.group(1))
                 if accessed_idx >= vs:
-                    emit(
-                        line_no,
-                        "Vector Out of Bounds",
-                        "High",
-                        f"Vector '{vn}' has {vs} elements (indices 0..{vs-1}), but is accessed at out-of-bounds index {accessed_idx}.",
-                        f"Ensure index is within bounds: 'if ({accessed_idx} < {vn}.size())'.",
-                    )
-
+                    is_guarded = False
+                    for prev_i in range(max(0, line_no - 4), line_no):
+                        prev_line = lines[prev_i] if prev_i < len(lines) else ""
+                        if re.search(rf"\bif\s*\(.*{re.escape(vn)}\.size\(\)", prev_line):
+                            is_guarded = True
+                            break
+                    if not is_guarded:
+                        emit(
+                            line_no,
+                            "Vector Out of Bounds",
+                            "High",
+                            f"Vector '{vn}' has {vs} elements (indices 0..{vs-1}), but is accessed at out-of-bounds index {accessed_idx}.",
+                            f"Ensure index is within bounds: 'if ({accessed_idx} < {vn}.size())'.",
+                        )
         if re.search(r"\bgets\s*\(", code_line):
             emit(
                 line_no,

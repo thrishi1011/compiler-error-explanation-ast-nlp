@@ -264,7 +264,21 @@ _UNUSED_VARIABLE_PHRASES = (
     "unused variable",
     "unused but set variable",
     "declared but never used",
+    "unused parameter",
 )
+
+_VARIABLE_SHADOW_PHRASES = (
+    "shadows a",
+    "shadows a global",
+    "shadows a previous",
+    "shadows a parameter",
+    "[-wshadow]",
+)
+
+
+def _is_variable_shadow_error(message: str) -> bool:
+    lowered = message.lower()
+    return any(phrase in lowered for phrase in _VARIABLE_SHADOW_PHRASES) or ("declaration of '" in lowered and "shadows" in lowered)
 
 
 def _is_undeclared_identifier_error(message: str) -> bool:
@@ -1267,6 +1281,34 @@ def fix_unused_variable(source: str, error: dict) -> Optional[str]:
         return None
 
     line = lines[idx]
+
+    # Unused function parameter (e.g. void foo(int x) {})
+    if "unused parameter" in msg.lower():
+        if "{}" in line:
+            lines[idx] = line.replace("{}", f"{{ (void){var}; }}")
+            return _join(lines)
+        elif "{" in line:
+            b_pos = line.find("{")
+            indent = re.match(r"^(\s*)", line).group(1) + "    "
+            lines[idx] = line[:b_pos + 1] + f"\n{indent}(void){var};" + line[b_pos + 1:]
+            return _join(lines)
+        for k in range(idx, min(len(lines), idx + 5)):
+            if "{" in lines[k]:
+                indent = re.match(r"^(\s*)", lines[k]).group(1) + "    "
+                lines.insert(k + 1, f"{indent}(void){var};\n")
+                return _join(lines)
+
+    # Variable set but not used (e.g. const_assignment.cpp)
+    if "set but not used" in msg.lower():
+        indent = re.match(r"^(\s*)", line).group(1)
+        for k in range(idx + 1, len(lines)):
+            if re.search(r"\breturn\b|\}", lines[k]):
+                k_indent = re.match(r"^(\s*)", lines[k]).group(1)
+                lines.insert(k, f"{k_indent}(void){var};\n")
+                return _join(lines)
+        lines.append(f"{indent}(void){var};\n")
+        return _join(lines)
+
     simple_decl = re.match(
         rf"^\s*(?:auto|int|float|double|char|bool|long|short)\s+{re.escape(var)}\s*=\s*.+;\s*$",
         line,
@@ -1347,9 +1389,9 @@ def fix_type_error(source: str, error: dict) -> Optional[str]:
             return _join(lines)
 
     # Fix: cannot convert from type to type
-    conv = re.search(r"cannot convert '([^']+)' to '([^']+)'", error.get("message", ""))
+    conv = re.search(r"(?:cannot convert|invalid conversion from)\s+'([^']+)'\s+to\s+'([^']+)'", error.get("message", ""))
     if conv:
-        from_t, to_t = conv.group(1), conv.group(2)
+        from_t, to_t = conv.group(1).strip(), conv.group(2).strip()
         
         # Missing dereference: assigning pointer to value
         if from_t.endswith("*") and not to_t.endswith("*"):
@@ -1359,6 +1401,23 @@ def fix_type_error(source: str, error: dict) -> Optional[str]:
                 lines[idx] = line[:m.start()] + f"= *{var}" + line[m.end():]
                 return _join(lines)
         
+        # Missing address-of: assigning non-pointer to pointer (e.g. pointer_misuse.cpp, type_error.cpp)
+        if not from_t.endswith("*") and to_t.endswith("*"):
+            m = re.search(r'=\s*([a-zA-Z0-9_]+)', line)
+            if m:
+                var = m.group(1)
+                if from_t == to_t.rstrip("*").strip():
+                    rhs_expr = f"&{var}"
+                else:
+                    rhs_expr = f"reinterpret_cast<{to_t}>(&{var})"
+                lines[idx] = line[:m.start()] + f"= {rhs_expr}" + line[m.end():]
+                ptr_match = re.search(r'\*\s*([a-zA-Z_]\w*)', line)
+                if ptr_match:
+                    p_name = ptr_match.group(1)
+                    indent = re.match(r'^(\s*)', line).group(1)
+                    lines.insert(idx + 1, f"{indent}(void){p_name};\n")
+                return _join(lines)
+
         # Missing pointer pass (passing local by value instead of pointer)
         if "pointer" in msg or "address" in msg:
             m = re.search(r'\b([a-zA-Z_]\w*)\b\s*\)', line)
@@ -1367,7 +1426,7 @@ def fix_type_error(source: str, error: dict) -> Optional[str]:
                 lines[idx] = line[:m.start()] + f"&{var})" + line[m.end():]
                 return _join(lines)
 
-        # Wrap RHS of assignment with static_cast
+    # Wrap RHS of assignment with static_cast
         m = re.search(r'=\s*(.+);', line)
         if m:
             rhs = m.group(1).strip()
@@ -1465,6 +1524,41 @@ def fix_type_error(source: str, error: dict) -> Optional[str]:
                 lines[idx] = line[:m.start()] + f"{func_name}({args_list[0]})" + line[m.end():]
                 return _join(lines)
 
+    # Invalid static_cast between incompatible pointer types (e.g. int* to char*)
+    if "invalid static_cast" in msg:
+        if "static_cast" in line:
+            lines[idx] = line.replace("static_cast", "reinterpret_cast", 1)
+            return _join(lines)
+
+    # Missing constructor: no matching function for call to 'Class::Class()'
+    if "no matching function for call to" in msg:
+        raw_msg = error.get("message", "")
+        m_cls = re.search(r"no matching function for call to\s+'([A-Za-z_]\w*)::\1\(", raw_msg, re.IGNORECASE)
+        if m_cls:
+            cls_name = m_cls.group(1)
+            for c_idx in range(len(lines)):
+                if re.search(rf"\b(class|struct)\s+{re.escape(cls_name)}\b", lines[c_idx], re.IGNORECASE):
+                    m_decl = re.search(rf"\b(class|struct)\s+([A-Za-z_]\w*)\b", lines[c_idx], re.IGNORECASE)
+                    actual_cls_name = m_decl.group(2) if m_decl else cls_name
+                    pub_idx = None
+                    brace_end = None
+                    depth = 0
+                    for k in range(c_idx, len(lines)):
+                        depth += lines[k].count("{") - lines[k].count("}")
+                        if re.search(r"\bpublic\s*:", lines[k]) and pub_idx is None:
+                            pub_idx = k
+                        if depth == 0 and "}" in lines[k]:
+                            brace_end = k
+                            break
+                    if pub_idx is not None:
+                        indent = re.match(r"^(\s*)", lines[pub_idx]).group(1) + "    "
+                        lines.insert(pub_idx + 1, f"{indent}{actual_cls_name}() {{}}\n")
+                        return _join(lines)
+                    elif brace_end is not None:
+                        indent = "    "
+                        lines.insert(brace_end, f"public:\n{indent}{actual_cls_name}() {{}}\n")
+                        return _join(lines)
+
     # 10. Function parameter type mismatch (function_mismatch.cpp)
     if "invalid conversion from 'const char*' to 'int'" in msg:
         m = re.search(r'\b([a-zA-Z_]\w*)\s*\(\s*"([^"]*)"\s*\)', line)
@@ -1522,6 +1616,77 @@ def fix_return_type_error(source: str, error: dict) -> Optional[str]:
             return _join(lines)
 
     return None
+
+
+def fix_variable_shadow(source: str, error: dict) -> Optional[str]:
+    """
+    Rename shadowed variable declaration and its references in the enclosing scope
+    to eliminate -Wshadow warnings without altering logic.
+    """
+    msg = error.get("message", "")
+    line_no = error.get("line")
+    if not line_no:
+        return None
+
+    m = re.search(r"declaration of '([^']+)' shadows", msg)
+    if not m:
+        m = re.search(r"'([^']+)' shadows", msg)
+    if not m:
+        return None
+    var = m.group(1)
+
+    lines = _lines(source)
+    idx = int(line_no) - 1
+    if idx < 0 or idx >= len(lines):
+        return None
+
+    decl_line = lines[idx]
+    if not re.search(rf"\b{re.escape(var)}\b", decl_line):
+        return None
+
+    new_var = None
+    for cand in [f"{var}_local", f"local_{var}", f"{var}_{line_no}", f"{var}_val", f"{var}_shadow"]:
+        if not re.search(rf"\b{re.escape(cand)}\b", source):
+            new_var = cand
+            break
+    if not new_var:
+        new_var = f"{var}_{line_no}"
+
+    open_count = 0
+    for i in range(idx + 1):
+        cleaned = re.sub(r'//.*$', '', lines[i])
+        cleaned = re.sub(r'".*?"', '""', cleaned)
+        cleaned = re.sub(r"'.*?'", "''", cleaned)
+        open_count += cleaned.count('{') - cleaned.count('}')
+
+    end_idx = len(lines) - 1
+    curr_depth = open_count
+    for i in range(idx + 1, len(lines)):
+        cleaned = re.sub(r'//.*$', '', lines[i])
+        cleaned = re.sub(r'".*?"', '""', cleaned)
+        cleaned = re.sub(r"'.*?'", "''", cleaned)
+        curr_depth += cleaned.count('{') - cleaned.count('}')
+        if curr_depth < open_count:
+            end_idx = i
+            break
+
+    lines[idx] = re.sub(rf"\b{re.escape(var)}\b", new_var, decl_line, count=1)
+
+    used_after = False
+    for i in range(idx + 1, end_idx + 1):
+        line_clean = re.sub(r'//.*$', '', lines[i])
+        if re.search(rf"\b(?:int|float|double|char|bool|auto|long|short)\s+{re.escape(var)}\b", line_clean):
+            break
+        if re.search(rf"\b{re.escape(var)}\b", lines[i]):
+            lines[i] = re.sub(rf"\b{re.escape(var)}\b", new_var, lines[i])
+            used_after = True
+
+    scope_str = "".join(lines[idx:end_idx + 1])
+    if not used_after and not re.search(rf"\(void\)\s*{re.escape(new_var)}", scope_str):
+        indent = re.match(r"^(\s*)", lines[idx]).group(1)
+        lines.insert(idx + 1, f"{indent}(void){new_var};\n")
+
+    return _join(lines)
 
 
 def fix_redefinition(source: str, error: dict) -> Optional[str]:
@@ -1631,6 +1796,7 @@ _HANDLERS = {
     "type_error":       fix_type_error,
     "return_type_error": fix_return_type_error,
     "redefinition":     fix_redefinition,
+    "variable_shadow":  fix_variable_shadow,
     "integer_overflow": fix_integer_overflow,
     "integer_underflow": fix_integer_overflow,
     "division_by_zero": fix_division_by_zero,
@@ -1667,6 +1833,11 @@ def attempt_fix(source: str, error: dict) -> Optional[str]:
 
     if "security error" in msg or "command injection" in msg or "forbidden system call" in msg or category in ("security", "security_error", "security_violation"):
         patched = fix_security_error(source, error)
+        if patched is not None and patched != source:
+            return patched
+
+    if "shadows" in msg or _is_variable_shadow_error(msg) or category == "variable_shadow":
+        patched = fix_variable_shadow(source, error)
         if patched is not None and patched != source:
             return patched
 

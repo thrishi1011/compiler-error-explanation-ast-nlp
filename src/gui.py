@@ -4269,54 +4269,11 @@ class AppGUI(QMainWindow):
         self.opt_orig_code = original_code
         self.opt_new_code = ""
         self.opt_applied = opts
+        self.opt_diff_mode = "optimize"
 
         opt_code = getattr(result, "optimized_code", "")
         if opt_code and opt_code != original_code:
-            self.opt_new_code = opt_code
-            diff_card = QFrame()
-            diff_card.setObjectName("Card")
-            d_lay = QVBoxLayout(diff_card)
-            d_lay.setContentsMargins(16, 14, 16, 14)
-            d_lay.setSpacing(8)
-
-            diff_hdr = QHBoxLayout()
-            diff_hdr.addWidget(section_label("EXACT CODE CHANGES (DIFF)"))
-            diff_hdr.addStretch(1)
-
-            self.btn_expand_diff = QPushButton("⛶  Expand Diff")
-            self.btn_expand_diff.setObjectName("NavButton")
-            self.btn_expand_diff.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.btn_expand_diff.setStyleSheet(
-                "QPushButton { padding: 3px 10px; font-size: 11px; font-weight: bold; border: 1px solid #334155; border-radius: 4px; }"
-                "QPushButton:hover { background-color: rgba(56, 189, 248, 0.15); border-color: #38bdf8; }"
-            )
-            self.btn_expand_diff.setToolTip("Expand diff across the entire right panel to inspect changes and explanatory comments clearly")
-            self.btn_expand_diff.clicked.connect(self._toggle_expand_diff)
-            diff_hdr.addWidget(self.btn_expand_diff)
-            d_lay.addLayout(diff_hdr)
-
-            diff_text = QTextEdit()
-            diff_text.setFont(theme.mono_font(11))
-            diff_text.setReadOnly(True)
-            diff_text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
-            diff_text.setMinimumHeight(180)
-            diff_text.setMaximumHeight(350)
-
-            diff_html = format_annotated_diff_html(original_code, opt_code, opts, expanded=False)
-            diff_text.setHtml(diff_html)
-            d_lay.addWidget(diff_text)
-
-            btn_expand_bottom = QPushButton("⛶  Click to Expand Full Changes View")
-            btn_expand_bottom.setProperty("variant", "ghost")
-            btn_expand_bottom.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_expand_bottom.setStyleSheet("font-size: 11px; color: #38bdf8;")
-            btn_expand_bottom.clicked.connect(self._toggle_expand_diff)
-            d_lay.addWidget(btn_expand_bottom)
-
-            self.opt_diff_card = diff_card
-            self.opt_diff_text = diff_text
-            self.opt_expand_bottom_btn = btn_expand_bottom
-            self.error_cards_layout.addWidget(diff_card)
+            self._render_diff_card(original_code, opt_code, annotations=opts, mode="optimize")
 
         nav_btn = QPushButton("View Complexity Details in Bottom Panel ↓")
         nav_btn.setProperty("variant", "ghost")
@@ -4324,6 +4281,103 @@ class AppGUI(QMainWindow):
         nav_btn.clicked.connect(self.switch_to_complexity)
         self.opt_nav_btn = nav_btn
         self.error_cards_layout.addWidget(nav_btn)
+
+    def _render_diff_card(
+        self,
+        original_code: str,
+        new_code: str,
+        annotations: Optional[list] = None,
+        mode: str = "heal",
+        title: str = "EXACT CODE CHANGES (DIFF)"
+    ):
+        self.opt_orig_code = original_code
+        self.opt_new_code = new_code
+        self.opt_applied = annotations or []
+        self.opt_diff_mode = mode
+        self.is_diff_expanded = False
+
+        diff_card = QFrame()
+        diff_card.setObjectName("Card")
+        d_lay = QVBoxLayout(diff_card)
+        d_lay.setContentsMargins(16, 14, 16, 14)
+        d_lay.setSpacing(8)
+
+        diff_hdr = QHBoxLayout()
+        diff_hdr.addWidget(section_label(title))
+        diff_hdr.addStretch(1)
+
+        self.btn_expand_diff = QPushButton("⛶  Expand Diff")
+        self.btn_expand_diff.setObjectName("NavButton")
+        self.btn_expand_diff.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_expand_diff.setStyleSheet(
+            "QPushButton { padding: 3px 10px; font-size: 11px; font-weight: bold; border: 1px solid #334155; border-radius: 4px; }"
+            "QPushButton:hover { background-color: rgba(56, 189, 248, 0.15); border-color: #38bdf8; }"
+        )
+        self.btn_expand_diff.setToolTip("Expand diff across the entire right panel to inspect changes and explanatory comments clearly")
+        self.btn_expand_diff.clicked.connect(self._toggle_expand_diff)
+        diff_hdr.addWidget(self.btn_expand_diff)
+        d_lay.addLayout(diff_hdr)
+
+        diff_text = QTextEdit()
+        diff_text.setFont(theme.mono_font(11))
+        diff_text.setReadOnly(True)
+        diff_text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        diff_text.setMinimumHeight(180)
+        diff_text.setMaximumHeight(350)
+
+        diff_html = format_annotated_diff_html(original_code, new_code, self.opt_applied, expanded=False, mode=mode)
+        diff_text.setHtml(diff_html)
+        d_lay.addWidget(diff_text)
+
+        btn_expand_bottom = QPushButton("⛶  Click to Expand Full Changes View")
+        btn_expand_bottom.setProperty("variant", "ghost")
+        btn_expand_bottom.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_expand_bottom.setStyleSheet("font-size: 11px; color: #38bdf8;")
+        btn_expand_bottom.clicked.connect(self._toggle_expand_diff)
+        d_lay.addWidget(btn_expand_bottom)
+
+        self.opt_diff_card = diff_card
+        self.opt_diff_text = diff_text
+        self.opt_expand_bottom_btn = btn_expand_bottom
+        self.error_cards_layout.addWidget(diff_card)
+        return diff_card
+
+    def _show_heal_diff(self):
+        if getattr(self, "_heal_diff_shown", False):
+            return
+        self._heal_diff_shown = True
+
+        orig_code = getattr(self, "_pre_heal_source", "")
+        healed_code = self.editor.toPlainText()
+
+        if (not healed_code or healed_code == orig_code) and hasattr(self, "healed_file_path") and os.path.exists(self.healed_file_path):
+            try:
+                with open(self.healed_file_path, "r", encoding="utf-8") as f:
+                    file_code = f.read()
+                    if file_code:
+                        healed_code = file_code
+            except Exception:
+                pass
+
+        if not orig_code and hasattr(self, "original_file_path") and os.path.exists(self.original_file_path):
+            try:
+                with open(self.original_file_path, "r", encoding="utf-8") as f:
+                    orig_code = f.read()
+            except Exception:
+                pass
+
+        if not orig_code or not healed_code or orig_code.strip() == healed_code.strip():
+            return
+
+        annotations = []
+        if hasattr(self, "_last_heal_summary") and self._last_heal_summary:
+            rounds = self._last_heal_summary.get("rounds", [])
+            for r in rounds:
+                m = r.get("method")
+                if m and m not in annotations:
+                    annotations.append(m)
+
+        self._render_diff_card(orig_code, healed_code, annotations=annotations, mode="heal")
 
     def _toggle_expand_diff(self):
         self.is_diff_expanded = not getattr(self, "is_diff_expanded", False)
@@ -4339,18 +4393,27 @@ class AppGUI(QMainWindow):
         current_left = self.h_splitter.sizes()[0] if self.h_splitter.sizes() else int(total_w * 0.62)
 
         if self.is_diff_expanded:
+            self._hidden_diff_cards = []
+            for i in range(self.error_cards_layout.count()):
+                item = self.error_cards_layout.itemAt(i)
+                if item and item.widget():
+                    w = item.widget()
+                    if w != getattr(self, "opt_diff_card", None):
+                        self._hidden_diff_cards.append(w)
+
             target_left = int(total_w * 0.42)
             if hasattr(self, "btn_expand_diff") and self.btn_expand_diff:
                 self.btn_expand_diff.setText("🗗  Collapse Diff")
                 self.btn_expand_diff.setToolTip("Collapse diff back to normal summary view")
             if hasattr(self, "opt_expand_bottom_btn") and self.opt_expand_bottom_btn:
                 self.opt_expand_bottom_btn.setText("🗗  Click to Collapse Diff View")
-            if hasattr(self, "opt_comp_card") and self.opt_comp_card:
-                self.opt_comp_card.setVisible(False)
-            if hasattr(self, "opt_opts_card") and self.opt_opts_card:
-                self.opt_opts_card.setVisible(False)
-            if hasattr(self, "opt_nav_btn") and self.opt_nav_btn:
-                self.opt_nav_btn.setVisible(False)
+
+            for w in self._hidden_diff_cards:
+                try:
+                    w.setVisible(False)
+                except Exception:
+                    pass
+
             if hasattr(self, "opt_diff_text") and self.opt_diff_text:
                 self.opt_diff_text.setMinimumHeight(650)
                 self.opt_diff_text.setMaximumHeight(16777215)
@@ -4358,7 +4421,8 @@ class AppGUI(QMainWindow):
                     getattr(self, "opt_orig_code", ""),
                     getattr(self, "opt_new_code", ""),
                     getattr(self, "opt_applied", []),
-                    expanded=True
+                    expanded=True,
+                    mode=getattr(self, "opt_diff_mode", "optimize")
                 ))
         else:
             target_left = int(total_w * 0.62)
@@ -4385,12 +4449,11 @@ class AppGUI(QMainWindow):
 
         if not self.is_diff_expanded:
             def on_collapse_done():
-                if hasattr(self, "opt_comp_card") and self.opt_comp_card:
-                    self.opt_comp_card.setVisible(True)
-                if hasattr(self, "opt_opts_card") and self.opt_opts_card:
-                    self.opt_opts_card.setVisible(True)
-                if hasattr(self, "opt_nav_btn") and self.opt_nav_btn:
-                    self.opt_nav_btn.setVisible(True)
+                for w in getattr(self, "_hidden_diff_cards", []):
+                    try:
+                        w.setVisible(True)
+                    except Exception:
+                        pass
                 if hasattr(self, "opt_diff_text") and self.opt_diff_text:
                     self.opt_diff_text.setMinimumHeight(180)
                     self.opt_diff_text.setMaximumHeight(350)
@@ -4398,7 +4461,8 @@ class AppGUI(QMainWindow):
                         getattr(self, "opt_orig_code", ""),
                         getattr(self, "opt_new_code", ""),
                         getattr(self, "opt_applied", []),
-                        expanded=False
+                        expanded=False,
+                        mode=getattr(self, "opt_diff_mode", "optimize")
                     ))
             anim.finished.connect(on_collapse_done)
 
@@ -4516,6 +4580,18 @@ class AppGUI(QMainWindow):
         os.makedirs(healed_dir, exist_ok=True)
         self.healed_file_path = os.path.join(healed_dir, f"{clean_stem}_healed{ext}")
 
+        if getattr(self, "is_diff_expanded", False):
+            self.is_diff_expanded = False
+            total_w = self.width()
+            self.h_splitter.setSizes([int(total_w * 0.62), max(50, int(total_w * 0.38))])
+
+        self._pre_heal_source = self.editor.toPlainText()
+        self._heal_diff_shown = False
+        self.opt_diff_card = None
+        self.opt_diff_text = None
+        self.opt_expand_bottom_btn = None
+        self._hidden_diff_cards = []
+
         self.status_label.setText("STATUS: ● AUTO-HEALING IN PROGRESS...")
         self.btn_heal.setEnabled(False)
         self.btn_heal.setText("Healing...")
@@ -4576,6 +4652,7 @@ class AppGUI(QMainWindow):
             self._cleanup_heal_loading()
             self.btn_heal.setEnabled(True)
             self.btn_heal.setText("Auto-Heal")
+            self._show_heal_diff()
 
         self.heal_worker.finished.connect(on_worker_finished)
         self.heal_worker.backup_created.connect(self._on_heal_backup_created)
@@ -4676,6 +4753,7 @@ class AppGUI(QMainWindow):
 
     def _on_heal_summary(self, summary: dict):
         self._cleanup_heal_loading()
+        self._last_heal_summary = summary
         clean = summary.get("clean", False)
         rounds = summary.get("rounds", [])
         total_sec = summary.get("total_duration", 0.0)
@@ -4861,6 +4939,7 @@ class AppGUI(QMainWindow):
         self.status_label.setText("STATUS: ● AUTO-HEAL COMPLETED ✅")
         lbl = plain_label(f"✅ Auto-heal completed: {method} — Compiles cleanly! Review the changes.", "IssueTitle")
         self.error_cards_layout.addWidget(lbl)
+        self._show_heal_diff()
 
     def _on_heal_error(self, msg: str):
         self._cleanup_heal_loading()
@@ -4877,6 +4956,7 @@ class AppGUI(QMainWindow):
         self.status_label.setText("STATUS: ● AUTO-HEAL COMPLETED")
         lbl = plain_label("ℹ️ Auto-heal completed. Review the healed source above.", "IssueTitle")
         self.error_cards_layout.addWidget(lbl)
+        self._show_heal_diff()
 
     # ── Code Compilation & Diagnostics Rendering ──────────────────────────────
 
