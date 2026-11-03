@@ -1,8 +1,8 @@
 # Compiler Error Explanation, AST Analysis & Code Optimization
 
-An intelligent C++ development assistant that combines Machine Learning, Natural Language Processing, Abstract Syntax Tree analysis, AI-powered assistance, and automated code analysis to help developers identify, understand, repair, and optimize C++ programs.
+An intelligent C++ development assistant that combines Machine Learning, Natural Language Processing, AI-powered assistance, Abstract Syntax Tree analysis, automated code repair, security analysis, and code optimization.
 
-The project provides a desktop-based graphical interface where developers can compile programs, understand compiler errors, explore code structure, detect security vulnerabilities, and improve code quality.
+The project provides a desktop-based development environment where developers can compile, analyze, debug, repair, secure, and optimize C++ programs through an integrated PyQt6 graphical interface.
 
 ---
 
@@ -18,94 +18,133 @@ The project provides a desktop-based graphical interface where developers can co
 - [Configuration](#configuration)
 - [Running the Application](#running-the-application)
 - [Application Workflow](#application-workflow)
-- [Machine Learning Model](#machine-learning-model)
+- [Machine Learning and Error Analysis](#machine-learning-and-error-analysis)
+- [Security Framework](#security-framework)
+- [Testing](#testing)
+- [Additional Documentation](#additional-documentation)
 - [Important Notes](#important-notes)
 
 ---
 
 ## Overview
 
-Traditional compiler error messages can be difficult for beginners and even experienced developers to understand, particularly when a program contains multiple errors or complex syntax issues.
+Traditional compiler diagnostics often provide technical messages without explaining the actual cause of a programming mistake or how to fix it.
 
-This project addresses that problem by combining compiler diagnostics with Machine Learning and AI-assisted explanations.
+This project aims to make C++ development easier by combining compiler diagnostics, Machine Learning, NLP, AI integrations, and static code analysis.
 
-Instead of simply displaying compiler errors, the application attempts to:
+The application goes beyond displaying compiler errors. It provides:
 
-1. Identify and classify compilation errors.
-2. Explain errors in understandable language.
-3. Suggest possible corrections.
-4. Automatically repair selected code errors.
-5. Extract and visualize the Abstract Syntax Tree.
-6. Analyze code complexity and optimization opportunities.
-7. Detect potential security vulnerabilities.
-8. Monitor execution-related resource and energy usage.
+1. Compiler error detection and classification.
+2. AI-assisted explanations and suggestions.
+3. Automated code repair through an iterative healing workflow.
+4. Abstract Syntax Tree extraction and exploration.
+5. Code optimization and complexity analysis.
+6. Security vulnerability detection and protective checks.
+7. Second-opinion error analysis.
+8. Code quality recommendations.
+9. Function call graph and control-flow analysis.
+10. Execution-related energy and resource monitoring.
 
-The application brings these capabilities together through a PyQt6 desktop interface.
+All major development features are accessible through a desktop graphical interface.
 
 ---
 
 ## Key Features
 
 ### 1. C++ Compilation and Error Detection
+
 - Compile C++ programs using GCC/G++.
-- Capture compiler output and diagnostic messages.
-- Identify compilation failures and display relevant information.
+- Capture compiler errors and warnings.
+- Parse compiler diagnostics into structured information.
+- Display errors with relevant source-code context.
 - Support C++17 compilation.
 
 ### 2. Machine Learning-Based Error Classification
-- Classify compiler errors using a trained Machine Learning model.
-- Use TF-IDF to convert error messages into numerical features.
-- Apply Logistic Regression for error classification.
-- Use classification results to support the explanation process.
+
+- Classify compiler errors using a trained ML model.
+- Apply TF-IDF for text feature extraction.
+- Use Logistic Regression for classification.
+- Provide classification results and confidence information where available.
+- Include fallback classification mechanisms when the trained model is unavailable.
 
 ### 3. AI-Powered Error Explanation
-- Convert complex compiler diagnostics into understandable explanations.
-- Provide suggestions for correcting programming mistakes.
-- Integrate with Gemini and Groq for AI-assisted responses.
-- Help developers understand why an error occurs instead of simply showing the compiler output.
+
+- Explain compiler diagnostics in understandable language.
+- Provide suggestions for fixing programming errors.
+- Integrate Google Gemini and Groq.
+- Combine AI assistance with existing compiler and classification information.
 
 ### 4. Automatic Code Repair
-- Analyze compilation errors and relevant source code.
-- Attempt to identify and correct common programming mistakes.
-- Support an iterative repair workflow.
-- Allow developers to compile and check the repaired code.
+
+- Analyze compiler diagnostics.
+- Identify errors that can potentially be repaired.
+- Generate repair suggestions and patches.
+- Apply repairs through an iterative auto-healing workflow.
+- Recompile the code to validate repair attempts.
+- Display repair information through the GUI.
 
 ### 5. Abstract Syntax Tree Analysis
-- Extract the Abstract Syntax Tree using Clang.
-- Represent the structural organization of C++ source code.
-- Help developers understand relationships between programming constructs.
-- Provide an AST exploration and visualization interface.
 
-### 6. Code Optimization
-- Analyze source code for possible improvements.
-- Identify optimization opportunities.
-- Generate optimized code suggestions.
-- Help improve code efficiency while considering program behavior.
+- Extract AST information using Clang/Clang++.
+- Analyze the structural organization of C++ code.
+- Filter irrelevant AST information to make exploration easier.
+- Display declarations, statements, expressions, and other relevant nodes.
+- Provide an interactive AST explorer.
 
-### 7. Complexity Analysis
-- Analyze the computational complexity of code.
-- Provide insights into time and space complexity.
-- Help developers identify potentially inefficient sections.
+### 6. Code Optimization and Complexity Analysis
 
-### 8. Security Analysis
-- Scan source code for potential security vulnerabilities.
-- Identify suspicious or unsafe coding patterns.
-- Provide security-related analysis through the project's security framework.
+- Identify potential code optimization opportunities.
+- Analyze algorithmic patterns.
+- Estimate time and space complexity.
+- Identify potential performance bottlenecks.
+- Present optimization suggestions and complexity information.
+
+### 7. Security Analysis
+
+- Analyze source code for potential security issues.
+- Detect suspicious or unsafe programming patterns.
+- Use a modular security framework.
+- Provide security findings with severity and contextual information.
+- Apply protective checks to supported application operations.
+
+### 8. Second-Opinion Analysis
+
+- Provide an additional analysis of compiler errors.
+- Use secondary classification and explanation mechanisms.
+- Help developers compare different interpretations of errors.
 
 ### 9. Code Quality Analysis
+
 - Identify possible code quality issues.
-- Provide suggestions for improving readability and maintainability.
-- Help developers write cleaner code.
+- Highlight improvements in readability and maintainability.
+- Display contextual quality hints.
 
-### 10. Energy and Resource Monitoring
-- Monitor execution-related resource usage.
-- Integrate CodeCarbon and psutil for supported monitoring capabilities.
-- Provide additional insights into the resource and energy impact of program execution.
+### 10. Function Call Graph and Control-Flow Analysis
 
-### 11. Desktop Graphical Interface
+- Identify functions and relationships within the source code.
+- Visualize function-to-function calls.
+- Analyze selected control-flow structures.
+- Help developers understand code organization.
+
+### 11. Energy and Resource Monitoring
+
+- Integrate CodeCarbon and psutil for supported monitoring.
+- Display execution-related resource information.
+- Provide energy and carbon-related telemetry.
+- Use supported system readings where available.
+
+### 12. Benchmarking and Testing
+
+- Include benchmarking functionality for supported analysis workflows.
+- Provide testing utilities for compilation, healing, classification, and security.
+- Maintain sample C++ programs for evaluating different scenarios.
+
+### 13. Desktop Graphical Interface
+
 - Built using PyQt6.
-- Provides access to compilation, explanations, repair, optimization, AST exploration, and security analysis.
-- Includes a graphical interface for interacting with analysis results.
+- Provides an integrated code editing and analysis environment.
+- Includes compilation, execution, repair, AST exploration, security, optimization, and other analysis features.
+- Supports dark and light themes.
 
 ---
 
@@ -114,57 +153,62 @@ The application brings these capabilities together through a PyQt6 desktop inter
 | Component | Technology |
 |---|---|
 | Primary Language | Python |
-| Programming Language Analysis | C++ |
+| Source Language | C++ |
 | Desktop GUI | PyQt6 |
 | Machine Learning | Scikit-learn |
 | NLP | TF-IDF |
-| Classification Algorithm | Logistic Regression |
-| C++ Compiler | GCC/G++ |
+| Classification | Logistic Regression |
+| Compiler | GCC/G++ |
 | AST Extraction | Clang/Clang++ |
-| AI Integration | Gemini, Groq |
-| Model Storage | Joblib |
+| AI Integration | Google Gemini, Groq |
+| Model Serialization | Joblib |
 | Energy Monitoring | CodeCarbon |
-| System Monitoring | psutil |
+| Resource Monitoring | psutil |
+| Security | Modular Python security framework |
 
 ---
 
 ## System Architecture
 
-The application combines multiple components to provide an integrated C++ development assistance workflow.
+The application consists of several interconnected components.
 
 **1. Input Layer**
 
-The developer loads or enters a C++ source file through the desktop application.
+Developers load or enter C++ source code through the desktop GUI.
 
 **2. Compilation Layer**
 
-GCC/G++ compiles the source code and generates compiler diagnostics when errors are encountered.
+GCC/G++ compiles the source code and produces diagnostic messages.
 
-**3. Error Analysis Layer**
+**3. Diagnostic Processing Layer**
 
-Compiler diagnostics are processed using the Machine Learning classifier and supporting analysis components.
+Compiler messages are parsed into structured records containing information such as error category, location, and message.
 
-**4. AI Explanation Layer**
+**4. Intelligence Layer**
 
-AI integrations provide additional explanations and suggestions when configured.
+Machine Learning classification, curated explanations, fallback mechanisms, and configured AI providers help interpret compiler diagnostics.
 
 **5. Automatic Repair Layer**
 
-The repair workflow attempts to correct identified errors and validate the resulting source code.
+The healing workflow attempts supported repairs and recompiles the source to check the results.
 
 **6. Code Analysis Layer**
 
-The application provides AST extraction, complexity analysis, optimization, and security analysis.
+AST extraction, complexity analysis, optimization, call graph generation, and quality analysis provide additional information about the source code.
 
-**7. Output Layer**
+**7. Security Layer**
 
-The desktop interface presents compilation results, explanations, repair results, and analysis information.
+The security framework evaluates supported operations and source code for potentially unsafe patterns.
+
+**8. Output Layer**
+
+The GUI presents diagnostics, explanations, suggestions, repair results, security findings, and analysis information.
 
 ---
 
 ## Project Structure
 
-The project is organized into separate modules for the graphical interface, compilation, Machine Learning, AI integration, code analysis, and supporting resources.
+The repository contains the desktop application, analysis modules, security framework, datasets, documentation, test cases, and development utilities.
 
 ```text
 compiler-error-explanation-ast-nlp/
@@ -173,31 +217,57 @@ compiler-error-explanation-ast-nlp/
 │   ├── gui.py
 │   ├── main.py
 │   ├── compiler_runner.py
-│   ├── llm_client.py
-│   ├── heal_loop.py
-│   ├── optimizer.py
+│   ├── error_parser.py
+│   ├── error_explainer.py
+│   ├── error_classifier.py
+│   ├── second_opinion.py
 │   ├── ast_extractor.py
+│   ├── heal_loop.py
+│   ├── auto_healer.py
+│   ├── optimizer.py
 │   ├── complexity_analyzer.py
+│   ├── security_analyzer.py
+│   ├── energy_monitor.py
 │   ├── optimization_view.py
+│   ├── security_view.py
+│   ├── gui_new_pages.py
+│   ├── accuracy_benchmark.py
+│   ├── ui_components.py
+│   ├── diff_viewer.py
 │   └── guard/
 │
 ├── data/
-│   ├── error_classifier.joblib
-│   └── training datasets and supporting resources
+│   └── Training datasets and model artifacts
 │
-├── requirements.txt
+├── test_cases/
+│   └── C++ test programs
+│
+├── all_test_cases/
+│   └── Larger C++ test programs and repaired examples
+│
+├── tests/
+│   └── Automated test suites
+│
+├── tools/
+│   └── Training, verification, benchmarking and testing utilities
+│
+├── assets/
+│   └── Application assets
+│
 ├── .env.example
-├── README.md
-└── LICENSE
+├── requirements.txt
+├── DOCUMENTATION.md
+├── PBL_Report.md
+└── README.md
 ```
 
-*Note: This is a high-level representation. Individual files and supporting resources may vary as the project evolves.*
+*Note: This is a representative structure. Some supporting files and subdirectories have been omitted for readability.*
 
 ---
 
 ## Prerequisites
 
-Before installing the project, make sure the following software is available:
+Install the following software before running the project.
 
 | Requirement | Purpose |
 |---|---|
@@ -217,13 +287,11 @@ g++ --version
 clang++ --version
 ```
 
-GCC/G++ and Clang/Clang++ should be accessible through your system PATH.
+Make sure GCC/G++ and Clang/Clang++ are accessible through your system PATH.
 
 ---
 
 ## Installation
-
-Follow these steps to install and configure the project on your local machine.
 
 ### Step 1: Clone the Repository
 
@@ -238,8 +306,6 @@ cd compiler-error-explanation-ast-nlp
 ```
 
 ### Step 3: Create a Virtual Environment
-
-A virtual environment keeps the project's Python dependencies separate from other Python projects.
 
 **Windows:**
 
@@ -261,9 +327,7 @@ source venv/bin/activate
 python -m pip install --upgrade pip
 ```
 
-### Step 5: Install Required Dependencies
-
-Install the packages listed in `requirements.txt`.
+### Step 5: Install Dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -281,13 +345,13 @@ The primary dependencies include:
 
 ## Configuration
 
-The project supports AI-powered explanations through Google Gemini and Groq.
+The project supports AI-powered assistance through Google Gemini and Groq.
 
 ### Configure API Keys
 
-1. Create a file named `.env` in the project root.
-2. Add the API credentials for the provider you want to use.
-3. Set the model IDs.
+1. Create a `.env` file in the project root directory.
+2. Add the API keys for the providers you want to use.
+3. Configure the model IDs.
 
 **Recommended configuration:**
 
@@ -299,29 +363,32 @@ GEMINI_MODEL=gemini-2.5-flash
 GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
-The recommended model IDs are:
+**Recommended models:**
 
-- **Gemini:** `gemini-2.5-flash`
-- **Groq:** `llama-3.3-70b-versatile`
+- Gemini: `gemini-2.5-flash`
+- Groq: `llama-3.3-70b-versatile`
 
-Model availability may change. Check the providers' documentation for current availability:
+The application uses Gemini as its primary AI provider and Groq for supported optimization and complexity-analysis workflows, as configured in the project.
 
-- [Gemini Models](https://ai.google.dev/gemini-api/docs/models)
+Check current model availability:
+
+- [Google Gemini Models](https://ai.google.dev/gemini-api/docs/models)
 - [Groq Models](https://console.groq.com/docs/models)
 
 **Important:**
-- API keys are required only for the corresponding AI-powered integrations.
-- Core local compilation and analysis do not inherently require an AI API key.
-- AI responses require internet connectivity and available provider quota.
-- Never commit your `.env` file or expose your API credentials publicly.
+
+- API keys are required for the corresponding AI-powered integrations.
+- Local compilation and supported analysis features can operate without AI credentials.
+- AI functionality requires internet connectivity and available provider quota.
+- Never upload your `.env` file or expose API keys publicly.
 
 ---
 
 ## Running the Application
 
-After completing the installation and configuration steps, launch the desktop application.
+After installing dependencies and configuring the required tools, launch the desktop application.
 
-Make sure your virtual environment is activated and that your terminal is currently inside the project root directory.
+Make sure your virtual environment is activated and your terminal is inside the project root directory.
 
 Run:
 
@@ -329,67 +396,153 @@ Run:
 python src/gui.py
 ```
 
-**Use `src/gui.py` to start the graphical desktop application.**
+**Use `src/gui.py` to launch the main PyQt6 desktop application.**
 
-The PyQt6 interface should open, allowing you to interact with the project's available features.
+The GUI provides access to the available development and analysis features.
+
+### Optional: Command-Line Analysis
+
+The project also includes a CLI analysis entry point.
+
+To analyze a C++ source file:
+
+```bash
+python src/main.py file.cpp
+```
+
+For additional output options:
+
+```bash
+python src/main.py file.cpp -j -v
+```
+
+The CLI supports structured output and additional diagnostic context through its available arguments.
 
 ---
 
 ## Application Workflow
 
-A typical workflow for using the application is:
+A typical workflow is:
 
-1. **Open the application:** Start the desktop interface using `python src/gui.py`.
-2. **Load source code:** Open an existing C++ file or enter source code.
-3. **Compile:** Use the compilation functionality to compile the program.
-4. **Analyze errors:** Review compiler diagnostics and available Machine Learning classifications.
-5. **Understand errors:** View explanations and suggested corrections.
-6. **Repair code:** Use the automatic repair functionality when appropriate.
-7. **Explore AST:** Examine the Abstract Syntax Tree generated from the source code.
-8. **Optimize code:** Analyze the program and review possible optimization suggestions.
-9. **Check security:** Run security analysis to identify potential vulnerabilities.
-10. **Review results:** Inspect the available compilation, repair, optimization, and analysis outputs.
+1. **Launch:** Start the desktop application using `python src/gui.py`.
+2. **Load Code:** Open or enter a C++ source file.
+3. **Compile:** Compile the source and inspect compiler diagnostics.
+4. **Analyze:** Review error classifications, explanations, and suggestions.
+5. **Second Opinion:** Check additional analysis where available.
+6. **Repair:** Run the automatic healing workflow for supported errors.
+7. **Validate:** Recompile the repaired code and inspect the results.
+8. **Explore AST:** Inspect the source code's Abstract Syntax Tree.
+9. **Optimize:** Review complexity and optimization suggestions.
+10. **Security:** Run security analysis and inspect findings.
+11. **Execute:** Run the compiled program and inspect its output.
+12. **Monitor:** Review available resource and energy information.
 
 ---
 
-## Machine Learning Model
+## Machine Learning and Error Analysis
 
-The project uses a Machine Learning-based approach to classify compiler error messages.
+The project combines Machine Learning, curated error knowledge, and fallback mechanisms to interpret compiler diagnostics.
 
-### Model Pipeline
+### TF-IDF Vectorization
 
-**TF-IDF Vectorization**
+TF-IDF converts textual compiler messages into numerical feature representations.
 
-Converts textual compiler error messages into numerical feature representations that can be processed by a Machine Learning algorithm.
+### Logistic Regression
 
-**Logistic Regression**
+The trained Logistic Regression classifier predicts compiler error categories using the extracted features.
 
-Uses the extracted features to predict the corresponding compiler error category.
+### Error Explanation
 
-**Trained Model**
+The diagnostic processing pipeline can combine:
 
-The trained model is stored using Joblib and loaded by the application during execution.
+- Curated common-error knowledge.
+- ML-based classification.
+- Regex-based fallback classification.
+- AI-generated explanations when configured.
+- AST context where available.
 
-### Training Data
+The trained model is serialized using Joblib and loaded by the application when the required artifacts are present.
 
-The project uses compiler error datasets to support the classification process.
+---
 
-The model can be updated or retrained when additional training examples or improved datasets become available.
+## Security Framework
 
-The existing trained model can be used without retraining, provided its required model files are present.
+The project includes a modular security framework under `src/guard/`.
+
+The framework supports security checks around application operations and source-code handling.
+
+Security-related capabilities include:
+
+- Source-code security analysis.
+- Input and output validation.
+- Path-safety checks.
+- Detection of potentially unsafe operations.
+- Security findings and reporting.
+- Protective checks for supported compilation and execution workflows.
+- Security-related testing and verification utilities.
+
+Security analysis is intended to help identify potential risks. It should not be considered a guarantee that every vulnerability will be detected.
+
+---
+
+## Testing
+
+The repository includes automated tests, sample C++ programs, and verification utilities.
+
+The test resources cover areas such as:
+
+- GUI structure and interactions.
+- Compiler error handling.
+- Automatic healing.
+- Machine Learning and AI fallback behavior.
+- Security framework phases.
+- Security documentation.
+- Different C++ compilation scenarios.
+
+The main test directories are:
+
+```text
+tests/
+test_cases/
+all_test_cases/
+tools/
+```
+
+To run the Python test suite, install pytest if it is not already available:
+
+```bash
+pip install pytest
+```
+
+Then run:
+
+```bash
+python -m pytest tests/
+```
+
+Individual verification and benchmarking utilities are available under `tools/`.
+
+---
+
+## Additional Documentation
+
+For more detailed technical information, refer to:
+
+- **[DOCUMENTATION.md](DOCUMENTATION.md):** Technical documentation, application workflow, internal modules, architecture, and troubleshooting.
+- **[PBL_Report.md](PBL_Report.md):** Project report and supporting project details.
 
 ---
 
 ## Important Notes
 
 - Run the application from the repository root directory.
-- Use `python src/gui.py` to launch the desktop interface.
-- GCC/G++ must be installed for C++ compilation.
-- Clang/Clang++ must be installed for full AST extraction.
+- Use `python src/gui.py` to launch the desktop GUI.
+- GCC/G++ is required for C++ compilation.
+- Clang/Clang++ is required for AST extraction.
 - AI-powered functionality depends on valid API configuration.
-- Some resource and energy monitoring features depend on system support and installed packages.
-- Ensure the trained Machine Learning model and required data files are present.
-- If dependencies are missing, reinstall them using `pip install -r requirements.txt`.
+- Some energy-monitoring capabilities depend on operating-system and hardware support.
+- Ensure required trained-model artifacts and supporting data files are present.
+- Some analysis and repair features are limited to the patterns and cases supported by their implementations.
 
 ---
 
