@@ -2,6 +2,7 @@
 #include <string>
 #include <cstring>
 #include <cstdlib>
+#include <cstdio>
 #include <random>
 using namespace std;
 
@@ -18,7 +19,7 @@ void getUsername(char* buffer) {
 
 // Stores password in plain text
 void savePassword(string password) {
-    strcpy(globalPassword, password.c_str());
+    snprintf(globalPassword, sizeof(globalPassword), "%s", password.c_str());
     cout << "Password saved: " << globalPassword << "\n";
 }
 

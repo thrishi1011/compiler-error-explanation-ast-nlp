@@ -8,9 +8,7 @@ import re
 
 from models import CompilerError
 
-
 Severity = Literal["Critical", "High", "Medium", "Low"]
-
 
 @dataclass(frozen=True)
 class SecurityFinding:
@@ -30,7 +28,6 @@ class SecurityFinding:
 
     def to_dict(self):
         return asdict(self)
-
 
 CWE_DEFINITIONS: dict[str, dict[str, str]] = {
     "Buffer Overflow": {
@@ -338,7 +335,6 @@ CERT_DEFINITIONS: dict[str, dict[str, str]] = {
     },
 }
 
-
 _SEVERITY_ORDER: dict[Severity, int] = {
     "Critical": 0,
     "High": 1,
@@ -435,7 +431,6 @@ _SENSITIVE_FUNCTIONS = re.compile(
 _DELETE_RE = re.compile(r"\bdelete\s*(?:\[\])?\s*([A-Za-z_]\w*)\s*;")
 _RAW_POINTER_USE_RE = re.compile(r"(?:\*|->|\[)\s*([A-Za-z_]\w*)|([A-Za-z_]\w*)\s*(?:->|\[)")
 
-
 def _empty_finding(
     file: str,
     severity: Severity,
@@ -479,13 +474,11 @@ def _empty_finding(
         cert_url=cert_url,
     )
 
-
 def _normalize_path(source_path: str) -> str:
     try:
         return str(Path(source_path).resolve())
     except Exception:
         return source_path
-
 
 def _make_finding(
     source_path: str,
@@ -529,7 +522,6 @@ def _make_finding(
         cert_rule=cert_rule,
         cert_url=cert_url,
     )
-
 
 def _strip_code(line: str, state: dict[str, object]) -> str:
     in_block_comment = bool(state.get("in_block_comment"))
@@ -590,7 +582,6 @@ def _strip_code(line: str, state: dict[str, object]) -> str:
     state["raw_delim"] = raw_delim
     return "".join(out)
 
-
 def _split_args(argument_blob: str) -> list[str]:
     args: list[str] = []
     buf: list[str] = []
@@ -630,13 +621,11 @@ def _split_args(argument_blob: str) -> list[str]:
         args.append(tail)
     return args
 
-
 def _string_literal_value(text: str) -> Optional[str]:
     match = re.match(r'\s*[u8uUL]*"((?:\\.|[^"\\])*)"', text)
     if not match:
         return None
     return match.group(1)
-
 
 def _diagnostic_findings(error) -> list[SecurityFinding]:
     if isinstance(error, dict):
@@ -668,7 +657,6 @@ def _diagnostic_findings(error) -> list[SecurityFinding]:
 
     return findings
 
-
 def _looks_like_raw_integer_size(size_expr: str) -> bool:
     size_expr = size_expr.strip()
     if "sizeof" in size_expr:
@@ -678,7 +666,6 @@ def _looks_like_raw_integer_size(size_expr: str) -> bool:
     if any(op in size_expr for op in ("+", "-", "*", "/")):
         return True
     return False
-
 
 def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
     path = Path(source_path)
@@ -1080,7 +1067,10 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                 "Prefer indexing with explicit bounds checks or use standard container iterators.",
             )
 
-        if re.search(r"\b(?:[A-Za-z_]\w*\s*[\+\-\*/]\s*[A-Za-z_0-9()]+)\b", code_line) and (
+        is_pointer_decl = bool(re.search(r"\b(?:void|int|char|float|double|bool|short|long|unsigned|auto|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t)\s*\*", code_line))
+        is_func_header = bool(re.search(r"^\s*(?:[A-Za-z_]\w*[\s*&]+)+[A-Za-z_]\w*\s*\([^)]*\)\s*\{?", code_line))
+
+        if not is_pointer_decl and not is_func_header and re.search(r"\b(?:[A-Za-z_]\w*\s*[\+\-\*/]\s*[A-Za-z_0-9()]+)\b", code_line) and (
             "INT_MAX" in code_line or "SIZE_MAX" in code_line or "sizeof" in code_line or re.search(r"\b(?:alloc|size|len|count|capacity)\b", code_line)
         ) and not (re.search(r">\s*0\b", code_line) or re.search(r"!=\s*0\b", code_line) or "sizeof" in code_line or "static_cast" in code_line):
             emit(
@@ -1225,7 +1215,6 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
 
     return findings
 
-
 def _dedupe_findings(findings: list[SecurityFinding]) -> list[SecurityFinding]:
     deduped: list[SecurityFinding] = []
     seen: set[tuple] = set()
@@ -1256,7 +1245,6 @@ def _dedupe_findings(findings: list[SecurityFinding]) -> list[SecurityFinding]:
     )
     return deduped
 
-
 def analyze(source_path: str, compiler_errors: list[CompilerError]) -> list[SecurityFinding]:
     findings: list[SecurityFinding] = []
 
@@ -1278,13 +1266,11 @@ def analyze(source_path: str, compiler_errors: list[CompilerError]) -> list[Secu
 
     return _dedupe_findings(findings)
 
-
 def _severity_counts(findings: list[SecurityFinding]) -> dict[Severity, int]:
     counts: dict[Severity, int] = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
     for finding in findings:
         counts[finding.severity] += 1
     return counts
-
 
 def _risk_label(score: int) -> str:
     if score == 0:
@@ -1294,7 +1280,6 @@ def _risk_label(score: int) -> str:
     if score <= 30:
         return "Moderate"
     return "High Risk"
-
 
 def format_security_report(findings: list[SecurityFinding]) -> str:
     findings = _dedupe_findings(findings)
@@ -1328,7 +1313,6 @@ def format_security_report(findings: list[SecurityFinding]) -> str:
 
     lines.append(f"Risk score: {score} ({_risk_label(score)})")
     return "\n".join(lines).strip() + "\n"
-
 
 def export_to_sarif(findings: list[SecurityFinding], run_info: dict | None = None) -> dict:
     findings = _dedupe_findings(findings)
@@ -1399,7 +1383,6 @@ def export_to_sarif(findings: list[SecurityFinding], run_info: dict | None = Non
         ],
     }
     return sarif
-
 
 def save_sarif(findings: list[SecurityFinding], output_path: str) -> str:
     sarif_data = export_to_sarif(findings)

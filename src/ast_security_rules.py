@@ -55,7 +55,6 @@ _MACRO_DEF_RE = re.compile(r"^\s*#\s*define\s+([A-Za-z_]\w*)\s+([A-Za-z_]\w*)")
 _FREE_OR_DELETE_RE = re.compile(r"\b(?:free\s*\(\s*([A-Za-z_]\w*)\s*\)|delete\s*(?:\[\])?\s*([A-Za-z_]\w*))\s*;")
 _POINTER_DEREF_RE = re.compile(r"(?:\*\s*([A-Za-z_]\w*)|([A-Za-z_]\w*)\s*->)")
 
-
 def _extract_macro_aliases(code: str) -> dict[str, str]:
     """Map macro aliases such as '#define G gets' -> {'G': 'gets'}."""
     aliases = {}
@@ -66,7 +65,6 @@ def _extract_macro_aliases(code: str) -> dict[str, str]:
             if target in _DANGEROUS_FUNCTIONS:
                 aliases[alias] = target
     return aliases
-
 
 def analyze_ast(source_path: str, code: Optional[str] = None) -> list[SecurityFinding]:
     """Perform structural AST and control-flow checks inspired by CodeQL C++ queries."""
@@ -149,6 +147,8 @@ def analyze_ast(source_path: str, code: Optional[str] = None) -> list[SecurityFi
             index_val = int(access.group(2))
             if target_name in declared_arrays:
                 max_size, decl_line = declared_arrays[target_name]
+                if idx == decl_line:
+                    continue  # Do not treat the declaration itself as a subscript access
                 if index_val >= max_size:
                     findings.append(
                         _make_finding(
