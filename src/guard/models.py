@@ -33,6 +33,9 @@ class Finding:
     confidence: float = 1.0
     blocks_on: set[str] | None = None
     details: dict = field(default_factory=dict)
+    cwe_id: str | None = None
+    cert_rule: str | None = None
+    capec_id: str | None = None
 
     def to_dict(self) -> dict:
         d = asdict(self)

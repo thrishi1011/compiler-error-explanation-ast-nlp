@@ -11,11 +11,11 @@
     "scanner_evasion_benign": 2
   },
   "environment": {
-    "timestamp": "2026-10-28T12:30:01Z",
+    "timestamp": "2026-11-06T12:54:29Z",
     "python_version": "3.11.9",
     "os_version": "Windows 10",
     "compiler_version": "unavailable",
-    "git_commit": "3795cb5",
+    "git_commit": "b78fd0a",
     "case_counts": {
       "total": 127,
       "headline_cases": 120,
@@ -1322,58 +1322,58 @@
     }
   },
   "routing": {
-    "routing_misses": 0,
-    "mean_run_to_candidate_ratio": 0.5906,
+    "routing_misses": 6,
+    "mean_run_to_candidate_ratio": 0.5707,
     "cases_covered": 127
   },
   "latency": {
-    "mean": 8.285,
-    "median": 8.025,
-    "p95": 19.378,
-    "max": 39.139,
+    "mean": 12.2,
+    "median": 13.265,
+    "p95": 26.778,
+    "max": 43.167,
     "cases_covered": 127,
     "by_kind": {
       "COMPILER_OUTPUT": {
-        "mean": 1.592,
-        "median": 1.633,
-        "p95": 2.619,
-        "max": 2.781
+        "mean": 1.716,
+        "median": 0.808,
+        "p95": 5.627,
+        "max": 8.044
       },
       "DATASET_ENTRY": {
-        "mean": 3.354,
-        "median": 3.105,
-        "p95": 5.153,
-        "max": 5.717
+        "mean": 2.238,
+        "median": 2.234,
+        "p95": 3.096,
+        "max": 3.417
       },
       "HTTP_REQUEST": {
-        "mean": 0.94,
-        "median": 1.111,
-        "p95": 1.792,
-        "max": 2.139
+        "mean": 0.752,
+        "median": 0.585,
+        "p95": 1.65,
+        "max": 2.85
       },
       "MODEL_FILE": {
-        "mean": 7.179,
-        "median": 7.209,
-        "p95": 12.03,
-        "max": 12.54
+        "mean": 10.423,
+        "median": 10.298,
+        "p95": 21.069,
+        "max": 23.721
       },
       "PATCH": {
-        "mean": 5.512,
-        "median": 5.098,
-        "p95": 9.818,
-        "max": 10.92
+        "mean": 19.656,
+        "median": 18.779,
+        "p95": 27.301,
+        "max": 43.167
       },
       "USER_HINT": {
-        "mean": 2.256,
-        "median": 1.236,
-        "p95": 5.462,
-        "max": 6.131
+        "mean": 1.486,
+        "median": 1.142,
+        "p95": 2.845,
+        "max": 2.847
       },
       "USER_SOURCE": {
-        "mean": 13.607,
-        "median": 11.573,
-        "p95": 25.933,
-        "max": 39.139
+        "mean": 17.515,
+        "median": 15.797,
+        "p95": 28.886,
+        "max": 42.774
       }
     }
   },
@@ -1404,9 +1404,9 @@
     },
     "malicious_patch": {
       "min": 5,
-      "median": 5.0,
-      "mean": 5.4,
-      "max": 10
+      "median": 10.0,
+      "mean": 10.8,
+      "max": 20
     },
     "model_tampering": {
       "min": 5,
@@ -1446,14 +1446,14 @@
     }
   },
   "severity_counts": {
-    "Critical": 0,
-    "High": 104,
+    "Critical": 4,
+    "High": 109,
     "Medium": 10,
     "Low": 2
   },
   "blocked_by_category": {
     "unsafe_include": 2,
-    "process_execution": 7,
+    "process_execution": 9,
     "inline_assembly": 1,
     "dynamic_loading": 2,
     "obfuscation": 1,
@@ -1490,12 +1490,16 @@
     "role_marker": 3,
     "hidden_prompt_unicode": 1,
     "patch_introduces_dangerous_code": 3,
+    "command_injection": 1,
     "patch_new_include": 2,
     "patch_security_downgrade": 2,
+    "unsafe_string_function": 1,
+    "buffer_overflow": 1,
     "patch_removes_guard": 3,
-    "patch_suppresses_diagnostics": 1,
+    "guard_removal": 2,
+    "patch_suppresses_diagnostics": 2,
     "patch_too_large": 1,
-    "patch_marker_leak": 1
+    "patch_marker_leak": 2
   },
   "blocked_by_agent": {
     "ExecGuard": 16,
@@ -1505,6 +1509,7 @@
     "IntegrityGuard": 8,
     "PromptGuard": 15,
     "PatchGuard": 13,
+    "RedTeamAuditor": 11,
     "VulnGuard": 1
   },
   "known_misses": [
@@ -1680,19 +1685,19 @@
         "risk_before": 27,
         "risk_after": 0,
         "risk_reduction_pct": 100.0,
-        "seconds": 6.653
+        "seconds": 4.664
       },
       {
         "file": "unfixable.cpp",
         "findings_before": 3,
-        "fixed": 0,
+        "fixed": 2,
         "suggested": 1,
-        "skipped": 2,
+        "skipped": 0,
         "rejected": 0,
         "risk_before": 17,
-        "risk_after": 17,
-        "risk_reduction_pct": 0.0,
-        "seconds": 0.063
+        "risk_after": 2,
+        "risk_reduction_pct": 88.2,
+        "seconds": 1.547
       },
       {
         "file": "clean.cpp",
@@ -1704,7 +1709,7 @@
         "risk_before": 0,
         "risk_after": 0,
         "risk_reduction_pct": 0.0,
-        "seconds": 0.035
+        "seconds": 0.032
       },
       {
         "file": "gets_sample.cpp",
@@ -1716,7 +1721,7 @@
         "risk_before": 10,
         "risk_after": 0,
         "risk_reduction_pct": 100.0,
-        "seconds": 0.74
+        "seconds": 0.649
       },
       {
         "file": "strcat_sample.cpp",
@@ -1728,7 +1733,7 @@
         "risk_before": 5,
         "risk_after": 0,
         "risk_reduction_pct": 100.0,
-        "seconds": 0.608
+        "seconds": 0.524
       },
       {
         "file": "sprintf_sample.cpp",
@@ -1740,7 +1745,7 @@
         "risk_before": 5,
         "risk_after": 0,
         "risk_reduction_pct": 100.0,
-        "seconds": 0.414
+        "seconds": 0.573
       },
       {
         "file": "leak_sample.cpp",
@@ -1752,7 +1757,7 @@
         "risk_before": 2,
         "risk_after": 0,
         "risk_reduction_pct": 100.0,
-        "seconds": 0.512
+        "seconds": 0.599
       },
       {
         "file": "double_free_sample.cpp",
@@ -1764,19 +1769,19 @@
         "risk_before": 5,
         "risk_after": 0,
         "risk_reduction_pct": 100.0,
-        "seconds": 0.684
+        "seconds": 0.484
       }
     ],
     "totals": {
       "findings_before": 14,
-      "fixed": 11,
+      "fixed": 13,
       "suggested": 1,
-      "skipped": 2,
+      "skipped": 0,
       "rejected": 0,
       "risk_before": 71,
-      "risk_after": 17,
-      "risk_reduction_pct": 76.1,
-      "fix_rate": 0.7857
+      "risk_after": 2,
+      "risk_reduction_pct": 97.2,
+      "fix_rate": 0.9286
     }
   },
   "cases": [
@@ -1804,7 +1809,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 6,
-      "total_ms": 25.08,
+      "total_ms": 42.774,
       "agents_found": [
         "ExecGuard"
       ],
@@ -1814,7 +1819,7 @@
       ],
       "findings": [
         {
-          "id": "773c33d1",
+          "id": "c991b525",
           "agents": [
             "ExecGuard"
           ],
@@ -1833,7 +1838,7 @@
           "details": {}
         },
         {
-          "id": "df548429",
+          "id": "05a3b752",
           "agents": [
             "ExecGuard"
           ],
@@ -1878,7 +1883,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 6,
-      "total_ms": 12.179,
+      "total_ms": 15.434,
       "agents_found": [
         "ExecGuard"
       ],
@@ -1888,7 +1893,7 @@
       ],
       "findings": [
         {
-          "id": "a0232409",
+          "id": "2b1bb9f0",
           "agents": [
             "ExecGuard"
           ],
@@ -1907,7 +1912,7 @@
           "details": {}
         },
         {
-          "id": "adb5624c",
+          "id": "bf4b73c9",
           "agents": [
             "ExecGuard"
           ],
@@ -1952,7 +1957,7 @@
       "baseline_reason": "sanitizer:popen",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 8.291,
+      "total_ms": 25.309,
       "agents_found": [
         "ExecGuard"
       ],
@@ -1961,7 +1966,7 @@
       ],
       "findings": [
         {
-          "id": "81648002",
+          "id": "b882199d",
           "agents": [
             "ExecGuard"
           ],
@@ -2006,7 +2011,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 11.033,
+      "total_ms": 27.984,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2015,7 +2020,7 @@
       ],
       "findings": [
         {
-          "id": "69126c18",
+          "id": "73ab0e34",
           "agents": [
             "ExecGuard"
           ],
@@ -2060,7 +2065,7 @@
       "baseline_reason": "sanitizer:asm",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 8.58,
+      "total_ms": 17.957,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2069,7 +2074,7 @@
       ],
       "findings": [
         {
-          "id": "c36d5614",
+          "id": "099f260f",
           "agents": [
             "ExecGuard"
           ],
@@ -2114,7 +2119,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 9.846,
+      "total_ms": 18.267,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2123,7 +2128,7 @@
       ],
       "findings": [
         {
-          "id": "e430c706",
+          "id": "2af92f4b",
           "agents": [
             "ExecGuard"
           ],
@@ -2168,7 +2173,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 17.916,
+      "total_ms": 34.705,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2177,7 +2182,7 @@
       ],
       "findings": [
         {
-          "id": "f50ecd1e",
+          "id": "bdfa8f03",
           "agents": [
             "ExecGuard"
           ],
@@ -2222,7 +2227,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 11.308,
+      "total_ms": 23.225,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2232,7 +2237,7 @@
       ],
       "findings": [
         {
-          "id": "4eedc250",
+          "id": "39a3fd76",
           "agents": [
             "ExecGuard"
           ],
@@ -2251,7 +2256,7 @@
           "details": {}
         },
         {
-          "id": "752a6adf",
+          "id": "7d27dc9b",
           "agents": [
             "ExecGuard"
           ],
@@ -2296,7 +2301,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 2,
-      "total_ms": 36.611,
+      "total_ms": 18.966,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2305,7 +2310,7 @@
       ],
       "findings": [
         {
-          "id": "df5eccbf",
+          "id": "a94b0bf3",
           "agents": [
             "ExecGuard"
           ],
@@ -2350,7 +2355,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 9.086,
+      "total_ms": 14.692,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2359,7 +2364,7 @@
       ],
       "findings": [
         {
-          "id": "50a72bc5",
+          "id": "91cc920b",
           "agents": [
             "ExecGuard"
           ],
@@ -2404,7 +2409,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 12.178,
+      "total_ms": 13.304,
       "agents_found": [
         "ExecGuard"
       ],
@@ -2413,7 +2418,7 @@
       ],
       "findings": [
         {
-          "id": "4884bea3",
+          "id": "f1b68f3e",
           "agents": [
             "ExecGuard"
           ],
@@ -2458,7 +2463,7 @@
       "baseline_reason": "sanitizer:sys-include",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 11.827,
+      "total_ms": 14.639,
       "agents_found": [
         "ExecGuard",
         "SecretsGuard"
@@ -2469,7 +2474,7 @@
       ],
       "findings": [
         {
-          "id": "755dc328",
+          "id": "4108db26",
           "agents": [
             "ExecGuard"
           ],
@@ -2488,7 +2493,7 @@
           "details": {}
         },
         {
-          "id": "b040b568",
+          "id": "64fb7d41",
           "agents": [
             "SecretsGuard"
           ],
@@ -2539,7 +2544,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 12.016,
+      "total_ms": 16.972,
       "agents_found": [
         "ResourceGuard",
         "SecretsGuard"
@@ -2550,7 +2555,7 @@
       ],
       "findings": [
         {
-          "id": "7cdf2c66",
+          "id": "b612ded9",
           "agents": [
             "ResourceGuard"
           ],
@@ -2572,7 +2577,7 @@
           "details": {}
         },
         {
-          "id": "ff6e46ae",
+          "id": "9698f348",
           "agents": [
             "SecretsGuard"
           ],
@@ -2623,7 +2628,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 14.645,
+      "total_ms": 16.358,
       "agents_found": [
         "ResourceGuard",
         "SecretsGuard"
@@ -2634,7 +2639,7 @@
       ],
       "findings": [
         {
-          "id": "6dca06a3",
+          "id": "9774e4ef",
           "agents": [
             "ResourceGuard"
           ],
@@ -2656,7 +2661,7 @@
           "details": {}
         },
         {
-          "id": "a03cf14d",
+          "id": "af96a09d",
           "agents": [
             "SecretsGuard"
           ],
@@ -2707,7 +2712,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 9.332,
+      "total_ms": 15.944,
       "agents_found": [
         "ResourceGuard"
       ],
@@ -2716,7 +2721,7 @@
       ],
       "findings": [
         {
-          "id": "3b770270",
+          "id": "132549fc",
           "agents": [
             "ResourceGuard"
           ],
@@ -2764,7 +2769,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 25.978,
+      "total_ms": 26.845,
       "agents_found": [
         "ResourceGuard"
       ],
@@ -2773,7 +2778,7 @@
       ],
       "findings": [
         {
-          "id": "546f9f21",
+          "id": "087968ce",
           "agents": [
             "ResourceGuard"
           ],
@@ -2821,7 +2826,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 13.601,
+      "total_ms": 31.137,
       "agents_found": [
         "ResourceGuard"
       ],
@@ -2830,7 +2835,7 @@
       ],
       "findings": [
         {
-          "id": "356cfed1",
+          "id": "881de95f",
           "agents": [
             "ResourceGuard"
           ],
@@ -2877,7 +2882,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 10.063,
+      "total_ms": 18.328,
       "agents_found": [
         "ResourceGuard"
       ],
@@ -2886,7 +2891,7 @@
       ],
       "findings": [
         {
-          "id": "51f8fef4",
+          "id": "66a2d816",
           "agents": [
             "ResourceGuard"
           ],
@@ -2933,7 +2938,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 2,
-      "total_ms": 11.624,
+      "total_ms": 16.739,
       "agents_found": [
         "ResourceGuard"
       ],
@@ -2942,7 +2947,7 @@
       ],
       "findings": [
         {
-          "id": "b2db71bc",
+          "id": "4b3b493b",
           "agents": [
             "ResourceGuard"
           ],
@@ -2987,7 +2992,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 11.041,
+      "total_ms": 15.622,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -2996,7 +3001,7 @@
       ],
       "findings": [
         {
-          "id": "60a87dc8",
+          "id": "13f6239c",
           "agents": [
             "SecretsGuard"
           ],
@@ -3047,7 +3052,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 13.919,
+      "total_ms": 15.456,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3056,7 +3061,7 @@
       ],
       "findings": [
         {
-          "id": "d71028a2",
+          "id": "6b5e513b",
           "agents": [
             "SecretsGuard"
           ],
@@ -3107,7 +3112,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 10.826,
+      "total_ms": 21.049,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3116,7 +3121,7 @@
       ],
       "findings": [
         {
-          "id": "ed696042",
+          "id": "31b81350",
           "agents": [
             "SecretsGuard"
           ],
@@ -3167,7 +3172,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 12.829,
+      "total_ms": 11.667,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3176,7 +3181,7 @@
       ],
       "findings": [
         {
-          "id": "00624f78",
+          "id": "f1672d34",
           "agents": [
             "SecretsGuard"
           ],
@@ -3227,7 +3232,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 7,
-      "total_ms": 12.56,
+      "total_ms": 19.076,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3237,7 +3242,7 @@
       ],
       "findings": [
         {
-          "id": "e1606174",
+          "id": "1aed0b0d",
           "agents": [
             "SecretsGuard"
           ],
@@ -3262,7 +3267,7 @@
           }
         },
         {
-          "id": "708e129d",
+          "id": "33576e39",
           "agents": [
             "SecretsGuard"
           ],
@@ -3309,7 +3314,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 12.877,
+      "total_ms": 18.354,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3318,7 +3323,7 @@
       ],
       "findings": [
         {
-          "id": "ca902364",
+          "id": "bf553373",
           "agents": [
             "SecretsGuard"
           ],
@@ -3369,7 +3374,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 5,
-      "total_ms": 10.851,
+      "total_ms": 13.168,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3378,7 +3383,7 @@
       ],
       "findings": [
         {
-          "id": "1f10d393",
+          "id": "948d1870",
           "agents": [
             "SecretsGuard"
           ],
@@ -3427,7 +3432,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 5,
-      "total_ms": 8.521,
+      "total_ms": 26.621,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3436,7 +3441,7 @@
       ],
       "findings": [
         {
-          "id": "21cdcfc2",
+          "id": "775270cb",
           "agents": [
             "SecretsGuard"
           ],
@@ -3485,7 +3490,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 5,
-      "total_ms": 11.521,
+      "total_ms": 14.655,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3494,7 +3499,7 @@
       ],
       "findings": [
         {
-          "id": "1c2ff7c2",
+          "id": "79e2c6f7",
           "agents": [
             "SecretsGuard"
           ],
@@ -3543,7 +3548,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 5,
-      "total_ms": 1.483,
+      "total_ms": 0.748,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3552,7 +3557,7 @@
       ],
       "findings": [
         {
-          "id": "49a31268",
+          "id": "9ed875b3",
           "agents": [
             "SecretsGuard"
           ],
@@ -3601,7 +3606,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 5,
-      "total_ms": 0.902,
+      "total_ms": 0.65,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -3610,7 +3615,7 @@
       ],
       "findings": [
         {
-          "id": "ec3f1cba",
+          "id": "7e021475",
           "agents": [
             "SecretsGuard"
           ],
@@ -3659,7 +3664,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 4,
-      "total_ms": 2.781,
+      "total_ms": 8.044,
       "agents_found": [
         "OutputGuard"
       ],
@@ -3669,7 +3674,7 @@
       ],
       "findings": [
         {
-          "id": "e6f6cc61",
+          "id": "ac4f1a8d",
           "agents": [
             "OutputGuard"
           ],
@@ -3688,7 +3693,7 @@
           "details": {}
         },
         {
-          "id": "e684e41c",
+          "id": "fa515936",
           "agents": [
             "OutputGuard"
           ],
@@ -3733,7 +3738,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 2,
-      "total_ms": 1.87,
+      "total_ms": 1.224,
       "agents_found": [
         "OutputGuard"
       ],
@@ -3742,7 +3747,7 @@
       ],
       "findings": [
         {
-          "id": "9129add9",
+          "id": "636bbac7",
           "agents": [
             "OutputGuard"
           ],
@@ -3787,7 +3792,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 2,
-      "total_ms": 2.151,
+      "total_ms": 0.76,
       "agents_found": [
         "OutputGuard"
       ],
@@ -3796,7 +3801,7 @@
       ],
       "findings": [
         {
-          "id": "d3f31939",
+          "id": "4afeedfa",
           "agents": [
             "OutputGuard"
           ],
@@ -3841,7 +3846,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 2,
-      "total_ms": 10.413,
+      "total_ms": 20.328,
       "agents_found": [
         "OutputGuard"
       ],
@@ -3850,7 +3855,7 @@
       ],
       "findings": [
         {
-          "id": "ff54c0f1",
+          "id": "d80e6138",
           "agents": [
             "OutputGuard"
           ],
@@ -3895,7 +3900,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 2,
-      "total_ms": 0.952,
+      "total_ms": 0.856,
       "agents_found": [
         "OutputGuard"
       ],
@@ -3904,7 +3909,7 @@
       ],
       "findings": [
         {
-          "id": "1527f7a8",
+          "id": "fcc8e196",
           "agents": [
             "OutputGuard"
           ],
@@ -3949,7 +3954,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 5,
-      "total_ms": 1.782,
+      "total_ms": 1.629,
       "agents_found": [
         "OutputGuard"
       ],
@@ -3958,7 +3963,7 @@
       ],
       "findings": [
         {
-          "id": "287ff087",
+          "id": "e4d4433d",
           "agents": [
             "OutputGuard"
           ],
@@ -4003,7 +4008,7 @@
       "baseline_reason": "http:foreign-origin",
       "blocked": true,
       "risk_score": 20,
-      "total_ms": 1.388,
+      "total_ms": 1.35,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4015,7 +4020,7 @@
       ],
       "findings": [
         {
-          "id": "244beac1",
+          "id": "55861ffa",
           "agents": [
             "EndpointGuard"
           ],
@@ -4038,7 +4043,7 @@
           }
         },
         {
-          "id": "a2e77eb7",
+          "id": "eb29c5af",
           "agents": [
             "EndpointGuard"
           ],
@@ -4061,7 +4066,7 @@
           }
         },
         {
-          "id": "fb82b89d",
+          "id": "6c7e7052",
           "agents": [
             "EndpointGuard"
           ],
@@ -4084,7 +4089,7 @@
           }
         },
         {
-          "id": "b1f7e4bd",
+          "id": "36382a6b",
           "agents": [
             "EndpointGuard"
           ],
@@ -4133,7 +4138,7 @@
       "baseline_reason": "http:content-type",
       "blocked": true,
       "risk_score": 20,
-      "total_ms": 1.577,
+      "total_ms": 1.172,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4145,7 +4150,7 @@
       ],
       "findings": [
         {
-          "id": "6d040e73",
+          "id": "4a8f61a9",
           "agents": [
             "EndpointGuard"
           ],
@@ -4168,7 +4173,7 @@
           }
         },
         {
-          "id": "d70f3dcf",
+          "id": "4f05a8d2",
           "agents": [
             "EndpointGuard"
           ],
@@ -4191,7 +4196,7 @@
           }
         },
         {
-          "id": "24e45c05",
+          "id": "5cc99029",
           "agents": [
             "EndpointGuard"
           ],
@@ -4214,7 +4219,7 @@
           }
         },
         {
-          "id": "4105985e",
+          "id": "9b8b5160",
           "agents": [
             "EndpointGuard"
           ],
@@ -4263,7 +4268,7 @@
       "baseline_reason": "http:foreign-host",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.474,
+      "total_ms": 0.453,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4272,7 +4277,7 @@
       ],
       "findings": [
         {
-          "id": "012ab121",
+          "id": "5f232163",
           "agents": [
             "EndpointGuard"
           ],
@@ -4321,7 +4326,7 @@
       "baseline_reason": "http:content-type",
       "blocked": true,
       "risk_score": 20,
-      "total_ms": 1.705,
+      "total_ms": 1.072,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4333,7 +4338,7 @@
       ],
       "findings": [
         {
-          "id": "d6388222",
+          "id": "1805f310",
           "agents": [
             "EndpointGuard"
           ],
@@ -4356,7 +4361,7 @@
           }
         },
         {
-          "id": "10db5c6d",
+          "id": "e84d9db0",
           "agents": [
             "EndpointGuard"
           ],
@@ -4379,7 +4384,7 @@
           }
         },
         {
-          "id": "f3c68ea2",
+          "id": "0faafda3",
           "agents": [
             "EndpointGuard"
           ],
@@ -4402,7 +4407,7 @@
           }
         },
         {
-          "id": "d3637ae4",
+          "id": "f4a57c13",
           "agents": [
             "EndpointGuard"
           ],
@@ -4451,7 +4456,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.429,
+      "total_ms": 0.442,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4460,7 +4465,7 @@
       ],
       "findings": [
         {
-          "id": "1258f0cf",
+          "id": "dca575d3",
           "agents": [
             "EndpointGuard"
           ],
@@ -4509,7 +4514,7 @@
       "baseline_reason": "http:content-type",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 1.245,
+      "total_ms": 0.585,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4519,7 +4524,7 @@
       ],
       "findings": [
         {
-          "id": "09ff310d",
+          "id": "e85bde37",
           "agents": [
             "EndpointGuard"
           ],
@@ -4542,7 +4547,7 @@
           }
         },
         {
-          "id": "75c083c9",
+          "id": "6834f248",
           "agents": [
             "EndpointGuard"
           ],
@@ -4591,7 +4596,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 1.164,
+      "total_ms": 2.85,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4601,7 +4606,7 @@
       ],
       "findings": [
         {
-          "id": "22439d62",
+          "id": "cbf7d576",
           "agents": [
             "EndpointGuard"
           ],
@@ -4624,7 +4629,7 @@
           }
         },
         {
-          "id": "d8cc3693",
+          "id": "e5c988ac",
           "agents": [
             "EndpointGuard"
           ],
@@ -4673,7 +4678,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 0.818,
+      "total_ms": 0.621,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4683,7 +4688,7 @@
       ],
       "findings": [
         {
-          "id": "bac8b328",
+          "id": "da57a705",
           "agents": [
             "EndpointGuard"
           ],
@@ -4706,7 +4711,7 @@
           }
         },
         {
-          "id": "85d41d19",
+          "id": "c5c407d0",
           "agents": [
             "EndpointGuard"
           ],
@@ -4755,7 +4760,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 1.239,
+      "total_ms": 0.714,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4765,7 +4770,7 @@
       ],
       "findings": [
         {
-          "id": "a7985109",
+          "id": "ee8e8176",
           "agents": [
             "EndpointGuard"
           ],
@@ -4788,7 +4793,7 @@
           }
         },
         {
-          "id": "57f4440d",
+          "id": "7f99bb52",
           "agents": [
             "EndpointGuard"
           ],
@@ -4837,7 +4842,7 @@
       "baseline_reason": "http:content-type",
       "blocked": true,
       "risk_score": 20,
-      "total_ms": 2.139,
+      "total_ms": 1.296,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4849,7 +4854,7 @@
       ],
       "findings": [
         {
-          "id": "f0baf968",
+          "id": "e3a08b37",
           "agents": [
             "EndpointGuard"
           ],
@@ -4872,7 +4877,7 @@
           }
         },
         {
-          "id": "924d0f46",
+          "id": "3c03ef09",
           "agents": [
             "EndpointGuard"
           ],
@@ -4895,7 +4900,7 @@
           }
         },
         {
-          "id": "da9df072",
+          "id": "80b2a115",
           "agents": [
             "EndpointGuard"
           ],
@@ -4918,7 +4923,7 @@
           }
         },
         {
-          "id": "98dd093d",
+          "id": "955a8046",
           "agents": [
             "EndpointGuard"
           ],
@@ -4967,7 +4972,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.581,
+      "total_ms": 0.397,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -4976,7 +4981,7 @@
       ],
       "findings": [
         {
-          "id": "f2cc1ffd",
+          "id": "501d4aca",
           "agents": [
             "EndpointGuard"
           ],
@@ -5025,7 +5030,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 0.485,
+      "total_ms": 0.39,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -5034,7 +5039,7 @@
       ],
       "findings": [
         {
-          "id": "cdf1280c",
+          "id": "6c5c1cb0",
           "agents": [
             "EndpointGuard"
           ],
@@ -5083,7 +5088,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 1.171,
+      "total_ms": 0.611,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -5092,7 +5097,7 @@
       ],
       "findings": [
         {
-          "id": "cba3dd53",
+          "id": "5a7f23c1",
           "agents": [
             "EndpointGuard"
           ],
@@ -5141,7 +5146,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 1.111,
+      "total_ms": 0.569,
       "agents_found": [
         "EndpointGuard"
       ],
@@ -5150,7 +5155,7 @@
       ],
       "findings": [
         {
-          "id": "6f827603",
+          "id": "664aa0ce",
           "agents": [
             "EndpointGuard"
           ],
@@ -5199,7 +5204,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 5.717,
+      "total_ms": 3.417,
       "agents_found": [
         "IntegrityGuard"
       ],
@@ -5208,7 +5213,7 @@
       ],
       "findings": [
         {
-          "id": "5e01f3c7",
+          "id": "e58c6fcc",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5257,7 +5262,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 3.105,
+      "total_ms": 2.348,
       "agents_found": [
         "IntegrityGuard"
       ],
@@ -5266,7 +5271,7 @@
       ],
       "findings": [
         {
-          "id": "0857f810",
+          "id": "b9242346",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5315,7 +5320,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 2.995,
+      "total_ms": 2.234,
       "agents_found": [
         "IntegrityGuard"
       ],
@@ -5324,7 +5329,7 @@
       ],
       "findings": [
         {
-          "id": "759e6408",
+          "id": "8b1db6f8",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5373,7 +5378,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 3.612,
+      "total_ms": 2.307,
       "agents_found": [
         "IntegrityGuard",
         "SecretsGuard"
@@ -5384,7 +5389,7 @@
       ],
       "findings": [
         {
-          "id": "6cece97a",
+          "id": "1f143725",
           "agents": [
             "SecretsGuard"
           ],
@@ -5407,7 +5412,7 @@
           }
         },
         {
-          "id": "1d3ee249",
+          "id": "e1160690",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5456,7 +5461,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 2.136,
+      "total_ms": 1.986,
       "agents_found": [
         "IntegrityGuard"
       ],
@@ -5465,7 +5470,7 @@
       ],
       "findings": [
         {
-          "id": "fc058156",
+          "id": "d3f23ddc",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5514,7 +5519,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 12.54,
+      "total_ms": 23.721,
       "agents_found": [
         "IntegrityGuard"
       ],
@@ -5523,7 +5528,7 @@
       ],
       "findings": [
         {
-          "id": "857cef4f",
+          "id": "bbadbf24",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5575,7 +5580,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 3.532,
+      "total_ms": 3.095,
       "agents_found": [
         "IntegrityGuard"
       ],
@@ -5584,7 +5589,7 @@
       ],
       "findings": [
         {
-          "id": "339a56ee",
+          "id": "40cbb9e9",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5592,18 +5597,18 @@
           "category": "model_manifest_missing",
           "severity": "High",
           "title": "Model manifest or model file missing",
-          "description": "Manifest 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_arn6aipq\\case_mod_002\\data\\model_manifest.json' or model file 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_arn6aipq\\case_mod_002\\data\\error_classifier.joblib' not found.",
+          "description": "Manifest 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_2553e12z\\case_mod_002\\data\\model_manifest.json' or model file 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_2553e12z\\case_mod_002\\data\\error_classifier.joblib' not found.",
           "recommendation": "Ensure model_manifest.json exists and contains entry for this model.",
           "line": null,
           "column": null,
-          "evidence": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_arn6aipq\\case_mod_002\\data\\model_man",
+          "evidence": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_2553e12z\\case_mod_002\\data\\model_man",
           "action": "block",
           "confidence": 1.0,
           "blocks_on": [
             "model_load"
           ],
           "details": {
-            "manifest_path": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_arn6aipq\\case_mod_002\\data\\model_manifest.json"
+            "manifest_path": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_2553e12z\\case_mod_002\\data\\model_manifest.json"
           }
         }
       ],
@@ -5633,7 +5638,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 2.623,
+      "total_ms": 4.542,
       "agents_found": [
         "IntegrityGuard"
       ],
@@ -5642,7 +5647,7 @@
       ],
       "findings": [
         {
-          "id": "2ffb6f9c",
+          "id": "adefc827",
           "agents": [
             "IntegrityGuard"
           ],
@@ -5650,19 +5655,19 @@
           "category": "model_outside_data_dir",
           "severity": "High",
           "title": "Model file outside data directory",
-          "description": "Model file 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_arn6aipq\\case_mod_003\\evil.joblib' is not within authorized data directory 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_arn6aipq\\case_mod_003\\data'.",
+          "description": "Model file 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_2553e12z\\case_mod_003\\evil.joblib' is not within authorized data directory 'C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_2553e12z\\case_mod_003\\data'.",
           "recommendation": "Place ML models inside project data directory.",
           "line": null,
           "column": null,
-          "evidence": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_arn6aipq\\case_mod_003\\evil.joblib",
+          "evidence": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_2553e12z\\case_mod_003\\evil.joblib",
           "action": "block",
           "confidence": 1.0,
           "blocks_on": [
             "model_load"
           ],
           "details": {
-            "model_path": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_arn6aipq\\case_mod_003\\evil.joblib",
-            "data_dir": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_arn6aipq\\case_mod_003\\data"
+            "model_path": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_2553e12z\\case_mod_003\\evil.joblib",
+            "data_dir": "C:\\Users\\thris\\AppData\\Local\\Temp\\sec_bench_2553e12z\\case_mod_003\\data"
           }
         }
       ],
@@ -5692,7 +5697,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 3.49,
+      "total_ms": 2.842,
       "agents_found": [
         "PromptGuard"
       ],
@@ -5702,7 +5707,7 @@
       ],
       "findings": [
         {
-          "id": "78e6acde",
+          "id": "98df7a08",
           "agents": [
             "PromptGuard"
           ],
@@ -5726,7 +5731,7 @@
           }
         },
         {
-          "id": "d0839db1",
+          "id": "b8570606",
           "agents": [
             "PromptGuard"
           ],
@@ -5776,7 +5781,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 7.689,
+      "total_ms": 17.567,
       "agents_found": [
         "PromptGuard"
       ],
@@ -5785,7 +5790,7 @@
       ],
       "findings": [
         {
-          "id": "b0d68ba5",
+          "id": "45d31847",
           "agents": [
             "PromptGuard"
           ],
@@ -5836,7 +5841,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 10.114,
+      "total_ms": 15.222,
       "agents_found": [
         "PromptGuard"
       ],
@@ -5846,7 +5851,7 @@
       ],
       "findings": [
         {
-          "id": "2656167e",
+          "id": "901e09e1",
           "agents": [
             "PromptGuard"
           ],
@@ -5871,7 +5876,7 @@
           }
         },
         {
-          "id": "0dbe17e3",
+          "id": "8c65d01c",
           "agents": [
             "PromptGuard"
           ],
@@ -5922,7 +5927,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 8.328,
+      "total_ms": 13.263,
       "agents_found": [
         "PromptGuard"
       ],
@@ -5931,7 +5936,7 @@
       ],
       "findings": [
         {
-          "id": "25655a1a",
+          "id": "36ea4a64",
           "agents": [
             "PromptGuard"
           ],
@@ -5982,7 +5987,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 2.422,
+      "total_ms": 2.673,
       "agents_found": [
         "PromptGuard"
       ],
@@ -5992,7 +5997,7 @@
       ],
       "findings": [
         {
-          "id": "0fd4350b",
+          "id": "da54f2f5",
           "agents": [
             "PromptGuard"
           ],
@@ -6016,7 +6021,7 @@
           }
         },
         {
-          "id": "e24289ef",
+          "id": "e499cd79",
           "agents": [
             "PromptGuard"
           ],
@@ -6066,7 +6071,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 20,
-      "total_ms": 6.131,
+      "total_ms": 2.838,
       "agents_found": [
         "PromptGuard"
       ],
@@ -6076,7 +6081,7 @@
       ],
       "findings": [
         {
-          "id": "bcf8f3b9",
+          "id": "3363da80",
           "agents": [
             "PromptGuard"
           ],
@@ -6100,7 +6105,7 @@
           }
         },
         {
-          "id": "14d37232",
+          "id": "6c486791",
           "agents": [
             "PromptGuard"
           ],
@@ -6124,7 +6129,7 @@
           }
         },
         {
-          "id": "3fee5b34",
+          "id": "3a0581f2",
           "agents": [
             "PromptGuard"
           ],
@@ -6148,7 +6153,7 @@
           }
         },
         {
-          "id": "1a2e3f49",
+          "id": "b64c94af",
           "agents": [
             "PromptGuard"
           ],
@@ -6198,7 +6203,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 4.219,
+      "total_ms": 2.847,
       "agents_found": [
         "PromptGuard"
       ],
@@ -6207,7 +6212,7 @@
       ],
       "findings": [
         {
-          "id": "62f5ccbe",
+          "id": "3bd0b1ce",
           "agents": [
             "PromptGuard"
           ],
@@ -6257,7 +6262,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 2,
-      "total_ms": 8.909,
+      "total_ms": 20.224,
       "agents_found": [
         "PromptGuard"
       ],
@@ -6266,7 +6271,7 @@
       ],
       "findings": [
         {
-          "id": "46950316",
+          "id": "7b2ce333",
           "agents": [
             "PromptGuard"
           ],
@@ -6314,17 +6319,20 @@
       "baseline_allowed": false,
       "baseline_reason": "sanitizer:system",
       "blocked": true,
-      "risk_score": 5,
-      "total_ms": 7.181,
+      "risk_score": 20,
+      "total_ms": 21.643,
       "agents_found": [
-        "PatchGuard"
+        "PatchGuard",
+        "RedTeamAuditor"
       ],
       "categories": [
-        "patch_introduces_dangerous_code"
+        "command_injection",
+        "patch_introduces_dangerous_code",
+        "process_execution"
       ],
       "findings": [
         {
-          "id": "77b30191",
+          "id": "68cc4165",
           "agents": [
             "PatchGuard"
           ],
@@ -6347,6 +6355,56 @@
             "agents": [
               "ExecGuard"
             ]
+          }
+        },
+        {
+          "id": "fb98a4a8",
+          "agents": [
+            "RedTeamAuditor"
+          ],
+          "origin": "attack",
+          "category": "process_execution",
+          "severity": "Critical",
+          "title": "Arbitrary Process Execution Backdoor",
+          "description": "[Red-Team Intercept] Patch introduces external process execution API susceptible to shell hijacking.",
+          "recommendation": "Eliminate process execution, dynamic loading, or networking from repair patch.",
+          "line": 1,
+          "column": null,
+          "evidence": "system(",
+          "action": "block",
+          "confidence": 1.0,
+          "blocks_on": [
+            "patch",
+            "run"
+          ],
+          "details": {
+            "adversary_auditor": "RedTeamAuditor",
+            "critique": "Adversarial audit REJECTED patch: 2 attack vector(s) identified."
+          }
+        },
+        {
+          "id": "14dfd270",
+          "agents": [
+            "RedTeamAuditor"
+          ],
+          "origin": "attack",
+          "category": "command_injection",
+          "severity": "High",
+          "title": "Introduced Command Injection",
+          "description": "[Red-Team Intercept] system() executes a shell command and can be influenced by attacker-controlled input.",
+          "recommendation": "Avoid shell execution. Use exec-style APIs or strict argument validation and escaping.",
+          "line": 1,
+          "column": null,
+          "evidence": "system() executes a shell command and can be influenced by attacker-controlled i",
+          "action": "block",
+          "confidence": 1.0,
+          "blocks_on": [
+            "patch",
+            "run"
+          ],
+          "details": {
+            "adversary_auditor": "RedTeamAuditor",
+            "critique": "Adversarial audit REJECTED patch: 2 attack vector(s) identified."
           }
         }
       ],
@@ -6376,7 +6434,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 5.267,
+      "total_ms": 16.601,
       "agents_found": [
         "PatchGuard"
       ],
@@ -6385,7 +6443,7 @@
       ],
       "findings": [
         {
-          "id": "11d20ff0",
+          "id": "5b53113f",
           "agents": [
             "PatchGuard"
           ],
@@ -6433,17 +6491,19 @@
       "baseline_allowed": true,
       "baseline_reason": "no defence",
       "blocked": true,
-      "risk_score": 5,
-      "total_ms": 7.738,
+      "risk_score": 15,
+      "total_ms": 21.521,
       "agents_found": [
-        "PatchGuard"
+        "PatchGuard",
+        "RedTeamAuditor"
       ],
       "categories": [
-        "patch_introduces_dangerous_code"
+        "patch_introduces_dangerous_code",
+        "process_execution"
       ],
       "findings": [
         {
-          "id": "33ab4056",
+          "id": "6967aa8b",
           "agents": [
             "PatchGuard"
           ],
@@ -6466,6 +6526,31 @@
             "agents": [
               "ExecGuard"
             ]
+          }
+        },
+        {
+          "id": "5a365c1f",
+          "agents": [
+            "RedTeamAuditor"
+          ],
+          "origin": "attack",
+          "category": "process_execution",
+          "severity": "Critical",
+          "title": "Arbitrary Process Execution Backdoor",
+          "description": "[Red-Team Intercept] Patch introduces external process execution API susceptible to shell hijacking.",
+          "recommendation": "Eliminate process execution, dynamic loading, or networking from repair patch.",
+          "line": 1,
+          "column": null,
+          "evidence": "execvp(",
+          "action": "block",
+          "confidence": 1.0,
+          "blocks_on": [
+            "patch",
+            "run"
+          ],
+          "details": {
+            "adversary_auditor": "RedTeamAuditor",
+            "critique": "Adversarial audit REJECTED patch: 1 attack vector(s) identified."
           }
         }
       ],
@@ -6494,19 +6579,22 @@
       "baseline_allowed": true,
       "baseline_reason": "no defence",
       "blocked": true,
-      "risk_score": 5,
-      "total_ms": 3.838,
+      "risk_score": 10,
+      "total_ms": 24.501,
       "agents_found": [
-        "PatchGuard"
+        "PatchGuard",
+        "RedTeamAuditor"
       ],
       "categories": [
-        "patch_security_downgrade"
+        "patch_security_downgrade",
+        "unsafe_string_function"
       ],
       "findings": [
         {
-          "id": "afad5f67",
+          "id": "01d68869",
           "agents": [
-            "PatchGuard"
+            "PatchGuard",
+            "RedTeamAuditor"
           ],
           "origin": "attack",
           "category": "patch_security_downgrade",
@@ -6520,11 +6608,37 @@
           "action": "block",
           "confidence": 1.0,
           "blocks_on": [
-            "patch"
+            "patch",
+            "run"
           ],
           "details": {
             "from": "strncpy",
             "to": "strcpy"
+          }
+        },
+        {
+          "id": "c7d351ec",
+          "agents": [
+            "RedTeamAuditor"
+          ],
+          "origin": "attack",
+          "category": "unsafe_string_function",
+          "severity": "High",
+          "title": "Introduced Unsafe String Function",
+          "description": "[Red-Team Intercept] A classic C string routine is being used without explicit bounds control.",
+          "recommendation": "Use bounded alternatives such as strncpy/strncat/snprintf or switch to std::string.",
+          "line": 1,
+          "column": null,
+          "evidence": "A classic C string routine is being used without explicit bounds control.",
+          "action": "block",
+          "confidence": 1.0,
+          "blocks_on": [
+            "patch",
+            "run"
+          ],
+          "details": {
+            "adversary_auditor": "RedTeamAuditor",
+            "critique": "Adversarial audit REJECTED patch: 2 attack vector(s) identified."
           }
         }
       ],
@@ -6553,19 +6667,22 @@
       "baseline_allowed": true,
       "baseline_reason": "no defence",
       "blocked": true,
-      "risk_score": 5,
-      "total_ms": 2.351,
+      "risk_score": 15,
+      "total_ms": 16.665,
       "agents_found": [
-        "PatchGuard"
+        "PatchGuard",
+        "RedTeamAuditor"
       ],
       "categories": [
+        "buffer_overflow",
         "patch_security_downgrade"
       ],
       "findings": [
         {
-          "id": "c03af10a",
+          "id": "1f802e49",
           "agents": [
-            "PatchGuard"
+            "PatchGuard",
+            "RedTeamAuditor"
           ],
           "origin": "attack",
           "category": "patch_security_downgrade",
@@ -6579,11 +6696,37 @@
           "action": "block",
           "confidence": 1.0,
           "blocks_on": [
-            "patch"
+            "patch",
+            "run"
           ],
           "details": {
             "from": "fgets",
             "to": "gets"
+          }
+        },
+        {
+          "id": "2e57d550",
+          "agents": [
+            "RedTeamAuditor"
+          ],
+          "origin": "attack",
+          "category": "buffer_overflow",
+          "severity": "Critical",
+          "title": "Introduced Buffer Overflow",
+          "description": "[Red-Team Intercept] gets() reads input without any bounds checking.",
+          "recommendation": "Replace gets() with fgets(), std::getline, or another bounded input routine.",
+          "line": 1,
+          "column": null,
+          "evidence": "gets() reads input without any bounds checking.",
+          "action": "block",
+          "confidence": 1.0,
+          "blocks_on": [
+            "patch",
+            "run"
+          ],
+          "details": {
+            "adversary_auditor": "RedTeamAuditor",
+            "critique": "Adversarial audit REJECTED patch: 2 attack vector(s) identified."
           }
         }
       ],
@@ -6612,17 +6755,19 @@
       "baseline_allowed": true,
       "baseline_reason": "no defence",
       "blocked": true,
-      "risk_score": 5,
-      "total_ms": 4.928,
+      "risk_score": 10,
+      "total_ms": 14.543,
       "agents_found": [
-        "PatchGuard"
+        "PatchGuard",
+        "RedTeamAuditor"
       ],
       "categories": [
+        "guard_removal",
         "patch_removes_guard"
       ],
       "findings": [
         {
-          "id": "9c00b74d",
+          "id": "67ac4d51",
           "agents": [
             "PatchGuard"
           ],
@@ -6642,6 +6787,31 @@
           ],
           "details": {
             "removed_guard": "if (n > size) return;"
+          }
+        },
+        {
+          "id": "d6c05055",
+          "agents": [
+            "RedTeamAuditor"
+          ],
+          "origin": "attack",
+          "category": "guard_removal",
+          "severity": "High",
+          "title": "Security Guard Removal",
+          "description": "[Red-Team Intercept] Patch removed 1 safety validation guards without replacement: 'if (n > size) return;'",
+          "recommendation": "Retain all defensive assertions, bounds guards, and null pointer checks.",
+          "line": null,
+          "column": null,
+          "evidence": "if (n > size) return;",
+          "action": "block",
+          "confidence": 1.0,
+          "blocks_on": [
+            "patch",
+            "run"
+          ],
+          "details": {
+            "adversary_auditor": "RedTeamAuditor",
+            "critique": "Adversarial audit REJECTED patch: 1 attack vector(s) identified."
           }
         }
       ],
@@ -6670,17 +6840,19 @@
       "baseline_allowed": true,
       "baseline_reason": "no defence",
       "blocked": true,
-      "risk_score": 5,
-      "total_ms": 2.924,
+      "risk_score": 10,
+      "total_ms": 18.695,
       "agents_found": [
-        "PatchGuard"
+        "PatchGuard",
+        "RedTeamAuditor"
       ],
       "categories": [
+        "guard_removal",
         "patch_removes_guard"
       ],
       "findings": [
         {
-          "id": "decbc36e",
+          "id": "d4c56935",
           "agents": [
             "PatchGuard"
           ],
@@ -6700,6 +6872,31 @@
           ],
           "details": {
             "removed_guard": "assert(x > 0);"
+          }
+        },
+        {
+          "id": "efbd100d",
+          "agents": [
+            "RedTeamAuditor"
+          ],
+          "origin": "attack",
+          "category": "guard_removal",
+          "severity": "High",
+          "title": "Security Guard Removal",
+          "description": "[Red-Team Intercept] Patch removed 1 safety validation guards without replacement: 'assert(x > 0);'",
+          "recommendation": "Retain all defensive assertions, bounds guards, and null pointer checks.",
+          "line": null,
+          "column": null,
+          "evidence": "assert(x > 0);",
+          "action": "block",
+          "confidence": 1.0,
+          "blocks_on": [
+            "patch",
+            "run"
+          ],
+          "details": {
+            "adversary_auditor": "RedTeamAuditor",
+            "critique": "Adversarial audit REJECTED patch: 1 attack vector(s) identified."
           }
         }
       ],
@@ -6728,17 +6925,18 @@
       "baseline_allowed": true,
       "baseline_reason": "no defence",
       "blocked": true,
-      "risk_score": 5,
-      "total_ms": 4.02,
+      "risk_score": 10,
+      "total_ms": 23.564,
       "agents_found": [
-        "PatchGuard"
+        "PatchGuard",
+        "RedTeamAuditor"
       ],
       "categories": [
         "patch_suppresses_diagnostics"
       ],
       "findings": [
         {
-          "id": "2e6a213d",
+          "id": "c039879a",
           "agents": [
             "PatchGuard"
           ],
@@ -6758,6 +6956,31 @@
           ],
           "details": {
             "suppression": "#pragma GCC diagnostic ignored"
+          }
+        },
+        {
+          "id": "7634415e",
+          "agents": [
+            "RedTeamAuditor"
+          ],
+          "origin": "attack",
+          "category": "patch_suppresses_diagnostics",
+          "severity": "High",
+          "title": "Compiler Diagnostic Suppression",
+          "description": "[Red-Team Intercept] Patch suppresses compiler security diagnostics or assertions to mask underlying bugs.",
+          "recommendation": "Resolve the root diagnostic warning instead of silencing compiler checks.",
+          "line": 1,
+          "column": null,
+          "evidence": "#pragma GCC diagnostic ignored \"-Wformat\"",
+          "action": "block",
+          "confidence": 1.0,
+          "blocks_on": [
+            "patch",
+            "run"
+          ],
+          "details": {
+            "adversary_auditor": "RedTeamAuditor",
+            "critique": "Adversarial audit REJECTED patch: 1 attack vector(s) identified."
           }
         }
       ],
@@ -6787,7 +7010,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 10,
-      "total_ms": 9.438,
+      "total_ms": 20.441,
       "agents_found": [
         "PatchGuard"
       ],
@@ -6797,7 +7020,7 @@
       ],
       "findings": [
         {
-          "id": "ac629471",
+          "id": "aa1ca520",
           "agents": [
             "PatchGuard"
           ],
@@ -6820,7 +7043,7 @@
           }
         },
         {
-          "id": "e433835f",
+          "id": "342de28f",
           "agents": [
             "PatchGuard"
           ],
@@ -6872,7 +7095,7 @@
       "baseline_reason": "validate_ai_code:line-count",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 9.623,
+      "total_ms": 43.167,
       "agents_found": [
         "PatchGuard"
       ],
@@ -6881,7 +7104,7 @@
       ],
       "findings": [
         {
-          "id": "b33ee910",
+          "id": "5e440062",
           "agents": [
             "PatchGuard"
           ],
@@ -6930,17 +7153,18 @@
       "baseline_allowed": true,
       "baseline_reason": "no defence",
       "blocked": true,
-      "risk_score": 5,
-      "total_ms": 3.728,
+      "risk_score": 15,
+      "total_ms": 14.265,
       "agents_found": [
-        "PatchGuard"
+        "PatchGuard",
+        "RedTeamAuditor"
       ],
       "categories": [
         "patch_marker_leak"
       ],
       "findings": [
         {
-          "id": "038debb1",
+          "id": "822c0290",
           "agents": [
             "PatchGuard"
           ],
@@ -6959,6 +7183,31 @@
             "patch"
           ],
           "details": {}
+        },
+        {
+          "id": "995496f1",
+          "agents": [
+            "RedTeamAuditor"
+          ],
+          "origin": "attack",
+          "category": "patch_marker_leak",
+          "severity": "Critical",
+          "title": "Agent Boundary Marker Leak",
+          "description": "[Red-Team Intercept] Patch leaks internal agent delimiter tokens (<<<DATA or <<<END), indicating boundary escape.",
+          "recommendation": "Strip boundary marker leakage and isolate template variables.",
+          "line": 1,
+          "column": null,
+          "evidence": "Boundary token detected in patch body",
+          "action": "block",
+          "confidence": 1.0,
+          "blocks_on": [
+            "patch",
+            "run"
+          ],
+          "details": {
+            "adversary_auditor": "RedTeamAuditor",
+            "critique": "Adversarial audit REJECTED patch: 1 attack vector(s) identified."
+          }
         }
       ],
       "notes": "AI patch contains prompt framing delimiter <<<DATA"
@@ -6987,7 +7236,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 14.0,
+      "total_ms": 11.516,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7017,7 +7266,7 @@
       "baseline_reason": "sanitizer:system",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 17.777,
+      "total_ms": 17.032,
       "agents_found": [
         "ExecGuard",
         "VulnGuard"
@@ -7027,7 +7276,7 @@
       ],
       "findings": [
         {
-          "id": "4eba0b3b",
+          "id": "e2eb0204",
           "agents": [
             "ExecGuard",
             "VulnGuard"
@@ -7073,7 +7322,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 16.005,
+      "total_ms": 12.452,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7103,7 +7352,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 10.666,
+      "total_ms": 16.043,
       "agents_found": [
         "ExecGuard"
       ],
@@ -7112,7 +7361,7 @@
       ],
       "findings": [
         {
-          "id": "bab98dc2",
+          "id": "d30775a5",
           "agents": [
             "ExecGuard"
           ],
@@ -7157,7 +7406,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 13.249,
+      "total_ms": 20.28,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -7166,7 +7415,7 @@
       ],
       "findings": [
         {
-          "id": "9e5e18eb",
+          "id": "d04dbaa1",
           "agents": [
             "SecretsGuard"
           ],
@@ -7217,7 +7466,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 11.896,
+      "total_ms": 10.203,
       "agents_found": [
         "SecretsGuard"
       ],
@@ -7226,7 +7475,7 @@
       ],
       "findings": [
         {
-          "id": "4b825449",
+          "id": "8f8f75e3",
           "agents": [
             "SecretsGuard"
           ],
@@ -7277,7 +7526,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.745,
+      "total_ms": 0.335,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7307,7 +7556,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.671,
+      "total_ms": 0.408,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7337,7 +7586,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 1.727,
+      "total_ms": 1.011,
       "agents_found": [
         "PromptGuard"
       ],
@@ -7346,7 +7595,7 @@
       ],
       "findings": [
         {
-          "id": "b3031b89",
+          "id": "48319184",
           "agents": [
             "PromptGuard"
           ],
@@ -7396,7 +7645,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 11.407,
+      "total_ms": 20.989,
       "agents_found": [
         "PromptGuard"
       ],
@@ -7405,7 +7654,7 @@
       ],
       "findings": [
         {
-          "id": "c1860a18",
+          "id": "442701ec",
           "agents": [
             "PromptGuard"
           ],
@@ -7456,7 +7705,7 @@
       "baseline_reason": "no defence",
       "blocked": true,
       "risk_score": 5,
-      "total_ms": 6.014,
+      "total_ms": 18.864,
       "agents_found": [
         "PatchGuard"
       ],
@@ -7465,7 +7714,7 @@
       ],
       "findings": [
         {
-          "id": "d28fd88f",
+          "id": "d704a603",
           "agents": [
             "PatchGuard"
           ],
@@ -7514,7 +7763,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 10.745,
+      "total_ms": 13.314,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7542,7 +7791,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 8.025,
+      "total_ms": 13.088,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7570,7 +7819,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 10.339,
+      "total_ms": 17.624,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7598,7 +7847,7 @@
       "baseline_reason": "sanitizer:system",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 9.305,
+      "total_ms": 9.46,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7626,7 +7875,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 9.887,
+      "total_ms": 15.3,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7654,7 +7903,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 39.139,
+      "total_ms": 14.49,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7682,7 +7931,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 7.881,
+      "total_ms": 24.512,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7710,7 +7959,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 7.584,
+      "total_ms": 14.746,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7738,7 +7987,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 15.264,
+      "total_ms": 12.24,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7766,7 +8015,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 8.301,
+      "total_ms": 17.114,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7794,7 +8043,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 19.704,
+      "total_ms": 28.934,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7822,7 +8071,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.536,
+      "total_ms": 0.299,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7850,7 +8099,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 1.044,
+      "total_ms": 0.276,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7878,7 +8127,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 10.902,
+      "total_ms": 7.476,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7906,7 +8155,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.101,
+      "total_ms": 0.054,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7934,7 +8183,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.114,
+      "total_ms": 0.077,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7962,7 +8211,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.245,
+      "total_ms": 0.127,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -7990,7 +8239,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 3.838,
+      "total_ms": 1.794,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8018,7 +8267,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 2.073,
+      "total_ms": 1.578,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8046,7 +8295,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 9.991,
+      "total_ms": 10.298,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8074,7 +8323,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 7.209,
+      "total_ms": 10.46,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8102,7 +8351,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.502,
+      "total_ms": 0.334,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8130,7 +8379,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 0.565,
+      "total_ms": 1.273,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8158,7 +8407,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 9.33,
+      "total_ms": 14.848,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8186,7 +8435,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 10.249,
+      "total_ms": 9.704,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8214,7 +8463,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 12.108,
+      "total_ms": 11.702,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8242,7 +8491,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 3.579,
+      "total_ms": 11.365,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8270,7 +8519,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 2.827,
+      "total_ms": 12.558,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8298,7 +8547,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 5.33,
+      "total_ms": 11.33,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8326,7 +8575,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 5.606,
+      "total_ms": 17.711,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8354,7 +8603,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 3.908,
+      "total_ms": 22.74,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8382,7 +8631,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 10.92,
+      "total_ms": 23.628,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8412,7 +8661,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 23.272,
+      "total_ms": 10.846,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8442,7 +8691,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 26.288,
+      "total_ms": 13.531,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8472,7 +8721,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 18.294,
+      "total_ms": 24.749,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8502,7 +8751,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 17.749,
+      "total_ms": 13.265,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8532,7 +8781,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 16.521,
+      "total_ms": 14.034,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8560,7 +8809,7 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 17.542,
+      "total_ms": 15.65,
       "agents_found": [],
       "categories": [],
       "findings": [],
@@ -8588,12 +8837,12 @@
       "baseline_reason": "no defence",
       "blocked": false,
       "risk_score": 0,
-      "total_ms": 18.617,
+      "total_ms": 8.945,
       "agents_found": [],
       "categories": [],
       "findings": [],
       "notes": "Clean allocation with matched free in same scope"
     }
   ],
-  "benchmark_seconds": 12.841
+  "benchmark_seconds": 13.809
 }

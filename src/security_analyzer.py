@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Literal, Optional
+import json
 import re
 
 from models import CompilerError
@@ -20,10 +21,322 @@ class SecurityFinding:
     vulnerability_type: str
     description: str
     recommendation: str
-    source: Literal["compiler_diagnostic", "static_scan"]
+    source: Literal["compiler_diagnostic", "static_scan", "ast_scan"]
+    cwe_id: str | None = None
+    cwe_name: str | None = None
+    cwe_url: str | None = None
+    cert_rule: str | None = None
+    cert_url: str | None = None
 
     def to_dict(self):
         return asdict(self)
+
+
+CWE_DEFINITIONS: dict[str, dict[str, str]] = {
+    "Buffer Overflow": {
+        "id": "CWE-120",
+        "name": "Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')",
+        "url": "https://cwe.mitre.org/data/definitions/120.html",
+    },
+    "Unsafe String Function": {
+        "id": "CWE-676",
+        "name": "Use of Potentially Dangerous Function",
+        "url": "https://cwe.mitre.org/data/definitions/676.html",
+    },
+    "Unsafe Memory Copy": {
+        "id": "CWE-120",
+        "name": "Buffer Copy without Checking Size of Input",
+        "url": "https://cwe.mitre.org/data/definitions/120.html",
+    },
+    "Format String Vulnerability": {
+        "id": "CWE-134",
+        "name": "Use of Externally-Controlled Format String",
+        "url": "https://cwe.mitre.org/data/definitions/134.html",
+    },
+    "Null Pointer Dereference": {
+        "id": "CWE-476",
+        "name": "NULL Pointer Dereference",
+        "url": "https://cwe.mitre.org/data/definitions/476.html",
+    },
+    "Dangling Pointer": {
+        "id": "CWE-562",
+        "name": "Return of Stack Variable Address",
+        "url": "https://cwe.mitre.org/data/definitions/562.html",
+    },
+    "Use After Free": {
+        "id": "CWE-416",
+        "name": "Use After Free",
+        "url": "https://cwe.mitre.org/data/definitions/416.html",
+    },
+    "Double Free": {
+        "id": "CWE-415",
+        "name": "Double Free",
+        "url": "https://cwe.mitre.org/data/definitions/415.html",
+    },
+    "Potential Memory Leak": {
+        "id": "CWE-401",
+        "name": "Missing Release of Memory after Effective Lifetime",
+        "url": "https://cwe.mitre.org/data/definitions/401.html",
+    },
+    "Integer Overflow": {
+        "id": "CWE-190",
+        "name": "Integer Overflow or Wraparound",
+        "url": "https://cwe.mitre.org/data/definitions/190.html",
+    },
+    "Integer Underflow": {
+        "id": "CWE-191",
+        "name": "Integer Underflow (Wrap or Wraparound)",
+        "url": "https://cwe.mitre.org/data/definitions/191.html",
+    },
+    "Logic Error / Integer Overflow Risk": {
+        "id": "CWE-190",
+        "name": "Integer Overflow or Wraparound",
+        "url": "https://cwe.mitre.org/data/definitions/190.html",
+    },
+    "Signed/Unsigned Mismatch": {
+        "id": "CWE-195",
+        "name": "Signed to Unsigned Conversion Error",
+        "url": "https://cwe.mitre.org/data/definitions/195.html",
+    },
+    "Division by Zero": {
+        "id": "CWE-369",
+        "name": "Divide By Zero",
+        "url": "https://cwe.mitre.org/data/definitions/369.html",
+    },
+    "Command Injection": {
+        "id": "CWE-78",
+        "name": "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
+        "url": "https://cwe.mitre.org/data/definitions/78.html",
+    },
+    "Process Execution": {
+        "id": "CWE-78",
+        "name": "Improper Neutralization of Special Elements used in an OS Command",
+        "url": "https://cwe.mitre.org/data/definitions/78.html",
+    },
+    "Insecure Randomness": {
+        "id": "CWE-338",
+        "name": "Use of Cryptographically Weak Pseudo-Random Number Generator (PRNG)",
+        "url": "https://cwe.mitre.org/data/definitions/338.html",
+    },
+    "Weak Randomness": {
+        "id": "CWE-338",
+        "name": "Use of Cryptographically Weak Pseudo-Random Number Generator (PRNG)",
+        "url": "https://cwe.mitre.org/data/definitions/338.html",
+    },
+    "Uninitialized Memory": {
+        "id": "CWE-457",
+        "name": "Use of Uninitialized Variable",
+        "url": "https://cwe.mitre.org/data/definitions/457.html",
+    },
+    "Uninitialized Variable": {
+        "id": "CWE-457",
+        "name": "Use of Uninitialized Variable",
+        "url": "https://cwe.mitre.org/data/definitions/457.html",
+    },
+    "Unbounded Input": {
+        "id": "CWE-120",
+        "name": "Buffer Copy without Checking Size of Input",
+        "url": "https://cwe.mitre.org/data/definitions/120.html",
+    },
+    "Unchecked Return Value": {
+        "id": "CWE-252",
+        "name": "Unchecked Return Value",
+        "url": "https://cwe.mitre.org/data/definitions/252.html",
+    },
+    "Missing Error Handling (fopen)": {
+        "id": "CWE-252",
+        "name": "Unchecked Return Value",
+        "url": "https://cwe.mitre.org/data/definitions/252.html",
+    },
+    "Infinite Recursion": {
+        "id": "CWE-674",
+        "name": "Uncontrolled Recursion",
+        "url": "https://cwe.mitre.org/data/definitions/674.html",
+    },
+    "Unused Variable / Dead Code": {
+        "id": "CWE-563",
+        "name": "Assignment to Variable without Use ('Unused Variable')",
+        "url": "https://cwe.mitre.org/data/definitions/563.html",
+    },
+    "Use of Deprecated API": {
+        "id": "CWE-477",
+        "name": "Use of Obsolete Function",
+        "url": "https://cwe.mitre.org/data/definitions/477.html",
+    },
+    "Unsafe Pointer Arithmetic": {
+        "id": "CWE-469",
+        "name": "Use of Pointer Subtraction to Determine Size",
+        "url": "https://cwe.mitre.org/data/definitions/469.html",
+    },
+    "Hardcoded Secret / Sensitive Word": {
+        "id": "CWE-798",
+        "name": "Use of Hard-coded Credentials",
+        "url": "https://cwe.mitre.org/data/definitions/798.html",
+    },
+    "Disabled Safety Check (assert in release)": {
+        "id": "CWE-670",
+        "name": "Always-Incorrect Control Flow Implementation",
+        "url": "https://cwe.mitre.org/data/definitions/670.html",
+    },
+    "Vector Out of Bounds": {
+        "id": "CWE-129",
+        "name": "Improper Validation of Array Index",
+        "url": "https://cwe.mitre.org/data/definitions/129.html",
+    },
+}
+
+CERT_DEFINITIONS: dict[str, dict[str, str]] = {
+    "Buffer Overflow": {
+        "rule": "ARR30-C",
+        "title": "Do not form or use out-of-bounds pointers or array subscripts",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/ARR30-C.+Do+not+form+or+use+out-of-bounds+pointers+or+array+subscripts",
+    },
+    "Unsafe String Function": {
+        "rule": "STR31-C",
+        "title": "Guarantee that storage for strings has sufficient space for character data and the null terminator",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/STR31-C.+Guarantee+that+storage+for+strings+has+sufficient+space+for+character+data+and+the+null+terminator",
+    },
+    "Unsafe Memory Copy": {
+        "rule": "ARR30-C",
+        "title": "Do not form or use out-of-bounds pointers or array subscripts",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/ARR30-C.+Do+not+form+or+use+out-of-bounds+pointers+or+array+subscripts",
+    },
+    "Format String Vulnerability": {
+        "rule": "FIO30-C",
+        "title": "Exclude user input from format strings",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/FIO30-C.+Exclude+user+input+from+format+strings",
+    },
+    "Null Pointer Dereference": {
+        "rule": "EXP34-C",
+        "title": "Do not dereference null pointers",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/EXP34-C.+Do+not+dereference+null+pointers",
+    },
+    "Dangling Pointer": {
+        "rule": "DCL30-C",
+        "title": "Declare objects with appropriate storage durations",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/DCL30-C.+Declare+objects+with+appropriate+storage+durations",
+    },
+    "Use After Free": {
+        "rule": "MEM50-CPP",
+        "title": "Do not access freed memory",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/cplusplus/MEM50-CPP.+Do+not+access+freed+memory",
+    },
+    "Double Free": {
+        "rule": "MEM51-CPP",
+        "title": "Properly deallocate dynamically allocated resources",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/cplusplus/MEM51-CPP.+Properly+deallocate+dynamically+allocated+resources",
+    },
+    "Potential Memory Leak": {
+        "rule": "MEM51-CPP",
+        "title": "Properly deallocate dynamically allocated resources",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/cplusplus/MEM51-CPP.+Properly+deallocate+dynamically+allocated+resources",
+    },
+    "Integer Overflow": {
+        "rule": "INT30-C",
+        "title": "Ensure that unsigned integer operations do not wrap",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/INT30-C.+Ensure+that+unsigned+integer+operations+do+not+wrap",
+    },
+    "Integer Underflow": {
+        "rule": "INT32-C",
+        "title": "Ensure that operations on signed integers do not result in signed integer overflow",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/INT32-C.+Ensure+that+operations+on+signed+integers+do+not+result+in+signed+integer+overflow",
+    },
+    "Logic Error / Integer Overflow Risk": {
+        "rule": "INT30-C",
+        "title": "Ensure that integer operations do not wrap or overflow unexpectedly",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/INT30-C.+Ensure+that+unsigned+integer+operations+do+not+wrap",
+    },
+    "Signed/Unsigned Mismatch": {
+        "rule": "INT31-C",
+        "title": "Ensure that integer conversions do not result in lost or misinterpreted data",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/INT31-C.+Ensure+that+integer+conversions+do+not+result+in+lost+or+misinterpreted+data",
+    },
+    "Division by Zero": {
+        "rule": "INT33-C",
+        "title": "Ensure that division and remainder operations do not result in divide-by-zero errors",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/INT33-C.+Ensure+that+division+and+remainder+operations+do+not+result+in+divide-by-zero+errors",
+    },
+    "Command Injection": {
+        "rule": "ENV33-C",
+        "title": "Do not call system()",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/ENV33-C.+Do+not+call+system%28%29",
+    },
+    "Process Execution": {
+        "rule": "ENV33-C",
+        "title": "Do not call system()",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/ENV33-C.+Do+not+call+system%28%29",
+    },
+    "Insecure Randomness": {
+        "rule": "MSC50-CPP",
+        "title": "Do not use std::rand() for generating pseudorandom numbers",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/cplusplus/MSC50-CPP.+Do+not+use+std%3A%3Arand%28%29+for+generating+pseudorandom+numbers",
+    },
+    "Weak Randomness": {
+        "rule": "MSC50-CPP",
+        "title": "Do not use std::rand() for generating pseudorandom numbers",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/cplusplus/MSC50-CPP.+Do+not+use+std%3A%3Arand%28%29+for+generating+pseudorandom+numbers",
+    },
+    "Uninitialized Memory": {
+        "rule": "EXP33-C",
+        "title": "Do not read uninitialized memory",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/EXP33-C.+Do+not+read+uninitialized+memory",
+    },
+    "Uninitialized Variable": {
+        "rule": "EXP33-C",
+        "title": "Do not read uninitialized memory",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/EXP33-C.+Do+not+read+uninitialized+memory",
+    },
+    "Unbounded Input": {
+        "rule": "FIO34-C",
+        "title": "Distinguish between characters read from a file and EOF or error conditions",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/FIO34-C.+Distinguish+between+characters+read+from+a+file+and+EOF+or+error+conditions",
+    },
+    "Unchecked Return Value": {
+        "rule": "ERR33-C",
+        "title": "Detect and handle standard library errors",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/ERR33-C.+Detect+and+handle+standard+library+errors",
+    },
+    "Missing Error Handling (fopen)": {
+        "rule": "FIO42-C",
+        "title": "Close files when they are no longer needed",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/FIO42-C.+Close+files+when+they+are+no+longer+needed",
+    },
+    "Infinite Recursion": {
+        "rule": "MSC15-C",
+        "title": "Do not depend on undefined behavior",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/MSC15-C.+Do+not+depend+on+undefined+behavior",
+    },
+    "Unused Variable / Dead Code": {
+        "rule": "MSC13-C",
+        "title": "Detect unused values",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/MSC13-C.+Detect+unused+values",
+    },
+    "Use of Deprecated API": {
+        "rule": "MSC24-C",
+        "title": "Do not use deprecated or obsolescent functions",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/MSC24-C.+Do+not+use+deprecated+or+obsolescent+functions",
+    },
+    "Unsafe Pointer Arithmetic": {
+        "rule": "ARR37-C",
+        "title": "Do not add or subtract an integer to a pointer to obtain an unreferenced element",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/ARR37-C.+Do+not+add+or+subtract+an+integer+to+a+pointer+to+obtain+an+unreferenced+element",
+    },
+    "Hardcoded Secret / Sensitive Word": {
+        "rule": "MSC03-C",
+        "title": "Avoid hardcoded sensitive data",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/MSC03-C.+Avoid+hardcoded+sensitive+data",
+    },
+    "Disabled Safety Check (assert in release)": {
+        "rule": "MSC11-C",
+        "title": "Incorporate diagnostic tests using assertions properly",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/c/MSC11-C.+Incorporate+diagnostic+tests+using+assertions+properly",
+    },
+    "Vector Out of Bounds": {
+        "rule": "CTR50-CPP",
+        "title": "Guarantee that container indices and iterators are within valid range",
+        "url": "https://wiki.sei.cmu.edu/confluence/display/cplusplus/CTR50-CPP.+Guarantee+that+container+indices+and+iterators+are+within+valid+range",
+    },
+}
 
 
 _SEVERITY_ORDER: dict[Severity, int] = {
@@ -116,14 +429,40 @@ _DIAGNOSTIC_RULES = [
 _RAW_STRING_START = re.compile(r'(?:u8|u|U|L)?R"([^\s()\\]{0,16})\(')
 _SENSITIVE_WORDS = re.compile(r"\b(key|token|password|secret)\b", re.IGNORECASE)
 _SENSITIVE_FUNCTIONS = re.compile(
-    r"\b(gets|strcpy|strcat|sprintf|scanf|system|rand|memcpy|memmove|assert|malloc)\s*\(",
+    r"\b(gets|strcpy|strcat|sprintf|scanf|sscanf|fscanf|system|rand|memcpy|memmove|assert|malloc|free|new|delete|fopen|tmpnam|mktemp|atoi)\s*\(?",
     re.IGNORECASE,
 )
 _DELETE_RE = re.compile(r"\bdelete\s*(?:\[\])?\s*([A-Za-z_]\w*)\s*;")
 _RAW_POINTER_USE_RE = re.compile(r"(?:\*|->|\[)\s*([A-Za-z_]\w*)|([A-Za-z_]\w*)\s*(?:->|\[)")
 
 
-def _empty_finding(file: str, severity: Severity, vulnerability_type: str, description: str, recommendation: str, line: int | None = None, column: int | None = None, source: str = "static_scan") -> SecurityFinding:
+def _empty_finding(
+    file: str,
+    severity: Severity,
+    vulnerability_type: str,
+    description: str,
+    recommendation: str,
+    line: int | None = None,
+    column: int | None = None,
+    source: Literal["compiler_diagnostic", "static_scan", "ast_scan"] = "static_scan",
+    cwe_id: str | None = None,
+    cwe_name: str | None = None,
+    cwe_url: str | None = None,
+    cert_rule: str | None = None,
+    cert_url: str | None = None,
+) -> SecurityFinding:
+    if cwe_id is None:
+        cwe_info = CWE_DEFINITIONS.get(vulnerability_type)
+        if cwe_info:
+            cwe_id = cwe_info["id"]
+            cwe_name = cwe_info["name"]
+            cwe_url = cwe_info["url"]
+    if cert_rule is None:
+        cert_info = CERT_DEFINITIONS.get(vulnerability_type)
+        if cert_info:
+            cert_rule = cert_info["rule"]
+            cert_url = cert_info["url"]
+
     return SecurityFinding(
         file=file,
         line=line,
@@ -132,7 +471,12 @@ def _empty_finding(file: str, severity: Severity, vulnerability_type: str, descr
         vulnerability_type=vulnerability_type,
         description=description,
         recommendation=recommendation,
-        source=source,  # type: ignore[arg-type]
+        source=source,
+        cwe_id=cwe_id,
+        cwe_name=cwe_name,
+        cwe_url=cwe_url,
+        cert_rule=cert_rule,
+        cert_url=cert_url,
     )
 
 
@@ -143,7 +487,33 @@ def _normalize_path(source_path: str) -> str:
         return source_path
 
 
-def _make_finding(source_path: str, line: int | None, column: int | None, severity: Severity, vulnerability_type: str, description: str, recommendation: str, source: Literal["compiler_diagnostic", "static_scan"]) -> SecurityFinding:
+def _make_finding(
+    source_path: str,
+    line: int | None,
+    column: int | None,
+    severity: Severity,
+    vulnerability_type: str,
+    description: str,
+    recommendation: str,
+    source: Literal["compiler_diagnostic", "static_scan", "ast_scan"] = "static_scan",
+    cwe_id: str | None = None,
+    cwe_name: str | None = None,
+    cwe_url: str | None = None,
+    cert_rule: str | None = None,
+    cert_url: str | None = None,
+) -> SecurityFinding:
+    if cwe_id is None:
+        cwe_info = CWE_DEFINITIONS.get(vulnerability_type)
+        if cwe_info:
+            cwe_id = cwe_info["id"]
+            cwe_name = cwe_info["name"]
+            cwe_url = cwe_info["url"]
+    if cert_rule is None:
+        cert_info = CERT_DEFINITIONS.get(vulnerability_type)
+        if cert_info:
+            cert_rule = cert_info["rule"]
+            cert_url = cert_info["url"]
+
     return SecurityFinding(
         file=_normalize_path(source_path),
         line=line,
@@ -153,6 +523,11 @@ def _make_finding(source_path: str, line: int | None, column: int | None, severi
         description=description,
         recommendation=recommendation,
         source=source,
+        cwe_id=cwe_id,
+        cwe_name=cwe_name,
+        cwe_url=cwe_url,
+        cert_rule=cert_rule,
+        cert_url=cert_url,
     )
 
 
@@ -318,7 +693,7 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
     findings: list[SecurityFinding] = []
     state: dict[str, object] = {"in_block_comment": False, "raw_delim": None}
     scope_stack: list[dict[str, object]] = [
-        {"start_line": 1, "malloc_lines": [], "free_seen": False}
+        {"start_line": 1, "malloc_lines": [], "free_seen": False, "new_lines": [], "delete_seen": False, "fopen_lines": [], "fclose_seen": False}
     ]
     recent_sensitive_lines: list[int] = []
     freed_vars: dict[str, int] = {}
@@ -370,6 +745,7 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
     current_fn: str | None = None
     fn_has_base_case = False
     fn_recursive_lines: list[int] = []
+    local_vars: set[str] = set()
 
     for line_no, raw_line in enumerate(lines, start=1):
         code_line = _strip_code(raw_line, state).strip()
@@ -387,18 +763,38 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
             signed_vars.add(m_s.group(1))
 
         # ── 1. Infinite Recursion ─────────────────────────────────────────────
-        fn_start = re.search(r"^\s*(?:int|void|bool|double|float|long|auto)\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*\{", code_line)
+        fn_start = re.search(r"^\s*(?:int|void|bool|double|float|long|auto|char|[A-Za-z_]\w*)\s*(?:\*+|\s+)\s*([A-Za-z_]\w*)\s*\([^)]*\)\s*\{", code_line)
         if fn_start:
             current_fn = fn_start.group(1)
             fn_has_base_case = False
             fn_recursive_lines = []
             freed_vars.clear()
+            local_vars.clear()
 
         if current_fn:
             if re.search(r"\bif\s*\(", code_line) or (re.search(r"\breturn\b", code_line) and not re.search(rf"\b{re.escape(current_fn)}\s*\(", code_line)):
                 fn_has_base_case = True
             if re.search(rf"\b{re.escape(current_fn)}\s*\(", code_line) and not fn_start:
                 fn_recursive_lines.append(line_no)
+
+            if not re.search(r"\bstatic\b", code_line):
+                decl_m = re.search(r"^\s*(?:const\s+)?(?:int|char|float|double|long|short|bool|auto|[A-Za-z_]\w*)\s+(?:\*|\&)?\s*([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*(?:=|[;{])", code_line)
+                if decl_m:
+                    v_name = decl_m.group(1)
+                    if v_name not in ("return", "if", "for", "while", "switch", "case", "struct", "class", "namespace"):
+                        local_vars.add(v_name)
+
+            ret_ref = re.search(r"\breturn\s+&\s*([A-Za-z_]\w*)\s*;", code_line)
+            if ret_ref:
+                ret_var = ret_ref.group(1)
+                if ret_var in local_vars:
+                    emit(
+                        line_no,
+                        "Dangling Pointer",
+                        "Critical",
+                        f"Returning the address of local stack variable '{ret_var}' results in a dangling pointer when the function returns.",
+                        "Allocate memory on the heap (e.g. std::make_unique), return by value, or pass an output buffer parameter.",
+                    )
 
         if code_line == "}" and current_fn:
             if fn_recursive_lines and not fn_has_base_case:
@@ -414,6 +810,7 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
             fn_has_base_case = False
             fn_recursive_lines = []
             freed_vars.clear()
+            local_vars.clear()
 
         # ── 2. Integer Overflow / Underflow ───────────────────────────────────
         int_max_init = re.search(r"\b(?<!long\s)(?:int|short)\s+([A-Za-z_]\w*)\s*=\s*(?:INT_MAX|2147483647)\b", code_line)
@@ -569,17 +966,19 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
             )
 
         line_no_comment = raw_line.split("//")[0].strip()
-        scanf_match = re.search(r"\bscanf\s*\((.+)\)\s*;?", line_no_comment)
+        scanf_match = re.search(r"\b(scanf|sscanf|fscanf)\s*\((.+)\)\s*;?", line_no_comment)
         if scanf_match:
-            args = _split_args(scanf_match.group(1))
-            if args:
-                fmt = _string_literal_value(args[0])
+            fn_name = scanf_match.group(1)
+            args = _split_args(scanf_match.group(2))
+            fmt_idx = 1 if fn_name in ("sscanf", "fscanf") else 0
+            if len(args) > fmt_idx:
+                fmt = _string_literal_value(args[fmt_idx])
                 if fmt and re.search(r"%\s*s", fmt) and not re.search(r"%\d+s", fmt):
                     emit(
                         line_no,
                         "Unbounded Input",
                         "High",
-                        "scanf() is reading a string with %s and no width limit.",
+                        f"{fn_name}() is reading a string with %s and no width limit.",
                         "Add an explicit width specifier or use std::string with bounded parsing.",
                     )
 
@@ -596,6 +995,28 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                     "A non-literal format string is being used with printf/fprintf.",
                     "Use a fixed format string and pass user data as separate arguments.",
                 )
+
+        tmp_match = re.search(r"\b(tmpnam|tmpnam_s|mktemp|tempnam)\s*\(", code_line)
+        if tmp_match:
+            fn_banned = tmp_match.group(1)
+            emit(
+                line_no,
+                "Insecure Temporary File",
+                "High",
+                f"{fn_banned}() generates predictable temporary file names vulnerable to symlink and race condition attacks (TOCTOU).",
+                "Use mkstemp(), tmpfile(), or standard filesystem utilities (e.g. std::filesystem) instead.",
+            )
+
+        conv_match = re.search(r"\b(atoi|atol|atoll|atof)\s*\(", code_line)
+        if conv_match:
+            fn_conv = conv_match.group(1)
+            emit(
+                line_no,
+                "Unchecked Type Conversion",
+                "Medium",
+                f"{fn_conv}() provides no error handling or range validation for invalid or overflowing numeric inputs.",
+                "Use std::stoi, std::stol, std::stod, or std::from_chars with proper exception/error checking.",
+            )
 
         mem_match = re.search(r"\b(memcpy|memmove)\s*\((.+)\)\s*;?\s*$", code_line)
         if mem_match:
@@ -694,17 +1115,31 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
             for scope in scope_stack:
                 scope["free_seen"] = True
 
+        if re.search(r"\bnew\s+(?:nothrow\s+)?(?:[A-Za-z_]|::)", code_line) and not re.search(r"\boperator\s+new\b", code_line):
+            current_scope()["new_lines"].append(line_no)
+
+        if re.search(r"\bdelete\s*(?:\[\])?\s*[A-Za-z_]", code_line):
+            for scope in scope_stack:
+                scope["delete_seen"] = True
+
+        if re.search(r"\b(?:fopen|fopen_s|freopen)\s*\(", code_line):
+            current_scope()["fopen_lines"].append(line_no)
+
+        if "fclose(" in code_line:
+            for scope in scope_stack:
+                scope["fclose_seen"] = True
+
         for freed_name, freed_line in list(freed_vars.items()):
             if re.search(rf"(?<![\*\&])\b{re.escape(freed_name)}\s*=\s*(?:nullptr|NULL|0|\w+)\s*;", code_line):
                 del freed_vars[freed_name]
                 continue
-            if re.search(rf"\bdelete\s*(?:\[\])?\s*{re.escape(freed_name)}\s*;", code_line) and line_no != freed_line:
+            if re.search(rf"(?:\bdelete\s*(?:\[\])?\s*|\bfree\s*\(\s*){re.escape(freed_name)}\s*(?:\)|;)", code_line) and line_no != freed_line:
                 emit(
                     line_no,
                     "Double Free",
                     "High",
-                    "The same pointer appears to be deleted more than once.",
-                    "Set the pointer to nullptr immediately after delete or switch to smart pointers.",
+                    "The same pointer appears to be freed or deleted more than once.",
+                    "Set the pointer to nullptr immediately after freeing or switch to smart pointers.",
                 )
             if re.search(rf"(?<!\w)\*\s*{re.escape(freed_name)}\b|\b{re.escape(freed_name)}\s*->|\b{re.escape(freed_name)}\s*\[", code_line):
                 emit(
@@ -712,17 +1147,17 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                     "Use After Free",
                     "High",
                     "Memory appears to be accessed after it was freed.",
-                    "Do not use the pointer after delete; prefer unique_ptr or reset the pointer to nullptr.",
+                    "Do not use the pointer after free/delete; prefer unique_ptr or reset the pointer to nullptr.",
                 )
 
-        delete_match = _DELETE_RE.search(code_line)
-        if delete_match:
-            freed_vars[delete_match.group(1)] = line_no
+        free_match = re.search(r"(?:\bdelete\s*(?:\[\])?\s*|\bfree\s*\(\s*)([A-Za-z_]\w*)\s*(?:\)|;)", code_line)
+        if free_match:
+            freed_vars[free_match.group(1)] = line_no
 
         open_braces = code_line.count("{")
         close_braces = code_line.count("}")
         for _ in range(open_braces):
-            scope_stack.append({"start_line": line_no, "malloc_lines": [], "free_seen": False})
+            scope_stack.append({"start_line": line_no, "malloc_lines": [], "free_seen": False, "new_lines": [], "delete_seen": False, "fopen_lines": [], "fclose_seen": False})
         for _ in range(close_braces):
             if len(scope_stack) <= 1:
                 freed_vars.clear()
@@ -739,22 +1174,53 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                         "malloc() allocates memory in this scope without a matching free() before the scope closes.",
                         "Release the allocation with free() in the same scope or replace manual ownership with RAII/smart pointers.",
                     )
+            if finished.get("new_lines") and not finished.get("delete_seen"):
+                for new_line in finished["new_lines"]:
+                    emit(
+                        new_line,
+                        "Potential Memory Leak",
+                        "Medium",
+                        "new allocates memory dynamically in this scope without a matching delete before the scope closes.",
+                        "Release the allocated object with delete / delete[] or manage it using std::unique_ptr or std::shared_ptr.",
+                    )
+            if finished.get("fopen_lines") and not finished.get("fclose_seen"):
+                for fopen_line in finished["fopen_lines"]:
+                    emit(
+                        fopen_line,
+                        "File Descriptor Leak",
+                        "Medium",
+                        "fopen() opened a file stream in this scope without a matching fclose() before the scope closes.",
+                        "Close the file with fclose(fp) before exiting scope or wrap the handle in an RAII container.",
+                    )
 
     while len(scope_stack) > 1:
         finished = scope_stack.pop()
         if finished["malloc_lines"] and not finished["free_seen"]:
             for malloc_line in finished["malloc_lines"]:
-                findings.append(
-                    _make_finding(
-                        source_path,
-                        malloc_line,
-                        None,
-                        "Medium",
-                        "Potential Memory Leak",
-                        "malloc() allocates memory in this scope without a matching free() before the scope closes.",
-                        "Release the allocation with free() in the same scope or replace manual ownership with RAII/smart pointers.",
-                        "static_scan",
-                    )
+                emit(
+                    malloc_line,
+                    "Potential Memory Leak",
+                    "Medium",
+                    "malloc() allocates memory in this scope without a matching free() before the scope closes.",
+                    "Release the allocation with free() in the same scope or replace manual ownership with RAII/smart pointers.",
+                )
+        if finished.get("new_lines") and not finished.get("delete_seen"):
+            for new_line in finished["new_lines"]:
+                emit(
+                    new_line,
+                    "Potential Memory Leak",
+                    "Medium",
+                    "new allocates memory dynamically in this scope without a matching delete before the scope closes.",
+                    "Release the allocated object with delete / delete[] or manage it using std::unique_ptr or std::shared_ptr.",
+                )
+        if finished.get("fopen_lines") and not finished.get("fclose_seen"):
+            for fopen_line in finished["fopen_lines"]:
+                emit(
+                    fopen_line,
+                    "File Descriptor Leak",
+                    "Medium",
+                    "fopen() opened a file stream in this scope without a matching fclose() before the scope closes.",
+                    "Close the file with fclose(fp) before exiting scope or wrap the handle in an RAII container.",
                 )
 
     return findings
@@ -798,6 +1264,18 @@ def analyze(source_path: str, compiler_errors: list[CompilerError]) -> list[Secu
         findings.extend(_diagnostic_findings(error))
 
     findings.extend(_scan_source_findings(source_path))
+
+    try:
+        import ast_security_rules
+        ast_findings = ast_security_rules.analyze_ast(source_path)
+        existing_keys = {(f.line, f.vulnerability_type) for f in findings}
+        for af in ast_findings:
+            if (af.line, af.vulnerability_type) not in existing_keys:
+                findings.append(af)
+                existing_keys.add((af.line, af.vulnerability_type))
+    except Exception:
+        pass
+
     return _dedupe_findings(findings)
 
 
@@ -838,10 +1316,95 @@ def format_security_report(findings: list[SecurityFinding]) -> str:
             if finding.line is not None:
                 location += f":{finding.line}"
             badge = f"[{finding.severity.upper()}]"
-            lines.append(f"{badge} {finding.vulnerability_type} - {location}")
+            std_tag = ""
+            if finding.cwe_id:
+                std_tag += f" [{finding.cwe_id}]"
+            if finding.cert_rule:
+                std_tag += f" [{finding.cert_rule}]"
+            lines.append(f"{badge}{std_tag} {finding.vulnerability_type} - {location}")
             lines.append(f"  Description: {finding.description}")
             lines.append(f"  Recommendation: {finding.recommendation}")
             lines.append("")
 
     lines.append(f"Risk score: {score} ({_risk_label(score)})")
     return "\n".join(lines).strip() + "\n"
+
+
+def export_to_sarif(findings: list[SecurityFinding], run_info: dict | None = None) -> dict:
+    findings = _dedupe_findings(findings)
+    rules_map: dict[str, dict] = {}
+    results: list[dict] = []
+
+    level_map = {
+        "Critical": "error",
+        "High": "error",
+        "Medium": "warning",
+        "Low": "note",
+    }
+
+    for f in findings:
+        rule_id = f.cwe_id or f.vulnerability_type.replace(" ", "_").upper()
+        if rule_id not in rules_map:
+            rules_map[rule_id] = {
+                "id": rule_id,
+                "name": f.cwe_name or f.vulnerability_type,
+                "shortDescription": {"text": f.vulnerability_type},
+                "fullDescription": {"text": f.description},
+                "helpUri": f.cwe_url or "https://cwe.mitre.org/",
+                "properties": {
+                    "tags": ["security", "c++"],
+                    "certRule": f.cert_rule or "",
+                    "certUri": f.cert_url or "",
+                },
+            }
+
+        file_uri = Path(f.file).as_posix() if f.file else "unknown.cpp"
+        result_item = {
+            "ruleId": rule_id,
+            "level": level_map.get(f.severity, "warning"),
+            "message": {
+                "text": f"{f.description} Recommendation: {f.recommendation}"
+            },
+            "locations": [
+                {
+                    "physicalLocation": {
+                        "artifactLocation": {
+                            "uri": file_uri,
+                        },
+                        "region": {
+                            "startLine": f.line if f.line is not None and f.line > 0 else 1,
+                            "startColumn": f.column if f.column is not None and f.column > 0 else 1,
+                        },
+                    }
+                }
+            ],
+        }
+        results.append(result_item)
+
+    sarif = {
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "Self-Healing-Compiler-Security-Analyzer",
+                        "semanticVersion": "1.0.0",
+                        "informationUri": "https://cwe.mitre.org",
+                        "rules": list(rules_map.values()),
+                    }
+                },
+                "results": results,
+            }
+        ],
+    }
+    return sarif
+
+
+def save_sarif(findings: list[SecurityFinding], output_path: str) -> str:
+    sarif_data = export_to_sarif(findings)
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(sarif_data, f, indent=2)
+    return str(out)

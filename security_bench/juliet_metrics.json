@@ -1,0 +1,122 @@
+{
+  "timestamp": "2026-11-06T18:54:22Z",
+  "total_flawed_cases": 7,
+  "true_positives": 7,
+  "recall_detection_rate": 1.0,
+  "recall_95ci": [
+    0.6457,
+    1.0
+  ],
+  "total_compliant_cases": 7,
+  "false_positives": 3,
+  "false_positive_rate": 0.4286,
+  "fpr_95ci": [
+    0.1582,
+    0.7495
+  ],
+  "precision": 0.7,
+  "heal_success_rate": 1.0,
+  "bad_results": [
+    {
+      "file": "CWE121_Stack_Based_Buffer_Overflow/s01_bad.cpp",
+      "cwe_target": "CWE121",
+      "detected": true,
+      "detected_cwes": [
+        "CWE-120"
+      ],
+      "healed": true
+    },
+    {
+      "file": "CWE121_Stack_Based_Buffer_Overflow/s02_bad.cpp",
+      "cwe_target": "CWE121",
+      "detected": true,
+      "detected_cwes": [
+        "CWE-120",
+        "CWE-676"
+      ],
+      "healed": true
+    },
+    {
+      "file": "CWE134_Uncontrolled_Format_String/s01_bad.cpp",
+      "cwe_target": "CWE134",
+      "detected": true,
+      "detected_cwes": [
+        "CWE-134"
+      ],
+      "healed": true
+    },
+    {
+      "file": "CWE190_Integer_Overflow/s01_bad.cpp",
+      "cwe_target": "CWE190",
+      "detected": true,
+      "detected_cwes": [
+        "CWE-190"
+      ],
+      "healed": true
+    },
+    {
+      "file": "CWE415_Double_Free/s01_bad.cpp",
+      "cwe_target": "CWE415",
+      "detected": true,
+      "detected_cwes": [
+        "CWE-415"
+      ],
+      "healed": true
+    },
+    {
+      "file": "CWE416_Use_After_Free/s01_bad.cpp",
+      "cwe_target": "CWE416",
+      "detected": true,
+      "detected_cwes": [
+        "CWE-416"
+      ],
+      "healed": true
+    },
+    {
+      "file": "CWE476_NULL_Pointer_Dereference/s01_bad.cpp",
+      "cwe_target": "CWE476",
+      "detected": true,
+      "detected_cwes": [
+        "CWE-476"
+      ],
+      "healed": true
+    }
+  ],
+  "good_results": [
+    {
+      "file": "CWE121_Stack_Based_Buffer_Overflow/s01_good.cpp",
+      "false_positive": true,
+      "findings_count": 1
+    },
+    {
+      "file": "CWE121_Stack_Based_Buffer_Overflow/s02_good.cpp",
+      "false_positive": true,
+      "findings_count": 1
+    },
+    {
+      "file": "CWE134_Uncontrolled_Format_String/s01_good.cpp",
+      "false_positive": false,
+      "findings_count": 0
+    },
+    {
+      "file": "CWE190_Integer_Overflow/s01_good.cpp",
+      "false_positive": true,
+      "findings_count": 1
+    },
+    {
+      "file": "CWE415_Double_Free/s01_good.cpp",
+      "false_positive": false,
+      "findings_count": 0
+    },
+    {
+      "file": "CWE416_Use_After_Free/s01_good.cpp",
+      "false_positive": false,
+      "findings_count": 0
+    },
+    {
+      "file": "CWE476_NULL_Pointer_Dereference/s01_good.cpp",
+      "false_positive": false,
+      "findings_count": 0
+    }
+  ]
+}

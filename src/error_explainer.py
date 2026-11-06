@@ -111,32 +111,44 @@ SECURITY_RULES = [
     {
         "pattern": r"unused variable|variable .+ set but not used",
         "risk": "Low",
-        "reason": "Unused variables can indicate dead code, abandoned checks, or incomplete security logic."
+        "reason": "Unused variables can indicate dead code, abandoned checks, or incomplete security logic (CWE-563, CERT MSC13-C).",
+        "cwe": "CWE-563",
+        "cert": "MSC13-C",
     },
     {
         "pattern": r"may be used uninitialized",
         "risk": "High",
-        "reason": "Uninitialized variables may cause undefined behavior or memory corruption."
+        "reason": "Uninitialized variables may cause undefined behavior or memory corruption (CWE-457, CERT EXP33-C).",
+        "cwe": "CWE-457",
+        "cert": "EXP33-C",
     },
     {
         "pattern": r"division by zero",
         "risk": "High",
-        "reason": "Division by zero can crash the program or cause undefined behavior."
+        "reason": "Division by zero can crash the program or cause undefined behavior (CWE-369, CERT INT33-C).",
+        "cwe": "CWE-369",
+        "cert": "INT33-C",
     },
     {
         "pattern": r"invalid conversion",
         "risk": "Medium",
-        "reason": "Incorrect type conversion may lead to memory or logic errors."
+        "reason": "Incorrect type conversion may lead to memory or logic errors (CWE-195, CERT INT31-C).",
+        "cwe": "CWE-195",
+        "cert": "INT31-C",
     },
     {
         "pattern": r"assignment of read-only location",
         "risk": "Medium",
-        "reason": "Modifying const-qualified data may indicate unsafe design."
+        "reason": "Modifying const-qualified data may indicate unsafe design (CWE-670).",
+        "cwe": "CWE-670",
+        "cert": "MSC11-C",
     },
     {
         "pattern": r"undefined reference",
         "risk": "Low",
-        "reason": "Linker errors typically do not introduce runtime vulnerabilities."
+        "reason": "Linker errors typically do not introduce runtime vulnerabilities.",
+        "cwe": None,
+        "cert": None,
     }
 ]
 

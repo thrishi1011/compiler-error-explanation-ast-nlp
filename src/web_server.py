@@ -829,9 +829,12 @@ int main() {
             html += `
               <div class="card ${fCardClass}">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                  <div style="display:flex; gap:6px; align-items:center;">
+                  <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                     <span class="badge ${f.tone === 'error' ? 'badge-error' : 'badge-warning'}">${escapeHtml(f.severity)}</span>
                     <span class="badge ${isBlocked ? 'badge-error' : 'badge-category'}">${escapeHtml(f.action_label)}</span>
+                    ${f.cwe_id ? `<a href="${escapeHtml(f.cwe_url || 'https://cwe.mitre.org')}" target="_blank" class="badge" style="background:#1e3a8a; color:#93c5fd; text-decoration:none;">${escapeHtml(f.cwe_id)}</a>` : ''}
+                    ${f.cert_rule ? `<a href="${escapeHtml(f.cert_url || 'https://wiki.sei.cmu.edu')}" target="_blank" class="badge" style="background:#064e3b; color:#6ee7b7; text-decoration:none;">CERT: ${escapeHtml(f.cert_rule)}</a>` : ''}
+                    ${f.capec_id ? `<a href="${escapeHtml(f.capec_url || 'https://capec.mitre.org')}" target="_blank" class="badge" style="background:#701a75; color:#f0abfc; text-decoration:none;">${escapeHtml(f.capec_id)}</a>` : ''}
                     <span style="font-size:11px; color:#94a3b8; font-weight:600;">${escapeHtml(f.detected_by)}</span>
                   </div>
                   <span style="font-size:12px; color:var(--text-muted); font-family:var(--code-font);">Line ${escapeHtml(f.line !== null && f.line !== undefined ? f.line : 'global')}</span>
@@ -850,7 +853,11 @@ int main() {
           html += `
             <div class="card ${isCrit ? 'error-card' : 'warning-card'}">
               <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span class="badge ${isCrit ? 'badge-error' : 'badge-warning'}">${escapeHtml(f.severity)}</span>
+                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                  <span class="badge ${isCrit ? 'badge-error' : 'badge-warning'}">${escapeHtml(f.severity)}</span>
+                  ${f.cwe_id ? `<a href="${escapeHtml(f.cwe_url || 'https://cwe.mitre.org')}" target="_blank" class="badge" style="background:#1e3a8a; color:#93c5fd; text-decoration:none;">${escapeHtml(f.cwe_id)}</a>` : ''}
+                  ${f.cert_rule ? `<a href="${escapeHtml(f.cert_url || 'https://wiki.sei.cmu.edu')}" target="_blank" class="badge" style="background:#064e3b; color:#6ee7b7; text-decoration:none;">CERT: ${escapeHtml(f.cert_rule)}</a>` : ''}
+                </div>
                 <span style="font-size:12px; color:var(--text-muted); font-family:var(--code-font);">Line ${escapeHtml(f.line || 'global')}</span>
               </div>
               <div class="card-title">${escapeHtml(f.vulnerability_type)}</div>

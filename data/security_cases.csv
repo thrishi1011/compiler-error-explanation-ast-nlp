@@ -1,128 +1,128 @@
 id,label,set,family,detected,agent_attributed,category_attributed,attributed,prevented,blocked,baseline_allowed,baseline_reason,agents_found,categories,risk,latency_ms
-exec_001,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,process_execution;unsafe_include,6,25.08
-exec_002,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,process_execution;unsafe_include,6,12.179
-exec_003,attack,standard,dangerous_execution,1,1,1,1,1,1,0,sanitizer:popen,ExecGuard,process_execution,5,8.291
-exec_004,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,process_execution,5,11.033
-exec_005,attack,standard,dangerous_execution,1,1,1,1,1,1,0,sanitizer:asm,ExecGuard,inline_assembly,5,8.58
-exec_006,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,dynamic_loading,5,9.846
-exec_007,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,process_execution,5,17.916
-exec_008,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,obfuscation;process_execution,10,11.308
-exec_009,attack,standard,dangerous_execution,1,1,1,1,0,0,1,no defence,ExecGuard,obfuscation,2,36.611
-exec_010,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,secret_env_access,5,9.086
-exec_011,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,sensitive_file_access,5,12.178
-exec_012,attack,standard,dangerous_execution,1,1,1,1,1,1,0,sanitizer:sys-include,ExecGuard;SecretsGuard,network_access;sensitive_include,10,11.827
-res_001,attack,standard,resource_exhaustion,1,1,1,1,1,1,1,no defence,ResourceGuard;SecretsGuard,sensitive_include;special_file_include,10,12.016
-res_002,attack,standard,resource_exhaustion,1,1,1,1,1,1,1,no defence,ResourceGuard;SecretsGuard,sensitive_include;special_file_include,10,14.645
-res_003,attack,standard,resource_exhaustion,1,1,1,1,1,1,1,no defence,ResourceGuard,special_file_include,5,9.332
-res_004,attack,standard,resource_exhaustion,1,1,1,1,1,1,1,no defence,ResourceGuard,macro_expansion_bomb,5,25.978
-res_005,attack,standard,resource_exhaustion,1,1,1,1,1,1,1,no defence,ResourceGuard,huge_allocation,5,13.601
-res_006,attack,standard,resource_exhaustion,1,1,1,1,1,1,1,no defence,ResourceGuard,huge_allocation,5,10.063
-res_007,attack,standard,resource_exhaustion,1,1,1,1,0,0,1,no defence,ResourceGuard,possible_infinite_loop,2,11.624
-sec_001,attack,standard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,sensitive_include,5,11.041
-sec_002,attack,standard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,sensitive_include,5,13.919
-sec_003,attack,standard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,sensitive_include,5,10.826
-sec_004,attack,standard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,sensitive_include,5,12.829
-sec_005,attack,standard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,personal_data_access;sensitive_include,7,12.56
-sec_006,attack,standard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,sensitive_include,5,12.877
-sec_007,attack,standard,sensitive_data_access,1,1,1,1,0,0,1,no defence,SecretsGuard,hardcoded_secret,5,10.851
-sec_008,attack,standard,sensitive_data_access,1,1,1,1,0,0,1,no defence,SecretsGuard,hardcoded_secret,5,8.521
-sec_009,attack,standard,sensitive_data_access,1,1,1,1,0,0,1,no defence,SecretsGuard,hardcoded_secret,5,11.521
-sec_010,attack,standard,sensitive_data_access,1,1,1,1,1,0,1,no defence,SecretsGuard,hardcoded_secret,5,1.483
-sec_011,attack,standard,sensitive_data_access,1,1,1,1,1,0,1,no defence,SecretsGuard,hardcoded_secret,5,0.902
-disp_001,attack,standard,display_injection,1,1,1,1,1,0,1,no defence,OutputGuard,display_injection;spoofed_status,4,2.781
-disp_002,attack,standard,display_injection,1,1,1,1,1,0,1,no defence,OutputGuard,display_injection,2,1.87
-disp_003,attack,standard,display_injection,1,1,1,1,1,0,1,no defence,OutputGuard,terminal_escape,2,2.151
-disp_004,attack,standard,display_injection,1,1,1,1,1,0,1,no defence,OutputGuard,hidden_unicode,2,10.413
-disp_005,attack,standard,display_injection,1,1,1,1,1,0,1,no defence,OutputGuard,spoofed_status,2,0.952
-disp_006,attack,standard,display_injection,1,1,1,1,1,0,1,no defence,OutputGuard,display_injection,5,1.782
-ep_001,attack,standard,endpoint_abuse,1,1,1,1,1,1,0,http:foreign-origin,EndpointGuard,bad_content_type;bad_origin;bad_token;missing_length,20,1.388
-ep_002,attack,standard,endpoint_abuse,1,1,1,1,1,1,0,http:content-type,EndpointGuard,bad_content_type;bad_origin;bad_token;missing_length,20,1.577
-ep_003,attack,standard,endpoint_abuse,1,1,1,1,1,1,0,http:foreign-host,EndpointGuard,bad_host,5,0.474
-ep_004,attack,standard,endpoint_abuse,1,1,1,1,1,1,0,http:content-type,EndpointGuard,bad_content_type;bad_token;cross_site_request;missing_length,20,1.705
-ep_005,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,cross_site_request,5,0.429
-ep_006,attack,standard,endpoint_abuse,1,1,1,1,1,1,0,http:content-type,EndpointGuard,bad_content_type;bad_token,10,1.245
-ep_007,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,bad_token;missing_length,10,1.164
-ep_008,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,bad_length;bad_token,10,0.818
-ep_009,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,bad_token;body_too_large,10,1.239
-ep_010,attack,standard,endpoint_abuse,1,1,1,1,1,1,0,http:content-type,EndpointGuard,bad_content_type;bad_token;missing_length;unsupported_encoding,20,2.139
-ep_011,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,bad_token,5,0.581
-ep_012,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,bad_token,5,0.485
-ep_013,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,bad_json,5,1.171
-ep_014,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,bad_body,5,1.111
-data_001,attack,standard,dataset_poisoning,1,1,1,1,1,1,1,no defence,IntegrityGuard,dataset_directive_message,5,5.717
-data_002,attack,standard,dataset_poisoning,1,1,1,1,1,1,1,no defence,IntegrityGuard,dataset_bad_category,5,3.105
-data_003,attack,standard,dataset_poisoning,1,1,1,1,1,1,1,no defence,IntegrityGuard,dataset_bad_message,5,2.995
-data_004,attack,standard,dataset_poisoning,1,1,1,1,1,1,1,no defence,IntegrityGuard;SecretsGuard,dataset_secret;hardcoded_secret,10,3.612
-data_005,attack,standard,dataset_poisoning,1,1,1,1,1,1,1,no defence,IntegrityGuard,dataset_rate_limit,5,2.136
-mod_001,attack,standard,model_tampering,1,1,1,1,1,1,1,no defence,IntegrityGuard,model_hash_mismatch,5,12.54
-mod_002,attack,standard,model_tampering,1,1,1,1,1,1,1,no defence,IntegrityGuard,model_manifest_missing,5,3.532
-mod_003,attack,standard,model_tampering,1,1,1,1,1,1,1,no defence,IntegrityGuard,model_outside_data_dir,5,2.623
-prompt_001,attack,standard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,policy_bypass_request;prompt_injection,10,3.49
-prompt_002,attack,standard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,prompt_injection,5,7.689
-prompt_003,attack,standard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,policy_bypass_request;prompt_injection,10,10.114
-prompt_004,attack,standard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,policy_bypass_request,5,8.328
-prompt_005,attack,standard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,policy_bypass_request;prompt_injection,10,2.422
-prompt_006,attack,standard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,policy_bypass_request;role_marker,20,6.131
-prompt_007,attack,standard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,hidden_prompt_unicode,5,4.219
-prompt_008,attack,standard,prompt_injection,1,1,1,1,0,0,1,no defence,PromptGuard,encoded_payload,2,8.909
-patch_001,attack,standard,malicious_patch,1,1,1,1,1,1,0,sanitizer:system,PatchGuard,patch_introduces_dangerous_code,5,7.181
-patch_002,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard,patch_new_include,5,5.267
-patch_003,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard,patch_introduces_dangerous_code,5,7.738
-patch_004,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard,patch_security_downgrade,5,3.838
-patch_005,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard,patch_security_downgrade,5,2.351
-patch_006,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard,patch_removes_guard,5,4.928
-patch_007,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard,patch_removes_guard,5,2.924
-patch_008,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard,patch_suppresses_diagnostics,5,4.02
-patch_009,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard,patch_introduces_dangerous_code;patch_new_include,10,9.438
-patch_010,attack,standard,malicious_patch,1,1,1,1,1,1,0,validate_ai_code:line-count,PatchGuard,patch_too_large,5,9.623
-patch_011,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard,patch_marker_leak,5,3.728
-hard_001,attack,hard,dangerous_execution,0,0,0,0,0,0,1,no defence,,,0,14.0
-hard_002,attack,hard,dangerous_execution,1,1,1,1,1,1,0,sanitizer:system,ExecGuard;VulnGuard,process_execution,5,17.777
-hard_003,attack,hard,dangerous_execution,0,0,0,0,0,0,1,no defence,,,0,16.005
-hard_004,attack,hard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,dynamic_loading,5,10.666
-hard_005,attack,hard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,sensitive_include,5,13.249
-hard_006,attack,hard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,sensitive_include,5,11.896
-hard_007,attack,hard,prompt_injection,0,0,0,0,0,0,1,no defence,,,0,0.745
-hard_008,attack,hard,prompt_injection,0,0,0,0,0,0,1,no defence,,,0,0.671
-hard_009,attack,hard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,policy_bypass_request,5,1.727
-hard_010,attack,hard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,policy_bypass_request,5,11.407
-hard_011,attack,hard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard,patch_removes_guard,5,6.014
-hard_012,attack,hard,dangerous_execution,0,0,0,0,0,0,1,no defence,,,0,10.745
-benign_exec_001,benign,standard,dangerous_execution,0,0,0,0,0,0,1,no defence,,,0,8.025
-benign_exec_002,benign,standard,dangerous_execution,0,0,0,0,0,0,1,no defence,,,0,10.339
-benign_exec_003,benign,standard,dangerous_execution,0,0,0,0,0,0,0,sanitizer:system,,,0,9.305
-benign_exec_004,benign,standard,dangerous_execution,0,0,0,0,0,0,1,no defence,,,0,9.887
-benign_res_001,benign,standard,resource_exhaustion,0,0,0,0,0,0,1,no defence,,,0,39.139
-benign_res_002,benign,standard,resource_exhaustion,0,0,0,0,0,0,1,no defence,,,0,7.881
-benign_res_003,benign,standard,resource_exhaustion,0,0,0,0,0,0,1,no defence,,,0,7.584
-benign_sec_001,benign,standard,sensitive_data_access,0,0,0,0,0,0,1,no defence,,,0,15.264
-benign_sec_002,benign,standard,sensitive_data_access,0,0,0,0,0,0,1,no defence,,,0,8.301
-benign_sec_003,benign,standard,sensitive_data_access,0,0,0,0,0,0,1,no defence,,,0,19.704
-benign_disp_001,benign,standard,display_injection,0,0,0,0,0,0,1,no defence,,,0,0.536
-benign_disp_002,benign,standard,display_injection,0,0,0,0,0,0,1,no defence,,,0,1.044
-benign_disp_003,benign,standard,display_injection,0,0,0,0,0,0,1,no defence,,,0,10.902
-benign_ep_001,benign,standard,endpoint_abuse,0,0,0,0,0,0,1,no defence,,,0,0.101
-benign_ep_002,benign,standard,endpoint_abuse,0,0,0,0,0,0,1,no defence,,,0,0.114
-benign_ep_003,benign,standard,endpoint_abuse,0,0,0,0,0,0,1,no defence,,,0,0.245
-benign_data_001,benign,standard,dataset_poisoning,0,0,0,0,0,0,1,no defence,,,0,3.838
-benign_data_002,benign,standard,dataset_poisoning,0,0,0,0,0,0,1,no defence,,,0,2.073
-benign_mod_001,benign,standard,model_tampering,0,0,0,0,0,0,1,no defence,,,0,9.991
-benign_mod_002,benign,standard,model_tampering,0,0,0,0,0,0,1,no defence,,,0,7.209
-benign_prompt_001,benign,standard,prompt_injection,0,0,0,0,0,0,1,no defence,,,0,0.502
-benign_prompt_002,benign,standard,prompt_injection,0,0,0,0,0,0,1,no defence,,,0,0.565
-benign_prompt_003,benign,standard,prompt_injection,0,0,0,0,0,0,1,no defence,,,0,9.33
-benign_prompt_004,benign,standard,prompt_injection,0,0,0,0,0,0,1,no defence,,,0,10.249
-benign_prompt_005,benign,standard,prompt_injection,0,0,0,0,0,0,1,no defence,,,0,12.108
-benign_patch_001,benign,standard,malicious_patch,0,0,0,0,0,0,1,no defence,,,0,3.579
-benign_patch_002,benign,standard,malicious_patch,0,0,0,0,0,0,1,no defence,,,0,2.827
-benign_patch_003,benign,standard,malicious_patch,0,0,0,0,0,0,1,no defence,,,0,5.33
-benign_patch_004,benign,standard,malicious_patch,0,0,0,0,0,0,1,no defence,,,0,5.606
-benign_patch_005,benign,standard,malicious_patch,0,0,0,0,0,0,1,no defence,,,0,3.908
-benign_patch_006,benign,standard,malicious_patch,0,0,0,0,0,0,1,no defence,,,0,10.92
-scan_001,attack,hard,scanner_evasion,0,0,0,0,0,0,1,no defence,,,0,23.272
-scan_002,attack,hard,scanner_evasion,0,0,0,0,0,0,1,no defence,,,0,26.288
-scan_003,attack,hard,scanner_evasion,0,0,0,0,0,0,1,no defence,,,0,18.294
-scan_004,attack,hard,scanner_evasion,0,0,0,0,0,0,1,no defence,,,0,17.749
-scan_005,attack,hard,scanner_evasion,0,0,0,0,0,0,1,no defence,,,0,16.521
-benign_scan_001,benign,standard,scanner_evasion,0,0,0,0,0,0,1,no defence,,,0,17.542
-benign_scan_002,benign,standard,scanner_evasion,0,0,0,0,0,0,1,no defence,,,0,18.617
+exec_001,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,process_execution;unsafe_include,6,42.774
+exec_002,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,process_execution;unsafe_include,6,15.434
+exec_003,attack,standard,dangerous_execution,1,1,1,1,1,1,0,sanitizer:popen,ExecGuard,process_execution,5,25.309
+exec_004,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,process_execution,5,27.984
+exec_005,attack,standard,dangerous_execution,1,1,1,1,1,1,0,sanitizer:asm,ExecGuard,inline_assembly,5,17.957
+exec_006,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,dynamic_loading,5,18.267
+exec_007,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,process_execution,5,34.705
+exec_008,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,obfuscation;process_execution,10,23.225
+exec_009,attack,standard,dangerous_execution,1,1,1,1,0,0,1,no defence,ExecGuard,obfuscation,2,18.966
+exec_010,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,secret_env_access,5,14.692
+exec_011,attack,standard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,sensitive_file_access,5,13.304
+exec_012,attack,standard,dangerous_execution,1,1,1,1,1,1,0,sanitizer:sys-include,ExecGuard;SecretsGuard,network_access;sensitive_include,10,14.639
+res_001,attack,standard,resource_exhaustion,1,1,1,1,1,1,1,no defence,ResourceGuard;SecretsGuard,sensitive_include;special_file_include,10,16.972
+res_002,attack,standard,resource_exhaustion,1,1,1,1,1,1,1,no defence,ResourceGuard;SecretsGuard,sensitive_include;special_file_include,10,16.358
+res_003,attack,standard,resource_exhaustion,1,1,1,1,1,1,1,no defence,ResourceGuard,special_file_include,5,15.944
+res_004,attack,standard,resource_exhaustion,1,1,1,1,1,1,1,no defence,ResourceGuard,macro_expansion_bomb,5,26.845
+res_005,attack,standard,resource_exhaustion,1,1,1,1,1,1,1,no defence,ResourceGuard,huge_allocation,5,31.137
+res_006,attack,standard,resource_exhaustion,1,1,1,1,1,1,1,no defence,ResourceGuard,huge_allocation,5,18.328
+res_007,attack,standard,resource_exhaustion,1,1,1,1,0,0,1,no defence,ResourceGuard,possible_infinite_loop,2,16.739
+sec_001,attack,standard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,sensitive_include,5,15.622
+sec_002,attack,standard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,sensitive_include,5,15.456
+sec_003,attack,standard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,sensitive_include,5,21.049
+sec_004,attack,standard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,sensitive_include,5,11.667
+sec_005,attack,standard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,personal_data_access;sensitive_include,7,19.076
+sec_006,attack,standard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,sensitive_include,5,18.354
+sec_007,attack,standard,sensitive_data_access,1,1,1,1,0,0,1,no defence,SecretsGuard,hardcoded_secret,5,13.168
+sec_008,attack,standard,sensitive_data_access,1,1,1,1,0,0,1,no defence,SecretsGuard,hardcoded_secret,5,26.621
+sec_009,attack,standard,sensitive_data_access,1,1,1,1,0,0,1,no defence,SecretsGuard,hardcoded_secret,5,14.655
+sec_010,attack,standard,sensitive_data_access,1,1,1,1,1,0,1,no defence,SecretsGuard,hardcoded_secret,5,0.748
+sec_011,attack,standard,sensitive_data_access,1,1,1,1,1,0,1,no defence,SecretsGuard,hardcoded_secret,5,0.65
+disp_001,attack,standard,display_injection,1,1,1,1,1,0,1,no defence,OutputGuard,display_injection;spoofed_status,4,8.044
+disp_002,attack,standard,display_injection,1,1,1,1,1,0,1,no defence,OutputGuard,display_injection,2,1.224
+disp_003,attack,standard,display_injection,1,1,1,1,1,0,1,no defence,OutputGuard,terminal_escape,2,0.76
+disp_004,attack,standard,display_injection,1,1,1,1,1,0,1,no defence,OutputGuard,hidden_unicode,2,20.328
+disp_005,attack,standard,display_injection,1,1,1,1,1,0,1,no defence,OutputGuard,spoofed_status,2,0.856
+disp_006,attack,standard,display_injection,1,1,1,1,1,0,1,no defence,OutputGuard,display_injection,5,1.629
+ep_001,attack,standard,endpoint_abuse,1,1,1,1,1,1,0,http:foreign-origin,EndpointGuard,bad_content_type;bad_origin;bad_token;missing_length,20,1.35
+ep_002,attack,standard,endpoint_abuse,1,1,1,1,1,1,0,http:content-type,EndpointGuard,bad_content_type;bad_origin;bad_token;missing_length,20,1.172
+ep_003,attack,standard,endpoint_abuse,1,1,1,1,1,1,0,http:foreign-host,EndpointGuard,bad_host,5,0.453
+ep_004,attack,standard,endpoint_abuse,1,1,1,1,1,1,0,http:content-type,EndpointGuard,bad_content_type;bad_token;cross_site_request;missing_length,20,1.072
+ep_005,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,cross_site_request,5,0.442
+ep_006,attack,standard,endpoint_abuse,1,1,1,1,1,1,0,http:content-type,EndpointGuard,bad_content_type;bad_token,10,0.585
+ep_007,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,bad_token;missing_length,10,2.85
+ep_008,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,bad_length;bad_token,10,0.621
+ep_009,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,bad_token;body_too_large,10,0.714
+ep_010,attack,standard,endpoint_abuse,1,1,1,1,1,1,0,http:content-type,EndpointGuard,bad_content_type;bad_token;missing_length;unsupported_encoding,20,1.296
+ep_011,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,bad_token,5,0.397
+ep_012,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,bad_token,5,0.39
+ep_013,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,bad_json,5,0.611
+ep_014,attack,standard,endpoint_abuse,1,1,1,1,1,1,1,no defence,EndpointGuard,bad_body,5,0.569
+data_001,attack,standard,dataset_poisoning,1,1,1,1,1,1,1,no defence,IntegrityGuard,dataset_directive_message,5,3.417
+data_002,attack,standard,dataset_poisoning,1,1,1,1,1,1,1,no defence,IntegrityGuard,dataset_bad_category,5,2.348
+data_003,attack,standard,dataset_poisoning,1,1,1,1,1,1,1,no defence,IntegrityGuard,dataset_bad_message,5,2.234
+data_004,attack,standard,dataset_poisoning,1,1,1,1,1,1,1,no defence,IntegrityGuard;SecretsGuard,dataset_secret;hardcoded_secret,10,2.307
+data_005,attack,standard,dataset_poisoning,1,1,1,1,1,1,1,no defence,IntegrityGuard,dataset_rate_limit,5,1.986
+mod_001,attack,standard,model_tampering,1,1,1,1,1,1,1,no defence,IntegrityGuard,model_hash_mismatch,5,23.721
+mod_002,attack,standard,model_tampering,1,1,1,1,1,1,1,no defence,IntegrityGuard,model_manifest_missing,5,3.095
+mod_003,attack,standard,model_tampering,1,1,1,1,1,1,1,no defence,IntegrityGuard,model_outside_data_dir,5,4.542
+prompt_001,attack,standard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,policy_bypass_request;prompt_injection,10,2.842
+prompt_002,attack,standard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,prompt_injection,5,17.567
+prompt_003,attack,standard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,policy_bypass_request;prompt_injection,10,15.222
+prompt_004,attack,standard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,policy_bypass_request,5,13.263
+prompt_005,attack,standard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,policy_bypass_request;prompt_injection,10,2.673
+prompt_006,attack,standard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,policy_bypass_request;role_marker,20,2.838
+prompt_007,attack,standard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,hidden_prompt_unicode,5,2.847
+prompt_008,attack,standard,prompt_injection,1,1,1,1,0,0,1,no defence,PromptGuard,encoded_payload,2,20.224
+patch_001,attack,standard,malicious_patch,1,1,1,1,1,1,0,sanitizer:system,PatchGuard;RedTeamAuditor,command_injection;patch_introduces_dangerous_code;process_execution,20,21.643
+patch_002,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard,patch_new_include,5,16.601
+patch_003,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard;RedTeamAuditor,patch_introduces_dangerous_code;process_execution,15,21.521
+patch_004,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard;RedTeamAuditor,patch_security_downgrade;unsafe_string_function,10,24.501
+patch_005,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard;RedTeamAuditor,buffer_overflow;patch_security_downgrade,15,16.665
+patch_006,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard;RedTeamAuditor,guard_removal;patch_removes_guard,10,14.543
+patch_007,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard;RedTeamAuditor,guard_removal;patch_removes_guard,10,18.695
+patch_008,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard;RedTeamAuditor,patch_suppresses_diagnostics,10,23.564
+patch_009,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard,patch_introduces_dangerous_code;patch_new_include,10,20.441
+patch_010,attack,standard,malicious_patch,1,1,1,1,1,1,0,validate_ai_code:line-count,PatchGuard,patch_too_large,5,43.167
+patch_011,attack,standard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard;RedTeamAuditor,patch_marker_leak,15,14.265
+hard_001,attack,hard,dangerous_execution,0,0,0,0,0,0,1,no defence,,,0,11.516
+hard_002,attack,hard,dangerous_execution,1,1,1,1,1,1,0,sanitizer:system,ExecGuard;VulnGuard,process_execution,5,17.032
+hard_003,attack,hard,dangerous_execution,0,0,0,0,0,0,1,no defence,,,0,12.452
+hard_004,attack,hard,dangerous_execution,1,1,1,1,1,1,1,no defence,ExecGuard,dynamic_loading,5,16.043
+hard_005,attack,hard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,sensitive_include,5,20.28
+hard_006,attack,hard,sensitive_data_access,1,1,1,1,1,1,1,no defence,SecretsGuard,sensitive_include,5,10.203
+hard_007,attack,hard,prompt_injection,0,0,0,0,0,0,1,no defence,,,0,0.335
+hard_008,attack,hard,prompt_injection,0,0,0,0,0,0,1,no defence,,,0,0.408
+hard_009,attack,hard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,policy_bypass_request,5,1.011
+hard_010,attack,hard,prompt_injection,1,1,1,1,1,1,1,no defence,PromptGuard,policy_bypass_request,5,20.989
+hard_011,attack,hard,malicious_patch,1,1,1,1,1,1,1,no defence,PatchGuard,patch_removes_guard,5,18.864
+hard_012,attack,hard,dangerous_execution,0,0,0,0,0,0,1,no defence,,,0,13.314
+benign_exec_001,benign,standard,dangerous_execution,0,0,0,0,0,0,1,no defence,,,0,13.088
+benign_exec_002,benign,standard,dangerous_execution,0,0,0,0,0,0,1,no defence,,,0,17.624
+benign_exec_003,benign,standard,dangerous_execution,0,0,0,0,0,0,0,sanitizer:system,,,0,9.46
+benign_exec_004,benign,standard,dangerous_execution,0,0,0,0,0,0,1,no defence,,,0,15.3
+benign_res_001,benign,standard,resource_exhaustion,0,0,0,0,0,0,1,no defence,,,0,14.49
+benign_res_002,benign,standard,resource_exhaustion,0,0,0,0,0,0,1,no defence,,,0,24.512
+benign_res_003,benign,standard,resource_exhaustion,0,0,0,0,0,0,1,no defence,,,0,14.746
+benign_sec_001,benign,standard,sensitive_data_access,0,0,0,0,0,0,1,no defence,,,0,12.24
+benign_sec_002,benign,standard,sensitive_data_access,0,0,0,0,0,0,1,no defence,,,0,17.114
+benign_sec_003,benign,standard,sensitive_data_access,0,0,0,0,0,0,1,no defence,,,0,28.934
+benign_disp_001,benign,standard,display_injection,0,0,0,0,0,0,1,no defence,,,0,0.299
+benign_disp_002,benign,standard,display_injection,0,0,0,0,0,0,1,no defence,,,0,0.276
+benign_disp_003,benign,standard,display_injection,0,0,0,0,0,0,1,no defence,,,0,7.476
+benign_ep_001,benign,standard,endpoint_abuse,0,0,0,0,0,0,1,no defence,,,0,0.054
+benign_ep_002,benign,standard,endpoint_abuse,0,0,0,0,0,0,1,no defence,,,0,0.077
+benign_ep_003,benign,standard,endpoint_abuse,0,0,0,0,0,0,1,no defence,,,0,0.127
+benign_data_001,benign,standard,dataset_poisoning,0,0,0,0,0,0,1,no defence,,,0,1.794
+benign_data_002,benign,standard,dataset_poisoning,0,0,0,0,0,0,1,no defence,,,0,1.578
+benign_mod_001,benign,standard,model_tampering,0,0,0,0,0,0,1,no defence,,,0,10.298
+benign_mod_002,benign,standard,model_tampering,0,0,0,0,0,0,1,no defence,,,0,10.46
+benign_prompt_001,benign,standard,prompt_injection,0,0,0,0,0,0,1,no defence,,,0,0.334
+benign_prompt_002,benign,standard,prompt_injection,0,0,0,0,0,0,1,no defence,,,0,1.273
+benign_prompt_003,benign,standard,prompt_injection,0,0,0,0,0,0,1,no defence,,,0,14.848
+benign_prompt_004,benign,standard,prompt_injection,0,0,0,0,0,0,1,no defence,,,0,9.704
+benign_prompt_005,benign,standard,prompt_injection,0,0,0,0,0,0,1,no defence,,,0,11.702
+benign_patch_001,benign,standard,malicious_patch,0,0,0,0,0,0,1,no defence,,,0,11.365
+benign_patch_002,benign,standard,malicious_patch,0,0,0,0,0,0,1,no defence,,,0,12.558
+benign_patch_003,benign,standard,malicious_patch,0,0,0,0,0,0,1,no defence,,,0,11.33
+benign_patch_004,benign,standard,malicious_patch,0,0,0,0,0,0,1,no defence,,,0,17.711
+benign_patch_005,benign,standard,malicious_patch,0,0,0,0,0,0,1,no defence,,,0,22.74
+benign_patch_006,benign,standard,malicious_patch,0,0,0,0,0,0,1,no defence,,,0,23.628
+scan_001,attack,hard,scanner_evasion,0,0,0,0,0,0,1,no defence,,,0,10.846
+scan_002,attack,hard,scanner_evasion,0,0,0,0,0,0,1,no defence,,,0,13.531
+scan_003,attack,hard,scanner_evasion,0,0,0,0,0,0,1,no defence,,,0,24.749
+scan_004,attack,hard,scanner_evasion,0,0,0,0,0,0,1,no defence,,,0,13.265
+scan_005,attack,hard,scanner_evasion,0,0,0,0,0,0,1,no defence,,,0,14.034
+benign_scan_001,benign,standard,scanner_evasion,0,0,0,0,0,0,1,no defence,,,0,15.65
+benign_scan_002,benign,standard,scanner_evasion,0,0,0,0,0,0,1,no defence,,,0,8.945

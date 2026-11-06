@@ -14,6 +14,14 @@ from .integrity_guard import IntegrityGuard
 from .integrity import model_status
 from .prompt_guard import PromptGuard
 from .patch_guard import PatchGuard
+from .adversarial_agent import RedTeamAuditor, AttackVector, AdversaryReport, audit_patch_adversarially
+from .verification_loop import (
+    VerificationRound,
+    AdversarialVerificationResult,
+    verify_patch_adversarially,
+    run_adversarial_verification_loop,
+    simulate_adversarial_attack,
+)
 from .promptsafe import DATA_NOTICE, InjectionHit, has_boundary_leak, scan_injection, wrap_untrusted
 from .gates import AiSendResult, check_ai_send, check_compile, check_patch
 from .ai_budget import AiBudget, get_ai_budget
@@ -21,7 +29,6 @@ from .benchmark import baseline_allows, compute_metrics, run_benchmark
 
 __all__ = [
     "compute_metrics",
-
     "get_supervisor",
     "Supervisor",
     "review",
@@ -48,6 +55,15 @@ __all__ = [
     "IntegrityGuard",
     "PromptGuard",
     "PatchGuard",
+    "RedTeamAuditor",
+    "AttackVector",
+    "AdversaryReport",
+    "audit_patch_adversarially",
+    "VerificationRound",
+    "AdversarialVerificationResult",
+    "verify_patch_adversarially",
+    "run_adversarial_verification_loop",
+    "simulate_adversarial_attack",
     "AiBudget",
     "get_ai_budget",
     "scan_injection",
@@ -59,8 +75,4 @@ __all__ = [
     "mask_secrets",
     "is_sensitive_name",
     "env_secret_values",
-    "model_status",
-    "baseline_allows",
-    "run_benchmark",
 ]
-

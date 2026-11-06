@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -205,14 +206,15 @@ def extract_ast(file_path, code=None):
                 source_to_check,
                 source_dir=os.path.dirname(file_path) if file_path else None,
                 file_name=os.path.basename(file_path) if file_path else None,
+                fast=True,
             )
             if verdict.blocked:
                 return None
-        except ImportError:
+        except (ImportError, Exception):
             pass
 
     filtered = []
-    if file_path:
+    if file_path and shutil.which("clang++"):
         cmd = [
             "clang++",
             "-Xclang",

@@ -89,6 +89,16 @@ class VulnGuard(GuardAgent):
                         evidence=redact(raw_ev),
                         action=act,
                         confidence=1.0,
+                        cwe_id=getattr(sf, "cwe_id", None),
+                        cert_rule=getattr(sf, "cert_rule", None),
+                        details={
+                            "cwe_id": getattr(sf, "cwe_id", None),
+                            "cwe_name": getattr(sf, "cwe_name", None),
+                            "cwe_url": getattr(sf, "cwe_url", None),
+                            "cert_rule": getattr(sf, "cert_rule", None),
+                            "cert_url": getattr(sf, "cert_url", None),
+                            "source": getattr(sf, "source", "static_scan"),
+                        },
                     )
                 )
         finally:

@@ -25,6 +25,49 @@ from .secrets_guard import SecretsGuard
 from .integrity_guard import IntegrityGuard
 from .prompt_guard import PromptGuard
 from .patch_guard import PatchGuard
+from .adversarial_agent import RedTeamAuditor
+
+
+CAPEC_MAP: dict[str, dict[str, str]] = {
+    "process_execution": {"id": "CAPEC-88", "name": "OS Command Injection"},
+    "command_injection": {"id": "CAPEC-88", "name": "OS Command Injection"},
+    "destructive_file_op": {"id": "CAPEC-165", "name": "File Manipulation"},
+    "sensitive_file_access": {"id": "CAPEC-126", "name": "Path Traversal"},
+    "network_access": {"id": "CAPEC-594", "name": "Traffic Injection"},
+    "inline_assembly": {"id": "CAPEC-242", "name": "Code Injection"},
+    "dynamic_loading": {"id": "CAPEC-641", "name": "DLL Side-Loading"},
+    "obfuscation": {"id": "CAPEC-24", "name": "Filter Failure via Alternate Encoding"},
+    "startup_code": {"id": "CAPEC-550", "name": "Install Rootkit or Hooking Code"},
+    "unsafe_include": {"id": "CAPEC-253", "name": "Remote Code Execution via Include"},
+    "prompt_injection": {"id": "CAPEC-690", "name": "Prompt Injection"},
+    "encoded_payload": {"id": "CAPEC-267", "name": "Leverage Alternate Encodings"},
+    "role_marker": {"id": "CAPEC-690", "name": "Prompt Injection / Role Impersonation"},
+    "hidden_prompt_unicode": {"id": "CAPEC-71", "name": "Embedding Visual Code Tricks (Bidi)"},
+    "secret_exfiltration_request": {"id": "CAPEC-118", "name": "Data Exfiltration"},
+    "policy_bypass_request": {"id": "CAPEC-690", "name": "LLM Jailbreak"},
+    "macro_expansion_bomb": {"id": "CAPEC-197", "name": "XML Entity Expansion / Macro Bomb"},
+    "huge_allocation": {"id": "CAPEC-130", "name": "Excessive Allocation"},
+    "possible_infinite_loop": {"id": "CAPEC-130", "name": "Resource Exhaustion via Infinite Loop"},
+    "oversized_input": {"id": "CAPEC-130", "name": "Excessive Allocation via Input Size"},
+    "special_file_include": {"id": "CAPEC-130", "name": "Resource Consumption via Device Files"},
+    "cross_site_request": {"id": "CAPEC-62", "name": "Cross-Site Request Forgery"},
+    "bad_host": {"id": "CAPEC-137", "name": "Parameter Tampering (Host Header)"},
+    "bad_token": {"id": "CAPEC-115", "name": "Authentication Bypass"},
+    "bad_origin": {"id": "CAPEC-62", "name": "Cross-Site Request Forgery"},
+    "body_too_large": {"id": "CAPEC-130", "name": "Resource Exhaustion"},
+    "display_injection": {"id": "CAPEC-242", "name": "Script / HTML Injection in Output"},
+    "terminal_escape": {"id": "CAPEC-268", "name": "Audit Log Manipulation via Escape Sequences"},
+    "hidden_unicode": {"id": "CAPEC-71", "name": "Trojan Source / Unicode Steganography"},
+    "spoofed_status": {"id": "CAPEC-148", "name": "Content Spoofing"},
+    "hardcoded_secret": {"id": "CAPEC-37", "name": "Retrieve Embedded Sensitive Data"},
+    "tool_secret_value": {"id": "CAPEC-118", "name": "Exfiltrate Internal Secrets"},
+    "secret_env_access": {"id": "CAPEC-126", "name": "Environment Traversal for Credentials"},
+    "patch_removes_guard": {"id": "CAPEC-552", "name": "Adversarial Code Modification"},
+    "patch_security_downgrade": {"id": "CAPEC-552", "name": "Security Downgrade"},
+    "patch_injection_text": {"id": "CAPEC-690", "name": "Adversarial Instruction in Patch"},
+    "model_hash_mismatch": {"id": "CAPEC-184", "name": "Software Integrity Attack"},
+    "model_manifest_missing": {"id": "CAPEC-184", "name": "Tampered Artifact"},
+}
 
 
 class Supervisor:
@@ -324,6 +367,13 @@ class Supervisor:
             )
             merged.append(merged_f)
 
+        for f in merged:
+            if not f.capec_id and f.category in CAPEC_MAP:
+                f.capec_id = CAPEC_MAP[f.category]["id"]
+                if "capec_name" not in f.details:
+                    f.details["capec_id"] = f.capec_id
+                    f.details["capec_name"] = CAPEC_MAP[f.category]["name"]
+
         return merged
 
 
@@ -344,6 +394,7 @@ def get_supervisor() -> Supervisor:
         sup.register(IntegrityGuard())
         sup.register(PromptGuard())
         sup.register(PatchGuard())
+        sup.register(RedTeamAuditor())
         _SUPERVISOR_SINGLETON = sup
     return _SUPERVISOR_SINGLETON
 
