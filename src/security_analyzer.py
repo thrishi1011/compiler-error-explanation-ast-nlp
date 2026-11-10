@@ -730,6 +730,8 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
     signed_vars: set[str] = set()
     unsigned_vars: set[str] = set()
     current_fn: str | None = None
+    fn_param_count: int = 0
+    fn_brace_depth: int = 0
     fn_has_base_case = False
     fn_recursive_lines: list[int] = []
     local_vars: set[str] = set()
@@ -750,19 +752,51 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
             signed_vars.add(m_s.group(1))
 
         # ── 1. Infinite Recursion ─────────────────────────────────────────────
-        fn_start = re.search(r"^\s*(?:int|void|bool|double|float|long|auto|char|[A-Za-z_]\w*)\s*(?:\*+|\s+)\s*([A-Za-z_]\w*)\s*\([^)]*\)\s*\{", code_line)
+        fn_start = re.search(
+            r"^\s*(?:(?:const|static|inline|virtual|explicit)\s+)*(?:(?:unsigned|signed)\s+)?(?:long\s+long|int|void|bool|double|float|long|auto|char|[A-Za-z_]\w*)\s*(?:\*+|&+|\s+)\s*([A-Za-z_]\w*)\s*\(([^)]*)\)\s*(?:const)?\s*(?:override)?\s*\{",
+            code_line,
+        )
+        body_part = ""
         if fn_start:
             current_fn = fn_start.group(1)
+            raw_params = fn_start.group(2).strip()
+            fn_param_count = len(_split_args(raw_params)) if (raw_params and raw_params != "void") else 0
             fn_has_base_case = False
             fn_recursive_lines = []
+            fn_brace_depth = code_line.count("{") - code_line.count("}")
             freed_vars.clear()
             local_vars.clear()
+            signed_vars.clear()
+            unsigned_vars.clear()
+            body_part = code_line[fn_start.end() :]
+            if body_part:
+                call_re = r"(?<![A-Za-z0-9_:.->])\b" + re.escape(current_fn) + r"\s*\(([^;{}]*)\)"
+                for call_match in re.finditer(call_re, body_part):
+                    call_args_str = call_match.group(1).strip()
+                    call_arg_count = len(_split_args(call_args_str)) if call_args_str else 0
+                    if call_arg_count == fn_param_count:
+                        fn_recursive_lines.append(line_no)
+        elif current_fn:
+            fn_brace_depth += code_line.count("{") - code_line.count("}")
 
         if current_fn:
-            if re.search(r"\bif\s*\(", code_line) or (re.search(r"\breturn\b", code_line) and not re.search(rf"\b{re.escape(current_fn)}\s*\(", code_line)):
+            ret_not_rec = rf"(?<![A-Za-z0-9_:.->])\b{re.escape(current_fn)}\s*\("
+            if (
+                re.search(r"\bif\s*\(", code_line)
+                or re.search(r"\bswitch\s*\(", code_line)
+                or re.search(r"\bwhile\s*\(", code_line)
+                or re.search(r"\?", code_line)
+                or (re.search(r"\breturn\b", code_line) and not re.search(ret_not_rec, code_line))
+            ):
                 fn_has_base_case = True
-            if re.search(rf"\b{re.escape(current_fn)}\s*\(", code_line) and not fn_start:
-                fn_recursive_lines.append(line_no)
+
+            if not fn_start:
+                call_re = r"(?<![A-Za-z0-9_:.->])\b" + re.escape(current_fn) + r"\s*\(([^;{}]*)\)"
+                for call_match in re.finditer(call_re, code_line):
+                    call_args_str = call_match.group(1).strip()
+                    call_arg_count = len(_split_args(call_args_str)) if call_args_str else 0
+                    if call_arg_count == fn_param_count:
+                        fn_recursive_lines.append(line_no)
 
             if not re.search(r"\bstatic\b", code_line):
                 decl_m = re.search(r"^\s*(?:const\s+)?(?:int|char|float|double|long|short|bool|auto|[A-Za-z_]\w*)\s+(?:\*|\&)?\s*([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*(?:=|[;{])", code_line)
@@ -783,7 +817,7 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                         "Allocate memory on the heap (e.g. std::make_unique), return by value, or pass an output buffer parameter.",
                     )
 
-        if code_line == "}" and current_fn:
+        if current_fn and fn_brace_depth <= 0 and (not fn_start or body_part):
             if fn_recursive_lines and not fn_has_base_case:
                 for r_line in fn_recursive_lines:
                     emit(
@@ -794,6 +828,8 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                         f"Add a base case check (e.g. 'if (n <= 1) return 1;') before the recursive call.",
                     )
             current_fn = None
+            fn_param_count = 0
+            fn_brace_depth = 0
             fn_has_base_case = False
             fn_recursive_lines = []
             freed_vars.clear()
@@ -866,25 +902,37 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                 uninit_vars[u_name] = line_no
 
         for uv, u_decl in list(uninit_vars.items()):
-            if line_no > u_decl and re.search(rf"\b{re.escape(uv)}\b", code_line):
-                assign_m = re.search(rf"^\s*{re.escape(uv)}\s*=\s*(.+);", code_line)
-                if assign_m and not re.search(rf"\b{re.escape(uv)}\b", assign_m.group(1)):
+            if line_no > u_decl:
+                # Constructor member initializer list initializes uv: e.g. : val(v) or , capacity(cap)
+                if re.search(rf"(?::|,)\s*{re.escape(uv)}\s*\(", code_line):
                     del uninit_vars[uv]
-                elif (
-                    re.search(rf"cin\s*>>.*?\b{re.escape(uv)}\b", code_line)
-                    or re.search(rf"scanf\s*\(.*&{re.escape(uv)}\b", code_line)
-                    or re.search(rf"getline\s*\([^,]+,\s*{re.escape(uv)}\b", code_line)
-                ):
+                    continue
+
+                # Re-declaration with initialization: e.g. int weight = edge.weight;
+                if re.search(rf"^\s*(?:int|float|double|char|long|unsigned|short|size_t|auto)\s+{re.escape(uv)}\s*=", code_line):
                     del uninit_vars[uv]
-                else:
-                    emit(
-                        line_no,
-                        "Uninitialized Variable",
-                        "High",
-                        f"Variable '{uv}' declared at line {u_decl} is used before initialization.",
-                        f"Initialize '{uv} = 0;' at declaration.",
-                    )
-                    del uninit_vars[uv]
+                    continue
+
+                # Only match bare variable usage, not member access like edge.to or ptr->val
+                if re.search(rf"(?<![.\->:])\b{re.escape(uv)}\b", code_line):
+                    assign_m = re.search(rf"^\s*{re.escape(uv)}\s*=\s*(.+);", code_line)
+                    if assign_m and not re.search(rf"(?<![.\->:])\b{re.escape(uv)}\b", assign_m.group(1)):
+                        del uninit_vars[uv]
+                    elif (
+                        re.search(rf"cin\s*>>.*?\b{re.escape(uv)}\b", code_line)
+                        or re.search(rf"scanf\s*\(.*&{re.escape(uv)}\b", code_line)
+                        or re.search(rf"getline\s*\([^,]+,\s*{re.escape(uv)}\b", code_line)
+                    ):
+                        del uninit_vars[uv]
+                    else:
+                        emit(
+                            line_no,
+                            "Uninitialized Variable",
+                            "High",
+                            f"Variable '{uv}' declared at line {u_decl} is used before initialization.",
+                            f"Initialize '{uv} = 0;' at declaration.",
+                        )
+                        del uninit_vars[uv]
 
         # ── 5. Null Pointer Dereference ───────────────────────────────────────
         null_match = re.search(r"\b(?:int|char|void|double|float)\s*\*\s*([A-Za-z_]\w*)\s*=\s*(?:nullptr|NULL|0)\s*;", code_line)
@@ -1058,7 +1106,7 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                 "Resolve the security follow-up before shipping the code path.",
             )
 
-        if re.search(r"\*\s*\(\s*[A-Za-z_]\w*\s*\+\s*[^)]+\)", code_line) or re.search(r"\b(?:[A-Za-z_]\w*(?:ptr|buf|data|cursor|p))\s*\+\+", code_line):
+        if re.search(r"\*\s*\(\s*[A-Za-z_]\w*\s*\+\s*[^)]+\)", code_line) or re.search(r"\b(?:[A-Za-z_]\w*ptr|[A-Za-z_]\w*cursor|\*p)\s*\+\+", code_line):
             emit(
                 line_no,
                 "Unsafe Pointer Arithmetic",
@@ -1067,12 +1115,12 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                 "Prefer indexing with explicit bounds checks or use standard container iterators.",
             )
 
-        is_pointer_decl = bool(re.search(r"\b(?:void|int|char|float|double|bool|short|long|unsigned|auto|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t)\s*\*", code_line))
-        is_func_header = bool(re.search(r"^\s*(?:[A-Za-z_]\w*[\s*&]+)+[A-Za-z_]\w*\s*\([^)]*\)\s*\{?", code_line))
+        is_ctor_header = bool(re.search(r"^\s*(?:explicit\s+)?[A-Za-z_]\w*\s*\([^)]*\)\s*:\s*", code_line))
+        is_loop = bool(re.search(r"^\s*(?:for|while)\s*\(", code_line))
 
-        if not is_pointer_decl and not is_func_header and re.search(r"\b(?:[A-Za-z_]\w*\s*[\+\-\*/]\s*[A-Za-z_0-9()]+)\b", code_line) and (
-            "INT_MAX" in code_line or "SIZE_MAX" in code_line or "sizeof" in code_line or re.search(r"\b(?:alloc|size|len|count|capacity)\b", code_line)
-        ) and not (re.search(r">\s*0\b", code_line) or re.search(r"!=\s*0\b", code_line) or "sizeof" in code_line or "static_cast" in code_line):
+        if not is_ctor_header and not is_loop and re.search(r"\b(?:[A-Za-z_]\w*\s*[\+\-\*/]\s*[A-Za-z_0-9()]+)\b", code_line) and (
+            "INT_MAX" in code_line or "SIZE_MAX" in code_line or re.search(r"\b(?:malloc|realloc|calloc)\s*\([^)]*[\*+]", code_line)
+        ):
             emit(
                 line_no,
                 "Integer Overflow",
@@ -1084,9 +1132,11 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
         cmp_m = re.search(r"\b([A-Za-z_]\w*)\s*(<|<=|>|>=)\s*([A-Za-z_]\w*)\b", code_line)
         if cmp_m:
             c1, op, c2 = cmp_m.group(1), cmp_m.group(2), cmp_m.group(3)
+            strictly_signed = signed_vars - unsigned_vars
+            strictly_unsigned = unsigned_vars - signed_vars
             is_signed_compare = (
-                (c1 in signed_vars and c2 in unsigned_vars)
-                or (c1 in unsigned_vars and c2 in signed_vars)
+                (c1 in strictly_signed and c2 in strictly_unsigned)
+                or (c1 in strictly_unsigned and c2 in strictly_signed)
                 or ("signed" in raw_lower and "unsigned" in raw_lower)
             )
             if is_signed_compare and "static_cast" not in code_line:
@@ -1106,7 +1156,13 @@ def _scan_source_findings(source_path: str) -> list[SecurityFinding]:
                 scope["free_seen"] = True
 
         if re.search(r"\bnew\s+(?:nothrow\s+)?(?:[A-Za-z_]|::)", code_line) and not re.search(r"\boperator\s+new\b", code_line):
-            current_scope()["new_lines"].append(line_no)
+            is_return_new = bool(re.search(r"\breturn\b.*?\bnew\b", code_line))
+            is_member_or_container = bool(re.search(r"(?:->|\.|\[|\bthis->)\s*.*=\s*(?:[A-Za-z_]\w*::)?new\b", code_line))
+            is_bare_assign = re.search(r"^\s*([A-Za-z_]\w*)\s*=\s*(?:[A-Za-z_]\w*::)?new\b", code_line)
+            is_non_local_assign = bool(is_bare_assign and is_bare_assign.group(1) not in local_vars)
+
+            if not is_return_new and not is_member_or_container and not is_non_local_assign:
+                current_scope()["new_lines"].append(line_no)
 
         if re.search(r"\bdelete\s*(?:\[\])?\s*[A-Za-z_]", code_line):
             for scope in scope_stack:

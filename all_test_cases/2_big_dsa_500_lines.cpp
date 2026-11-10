@@ -71,7 +71,7 @@ public:
             }
             current = current->children[ch];
         }
-        return current != nullptr;
+        return current != nullptr
     }
 
     vector<string> autocomplete(string prefix) {
@@ -117,14 +117,14 @@ public:
         }
         if ((int)items.size() >= capacity) {
             int oldKey = items.back().first;
-            items.pop_back();
+            items.pop_back()
             cacheMap.erase(oldKey);
         }
         items.push_front({key, value});
         cacheMap[key] = items.begin();
     }
 
-    int size() const {
+     size() const {
         return items.size();
     }
 };
@@ -136,7 +136,7 @@ class DisjointSet {
 private:
     vector<int> parent;
     vector<int> rank;
-    int components;
+     components;
 
 public:
     DisjointSet(int n) : components(n) {

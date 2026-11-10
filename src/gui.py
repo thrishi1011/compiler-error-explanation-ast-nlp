@@ -3616,9 +3616,9 @@ class AppGUI(QMainWindow):
 
         self.error_cards_scroll = QScrollArea()
         self.error_cards_scroll.setWidgetResizable(True)
-        self.error_cards_scroll.setStyleSheet("background: transparent;")
+        self.error_cards_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.error_cards_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.error_cards_widget = QWidget()
-        self.error_cards_widget.setStyleSheet("background: transparent;")
         self.error_cards_layout = QVBoxLayout(self.error_cards_widget)
         self.error_cards_layout.setContentsMargins(14, 14, 14, 14)
         self.error_cards_layout.setSpacing(12)
@@ -3766,7 +3766,6 @@ class AppGUI(QMainWindow):
             self.errors_count = 0
             self.warnings_count = 0
             self._update_footer()
-            theme.on_change(lambda m, t: self._on_global_theme_changed(m, t))
             self.status_label.setText("STATUS: ● READY")
             self.problems_count_badge.setText("0")
             theme.set_prop(self.problems_count_badge, "tone", "ok")
@@ -3776,11 +3775,14 @@ class AppGUI(QMainWindow):
             self.editor.setPlainText("")
             self.editor.clear_fixed_lines()
             self._update_footer()
-            theme.on_change(lambda m, t: self._on_global_theme_changed(m, t))
             self.status_label.setText("STATUS: ● READY")
             self.problems_count_badge.setText("0")
             theme.set_prop(self.problems_count_badge, "tone", "ok")
             self.terminal.append_output("Ready. Paste or load a C++ source file to compile and analyze.\n")
+
+        # Synchronize theme state and register single listener
+        self._on_global_theme_changed(theme.mode(), theme.tokens())
+        theme.on_change(lambda m, t: self._on_global_theme_changed(m, t))
 
     def toggle_sidebar(self):
         if hasattr(self, "sidebar") and self.sidebar:
@@ -3852,8 +3854,10 @@ class AppGUI(QMainWindow):
         GREEN = tokens["ok"]
 
         self.is_dark_mode = (mode_name == "dark")
-        self.btn_theme_toggle.setText("☀️  Light" if self.is_dark_mode else "🌙  Dark")
-        self._update_footer()
+        if hasattr(self, "btn_theme_toggle") and self.btn_theme_toggle:
+            self.btn_theme_toggle.setText("☀️  Light" if self.is_dark_mode else "🌙  Dark")
+        if hasattr(self, "footer_file_label"):
+            self._update_footer()
 
         theme_dict = {
             "PINK": PINK, "PANE_BG": PANE_BG, "BORDER_COLOR": BORDER_COLOR,
@@ -4271,9 +4275,8 @@ class AppGUI(QMainWindow):
         self.opt_applied = opts
         self.opt_diff_mode = "optimize"
 
-        opt_code = getattr(result, "optimized_code", "")
-        if opt_code and opt_code != original_code:
-            self._render_diff_card(original_code, opt_code, annotations=opts, mode="optimize")
+        opt_code = getattr(result, "optimized_code", "") or original_code
+        self._render_diff_card(original_code, opt_code, annotations=opts, mode="optimize")
 
         nav_btn = QPushButton("View Complexity Details in Bottom Panel ↓")
         nav_btn.setProperty("variant", "ghost")
@@ -4307,12 +4310,8 @@ class AppGUI(QMainWindow):
         diff_hdr.addStretch(1)
 
         self.btn_expand_diff = QPushButton("⛶  Expand Diff")
-        self.btn_expand_diff.setObjectName("NavButton")
+        self.btn_expand_diff.setProperty("variant", "secondary")
         self.btn_expand_diff.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_expand_diff.setStyleSheet(
-            "QPushButton { padding: 3px 10px; font-size: 11px; font-weight: bold; border: 1px solid #334155; border-radius: 4px; }"
-            "QPushButton:hover { background-color: rgba(56, 189, 248, 0.15); border-color: #38bdf8; }"
-        )
         self.btn_expand_diff.setToolTip("Expand diff across the entire right panel to inspect changes and explanatory comments clearly")
         self.btn_expand_diff.clicked.connect(self._toggle_expand_diff)
         diff_hdr.addWidget(self.btn_expand_diff)
@@ -4322,8 +4321,8 @@ class AppGUI(QMainWindow):
         diff_text.setFont(theme.mono_font(11))
         diff_text.setReadOnly(True)
         diff_text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
-        diff_text.setMinimumHeight(180)
-        diff_text.setMaximumHeight(350)
+        diff_text.setMinimumHeight(140)
+        diff_text.setMaximumHeight(300)
 
         diff_html = format_annotated_diff_html(original_code, new_code, self.opt_applied, expanded=False, mode=mode)
         diff_text.setHtml(diff_html)
@@ -4332,7 +4331,6 @@ class AppGUI(QMainWindow):
         btn_expand_bottom = QPushButton("⛶  Click to Expand Full Changes View")
         btn_expand_bottom.setProperty("variant", "ghost")
         btn_expand_bottom.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_expand_bottom.setStyleSheet("font-size: 11px; color: #38bdf8;")
         btn_expand_bottom.clicked.connect(self._toggle_expand_diff)
         d_lay.addWidget(btn_expand_bottom)
 

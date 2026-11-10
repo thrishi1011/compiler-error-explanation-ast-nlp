@@ -62,6 +62,7 @@ TOKENS = {
         syn_keyword="#8E9BFF", syn_string="#7FD6A8", syn_number="#E8B339",
         syn_comment="#5E6A80", syn_preproc="#C792EA", syn_type="#5AA9FF",
         syn_plain="#E6EAF2",
+        scrollbar_handle="#3B465C", scrollbar_hover="#606F8C",
     ),
     "light": dict(
         bg="#F6F8FB", surface="#FFFFFF", surface_alt="#F0F3F8", border="#E3E8EF",
@@ -75,6 +76,7 @@ TOKENS = {
         syn_keyword="#5469D4", syn_string="#1F8A5B", syn_number="#B7791F",
         syn_comment="#8A93A6", syn_preproc="#8E44AD", syn_type="#2B7FD6",
         syn_plain="#1A1F36",
+        scrollbar_handle="#A0AEC0", scrollbar_hover="#64748B",
     ),
 }
 
@@ -182,11 +184,11 @@ QScrollArea { border: none; background: transparent; }
 QScrollArea > QWidget { background: transparent; }
 QScrollArea > QWidget > QWidget { background: transparent; }
 QGraphicsView { background: $surface; border: 1px solid $border; border-radius: 8px; }
-QScrollBar:vertical   { background: transparent; width: 10px; margin: 2px; }
-QScrollBar:horizontal { background: transparent; height: 10px; margin: 2px; }
-QScrollBar::handle:vertical   { background: $border; border-radius: 3px; min-height: 28px; }
-QScrollBar::handle:horizontal { background: $border; border-radius: 3px; min-width: 28px; }
-QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover { background: $muted; }
+QScrollBar:vertical   { background: transparent; width: 8px; margin: 2px 1px; }
+QScrollBar:horizontal { background: transparent; height: 8px; margin: 1px 2px; }
+QScrollBar::handle:vertical   { background: $scrollbar_handle; border-radius: 4px; min-height: 32px; }
+QScrollBar::handle:horizontal { background: $scrollbar_handle; border-radius: 4px; min-width: 32px; }
+QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover { background: $scrollbar_hover; }
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 

@@ -269,6 +269,22 @@ def audit_patch_adversarially(
     # ── Vector 4: Memory Exploitation & Dangling Pointers ────────────────────────
     import security_analyzer
 
+    orig_vuln_counts: dict[str, int] = {}
+    if original_code:
+        fd_orig, tmp_orig = tempfile.mkstemp(suffix=".cpp", prefix="redteam_orig_")
+        try:
+            with os.fdopen(fd_orig, "w", encoding="utf-8") as fo:
+                fo.write(original_code)
+            orig_sec_findings = security_analyzer.analyze(tmp_orig, [])
+            for of in orig_sec_findings:
+                orig_vuln_counts[of.vulnerability_type] = orig_vuln_counts.get(of.vulnerability_type, 0) + 1
+        finally:
+            if os.path.exists(tmp_orig):
+                try:
+                    os.remove(tmp_orig)
+                except OSError:
+                    pass
+
     fd, tmp_file = tempfile.mkstemp(suffix=".cpp", prefix="redteam_audit_")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -281,9 +297,18 @@ def audit_patch_adversarially(
             except OSError:
                 pass
 
-    # Flag critical or high findings introduced in patch
+    new_vuln_counts: dict[str, int] = {}
+    for sf in sec_findings:
+        new_vuln_counts[sf.vulnerability_type] = new_vuln_counts.get(sf.vulnerability_type, 0) + 1
+
+    # Flag critical or high findings ACTUALLY INTRODUCED in patch
     for sf in sec_findings:
         if sf.severity in ("Critical", "High") and sf.line is not None:
+            # If candidate patch does not increase the count of this vulnerability type,
+            # it was pre-existing in the original user code and not introduced by the patch.
+            if original_code and new_vuln_counts.get(sf.vulnerability_type, 0) <= orig_vuln_counts.get(sf.vulnerability_type, 0):
+                continue
+
             # Check if this line was modified or added in the patch or if small snippet
             if any(l_idx == sf.line for l_idx, _ in added_lines) or not original_code or len(orig_lines) <= 2:
                 attack_vectors.append(

@@ -157,8 +157,11 @@ def attempt_ai_heal(
     from guard.promptsafe import DATA_NOTICE, has_boundary_leak, wrap_untrusted
 
     lines = source.splitlines()
-    if len(lines) > 300:
-        return None, None, [], f"File too large for AI heal ({len(lines)} lines > 300), using offline fallback"
+    if len(lines) > 2500:
+        return None, None, [], f"File too large for AI heal ({len(lines)} lines > 2500), using offline fallback"
+
+    if max_tokens <= 1024 and len(lines) > 50:
+        max_tokens = min(4096, max(1500, len(lines) * 6))
 
     t_start = time.time()
     code_hash = hashlib.sha256(source.encode("utf-8")).hexdigest()

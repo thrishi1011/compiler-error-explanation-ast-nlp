@@ -649,8 +649,15 @@ def heal_until_clean(
     import security_healer
     if sec_result is None:
         try:
-            sec_res = security_healer.heal_security(current_source, max_rounds=0)
+            sec_res = security_healer.heal_security(current_source, allow_behavior_changes=True)
+            current_source = sec_res.source_after
             sec_dict = sec_res.to_dict()
+            for fix in sec_res.applied:
+                diff = compute_diff(fix.before, fix.after)
+                diff_html = format_diff_html(diff) if has_changes(diff) else ""
+                fixed_lines = [fix.line] if fix.line else []
+                emit("diff_ready", {"attempt": len(all_attempts_flat) + 1, "diff_html": diff_html, "label": f"healed {fix.finding_category}"})
+                emit("lines_fixed", {"lines": fixed_lines})
         except Exception:
             sec_dict = None
     else:

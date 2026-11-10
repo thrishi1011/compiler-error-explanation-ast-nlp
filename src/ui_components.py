@@ -197,24 +197,6 @@ class IssueCard(QFrame):
         self.title_label = plain_label(err.get("message", "Unknown issue"), "IssueTitle")
         header_lay.addWidget(self.title_label)
 
-        # 3. Compact telemetry & security stats row
-        stats_row = QHBoxLayout()
-        stats_row.setSpacing(6)
-        cpu = "2.5 mWh"
-        mem = "12 MB"
-        hotspot = f"Line {self.line}" if self.line else "None"
-        co2 = f"{(co2_offset * 1e6):.2f} mg"
-        risk = str(err.get("security_risk") or "LOW").upper()
-        risk_tone = "error" if risk == "HIGH" else ("warn" if risk == "MEDIUM" else "ok")
-
-        stats_row.addWidget(badge(f"⚡ {cpu}", "accent"))
-        stats_row.addWidget(badge(f"🧠 {mem}", "accent"))
-        stats_row.addWidget(badge(f"🔥 {hotspot}", "warn"))
-        stats_row.addWidget(badge(f"🌍 {co2}", "ok"))
-        stats_row.addWidget(badge(f"🛡️ {risk}", risk_tone))
-        stats_row.addStretch(1)
-        header_lay.addLayout(stats_row)
-
         self.card_layout.addWidget(self.header_widget)
 
         # ── Collapsible Body (Code context, Explanation, Fix, AI) ─────────────
@@ -883,6 +865,7 @@ class ComplexityCompareCard(QFrame):
     """
     Displays a Before -> After comparison for time or space complexity with
     visually distinguished fonts for Big-O formula vs explanation rationale.
+    Theme-aware: renders with optimal contrast in both Dark and Light modes.
     """
     def __init__(self, icon: str, title: str,
                  prev_val: str, prev_tone: str, prev_badge: str,
@@ -908,51 +891,66 @@ class ComplexityCompareCard(QFrame):
         lbl_prev_title = plain_label("Before:", "Muted")
         row.addWidget(lbl_prev_title)
 
-        lbl_prev_formula = QLabel(prev_formula or "Unknown")
-        lbl_prev_formula.setStyleSheet(
-            "font-family: Consolas, 'Fira Code', monospace; font-size: 13px; font-weight: bold; color: #f1f5f9;"
-        )
-        row.addWidget(lbl_prev_formula)
-
-        lbl_arrow = QLabel("➔")
-        lbl_arrow.setStyleSheet("color: #38bdf8; font-size: 14px; font-weight: bold; margin: 0 4px;")
-        row.addWidget(lbl_arrow)
-
+        self.lbl_prev_formula = QLabel(prev_formula or "Unknown")
+        self.lbl_arrow = QLabel("➔")
         lbl_new_title = plain_label("After:", "Muted")
+        self.lbl_new_formula = QLabel(new_formula or "Unknown")
+
+        row.addWidget(self.lbl_prev_formula)
+        row.addWidget(self.lbl_arrow)
         row.addWidget(lbl_new_title)
-
-        lbl_new_formula = QLabel(new_formula or "Unknown")
-        lbl_new_formula.setStyleSheet(
-            "font-family: Consolas, 'Fira Code', monospace; font-size: 13px; font-weight: bold; color: #4ade80;"
-        )
-        row.addWidget(lbl_new_formula)
-
+        row.addWidget(self.lbl_new_formula)
         row.addStretch(1)
         lay.addLayout(row)
 
-        # Explanations/Reasons in distinct italic secondary font
+        self.lbl_pr = None
+        self.lbl_nr = None
         if prev_reason or new_reason:
             reasons_lay = QVBoxLayout()
             reasons_lay.setSpacing(2)
             reasons_lay.setContentsMargins(2, 2, 2, 2)
 
             if prev_reason:
-                lbl_pr = QLabel(f"• Prior: {prev_reason}")
-                lbl_pr.setWordWrap(True)
-                lbl_pr.setStyleSheet(
-                    "font-family: 'Segoe UI', sans-serif; font-size: 11px; font-style: italic; color: #94a3b8;"
-                )
-                reasons_lay.addWidget(lbl_pr)
+                self.lbl_pr = QLabel(f"• Prior: {prev_reason}")
+                self.lbl_pr.setWordWrap(True)
+                reasons_lay.addWidget(self.lbl_pr)
 
             if new_reason and new_reason != prev_reason:
-                lbl_nr = QLabel(f"• Optimized: {new_reason}")
-                lbl_nr.setWordWrap(True)
-                lbl_nr.setStyleSheet(
-                    "font-family: 'Segoe UI', sans-serif; font-size: 11px; font-style: italic; color: #38bdf8;"
-                )
-                reasons_lay.addWidget(lbl_nr)
+                self.lbl_nr = QLabel(f"• Optimized: {new_reason}")
+                self.lbl_nr.setWordWrap(True)
+                reasons_lay.addWidget(self.lbl_nr)
 
             lay.addLayout(reasons_lay)
+
+        self._apply_theme_colors()
+        theme.on_change(self._apply_theme_colors)
+
+    def _apply_theme_colors(self):
+        try:
+            fg = theme.token("text")
+            fg_muted = theme.token("muted")
+            fg_accent = theme.token("accent")
+            fg_ok = theme.token("ok")
+
+            self.lbl_prev_formula.setStyleSheet(
+                f"font-family: Consolas, 'Fira Code', monospace; font-size: 13px; font-weight: bold; color: {fg};"
+            )
+            self.lbl_arrow.setStyleSheet(
+                f"color: {fg_accent}; font-size: 14px; font-weight: bold; margin: 0 4px;"
+            )
+            self.lbl_new_formula.setStyleSheet(
+                f"font-family: Consolas, 'Fira Code', monospace; font-size: 13px; font-weight: bold; color: {fg_ok};"
+            )
+            if self.lbl_pr:
+                self.lbl_pr.setStyleSheet(
+                    f"font-family: 'Segoe UI', sans-serif; font-size: 11px; font-style: italic; color: {fg_muted};"
+                )
+            if self.lbl_nr:
+                self.lbl_nr.setStyleSheet(
+                    f"font-family: 'Segoe UI', sans-serif; font-size: 11px; font-style: italic; color: {fg_accent};"
+                )
+        except Exception:
+            pass
 
 
 class BottleneckCard(QFrame):

@@ -795,6 +795,54 @@ def fix_syntax_error(source: str, error: dict) -> Optional[str]:
     return None
 
 
+def fix_does_not_name_a_type(source: str, error: dict) -> Optional[str]:
+    """
+    Handle errors like: 'components' does not name a type
+    If line has only a bare identifier with semicolon (e.g. '    components;'),
+    the user omitted the variable type -> prepend 'int '.
+    If the symbol is a known standard type (vector, string, etc.), inject the header.
+    """
+    msg = error.get("message", "")
+    line_no = error.get("line")
+    sym = _extract_symbol(msg)
+
+    if sym and sym in _SYMBOL_TO_HEADER:
+        header = _SYMBOL_TO_HEADER[sym]
+        if header and not _has_include(source, header):
+            return _insert_include(source, header)
+
+    if line_no:
+        lines = _lines(source)
+        idx = int(line_no) - 1
+        if 0 <= idx < len(lines):
+            raw_l = lines[idx]
+            m = re.match(r"^(\s*)([A-Za-z_]\w*)(\s*(?:=.*)?;\s*)$", raw_l)
+            if m:
+                indent, name, rest = m.group(1), m.group(2), m.group(3)
+                lines[idx] = f"{indent}int {name}{rest}\n" if raw_l.endswith("\n") else f"{indent}int {name}{rest}"
+                return _join(lines)
+    return None
+
+
+def fix_missing_declaration_type(source: str, error: dict) -> Optional[str]:
+    """
+    Handle errors like: ISO C++ forbids declaration of 'size' with no type
+    Prepends 'int ' to the member function or variable declaration.
+    """
+    line_no = error.get("line")
+    if line_no:
+        lines = _lines(source)
+        idx = int(line_no) - 1
+        if 0 <= idx < len(lines):
+            raw_l = lines[idx]
+            m = re.match(r"^(\s*)([A-Za-z_]\w*)\s*(\(.*)$", raw_l)
+            if m:
+                indent, name, rest = m.group(1), m.group(2), m.group(3)
+                lines[idx] = f"{indent}int {name}{rest}\n" if raw_l.endswith("\n") else f"{indent}int {name}{rest}"
+                return _join(lines)
+    return None
+
+
 def fix_name_resolution(source: str, error: dict) -> Optional[str]:
     """
     Add std:: prefix to unresolved std symbols, or inject
@@ -1859,6 +1907,16 @@ def attempt_fix(source: str, error: dict) -> Optional[str]:
     # Rule: Treat "function definition not allowed here" as missing_closing_brace
     if "not allowed here" in msg or category == "missing_closing_brace":
         patched = fix_missing_closing_braces(source, error)
+        if patched is not None and patched != source:
+            return patched
+
+    if "does not name a type" in msg:
+        patched = fix_does_not_name_a_type(source, error)
+        if patched is not None and patched != source:
+            return patched
+
+    if "with no type" in msg or "forbids declaration of" in msg:
+        patched = fix_missing_declaration_type(source, error)
         if patched is not None and patched != source:
             return patched
 

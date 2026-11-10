@@ -215,9 +215,9 @@ def reset_heal_ai_budget():
 
 def get_heal_ai_budget() -> float:
     try:
-        return float(os.environ.get("HEAL_AI_BUDGET_SEC", "20.0"))
+        return float(os.environ.get("HEAL_AI_BUDGET_SEC", "30.0"))
     except ValueError:
-        return 20.0
+        return 30.0
 
 
 def get_heal_ai_budget_remaining() -> float:
@@ -538,15 +538,21 @@ def _call_gemini(
         if kind == "optimize":
             read_timeout = max(5.0, min(25.0, call_timeout - 1.0))
             conn_timeout = min(5.0, call_timeout)
+        elif kind == "heal":
+            read_timeout = max(4.0, min(18.0, call_timeout - 1.0))
+            conn_timeout = min(3.0, call_timeout)
         else:
-            read_timeout = max(1.0, min(3.5 if kind == "heal" else 5.0, call_timeout - 1.0))
+            read_timeout = max(1.0, min(5.0, call_timeout - 1.0))
             conn_timeout = min(2.5, call_timeout)
     else:
         if kind == "optimize":
             read_timeout = 20.0
             conn_timeout = 5.0
+        elif kind == "heal":
+            read_timeout = 15.0
+            conn_timeout = 3.0
         else:
-            read_timeout = 3.5 if kind == "heal" else 4.0
+            read_timeout = 4.0
             conn_timeout = 2.5
     timeout_tuple = (conn_timeout, read_timeout)
 
@@ -681,11 +687,25 @@ def _call_groq(
         "Authorization": f"Bearer {key}",
     }
     if call_timeout is not None:
-        read_timeout = max(1.0, min(3.5 if kind == "heal" else 5.0, call_timeout - 1.0))
-        conn_timeout = min(2.5, call_timeout)
+        if kind == "optimize":
+            read_timeout = max(5.0, min(25.0, call_timeout - 1.0))
+            conn_timeout = min(5.0, call_timeout)
+        elif kind == "heal":
+            read_timeout = max(4.0, min(18.0, call_timeout - 1.0))
+            conn_timeout = min(3.0, call_timeout)
+        else:
+            read_timeout = max(1.0, min(5.0, call_timeout - 1.0))
+            conn_timeout = min(2.5, call_timeout)
     else:
-        read_timeout = 3.5 if kind == "heal" else 4.0
-        conn_timeout = 2.5
+        if kind == "optimize":
+            read_timeout = 20.0
+            conn_timeout = 5.0
+        elif kind == "heal":
+            read_timeout = 15.0
+            conn_timeout = 3.0
+        else:
+            read_timeout = 4.0
+            conn_timeout = 2.5
     timeout_tuple = (conn_timeout, read_timeout)
 
     last_err = ""
@@ -749,11 +769,11 @@ def _call_groq(
             _record_trail(f"Groq {model}: auth error {code}")
             return None, f"Groq auth error {code}", False, True
 
-        # 404 Model Not Found / 400 decommissioned -> try next model in cascade
-        is_model_err = (code == 404) or (code == 400 and any(kw in resp_text.lower() for kw in ["model", "not found", "decommissioned", "invalid_request_error"]))
+        # 404 Model Not Found / 413 Payload Too Large / 400 decommissioned -> try next model in cascade
+        is_model_err = (code in (404, 413)) or (code == 400 and any(kw in resp_text.lower() for kw in ["model", "not found", "decommissioned", "invalid_request_error", "request too large"]))
         if is_model_err:
-            last_err = f"Groq model {model} not found ({code})"
-            _record_trail(f"Groq {model}: not found ({code})")
+            last_err = f"Groq model {model} error ({code})"
+            _record_trail(f"Groq {model}: error ({code})")
             continue
 
         # Timeout or Connection error (0, 408)
@@ -843,8 +863,8 @@ def ask(
     if kind == "heal":
         budget_rem = get_heal_ai_budget_remaining()
         if budget_rem < 2.0:
-            return LLMResult(None, None, "AI heal time budget exhausted (20s limit reached)")
-        max_call_sec = min(float(os.environ.get("HEAL_AI_CALL_MAX_SEC", "4.5")), budget_rem)
+            return LLMResult(None, None, "AI heal time budget exhausted (30s limit reached)")
+        max_call_sec = min(float(os.environ.get("HEAL_AI_CALL_MAX_SEC", "15.0")), budget_rem)
     elif kind == "optimize":
         max_call_sec = float(os.environ.get("OPTIMIZE_AI_CALL_MAX_SEC", "25.0"))
     else:
@@ -879,7 +899,7 @@ def ask(
     if gr_key and gr_avail:
         if kind == "heal":
             budget_rem = get_heal_ai_budget_remaining()
-            groq_timeout = min(float(os.environ.get("HEAL_AI_CALL_MAX_SEC", "4.5")), budget_rem)
+            groq_timeout = min(float(os.environ.get("HEAL_AI_CALL_MAX_SEC", "15.0")), budget_rem)
         elif kind == "optimize":
             groq_timeout = max_call_sec
         else:

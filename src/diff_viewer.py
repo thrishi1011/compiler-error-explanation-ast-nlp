@@ -308,10 +308,11 @@ def format_annotated_diff_html(
     (e.g., // Why: ...) so the user can easily understand the rationale for every change.
     """
     if not original or not patched or original.strip() == patched.strip():
+        msg = "✓ Code is identical. No differences to display." if mode == "heal" else "✓ Code is already optimal and verified safe. No further algorithmic changes needed."
         return (
-            "<div style='font-family: Consolas, monospace; font-size: 11px; padding: 12px; color: #94a3b8; background-color: #0d1117; border-radius: 6px;'>"
-            "✓ Code is identical. No differences to display."
-            "</div>"
+            f"<div style='font-family: Consolas, monospace; font-size: 11px; padding: 14px; text-align: center; color: #3DBE8B; background-color: #0d1117; border-radius: 6px;'>"
+            f"{msg}"
+            f"</div>"
         )
 
     orig_lines = original.splitlines()

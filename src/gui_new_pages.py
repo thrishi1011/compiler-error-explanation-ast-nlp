@@ -14,24 +14,27 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from ui_components import show_message, plain_label
+import theme
 
-# Import GUI constants from gui.py at runtime (avoids circular import)
-def _c(name):
-    import gui as _gui
-    return getattr(_gui, name)
+# Color accessors backed directly by the live theme design tokens
+def _t(k: str, default: str = "") -> str:
+    try:
+        toks = theme.tokens()
+        return toks.get(k, default)
+    except Exception:
+        return default
 
-
-def _BG():        return _c("BG_COLOR")
-def _PANE():      return _c("PANE_BG")
-def _HEADER():    return _c("HEADER_BG")
-def _BORDER():    return _c("BORDER_COLOR")
-def _PINK():      return _c("PINK")
-def _TEXT():      return _c("TEXT_MAIN")
-def _DIM():       return _c("TEXT_DIM")
-def _GREEN():     return _c("GREEN")
-def _RED():       return _c("RED")
-def _YELLOW():    return _c("YELLOW")
-def _FF():        return _c("FONT_FAMILY")
+def _BG():        return _t("bg", "#0E1117")
+def _PANE():      return _t("surface", "#151A23")
+def _HEADER():    return _t("surface_alt", "#1B2230")
+def _BORDER():    return _t("border", "#252D3B")
+def _PINK():      return _t("accent", "#6C7BFF")
+def _TEXT():      return _t("text", "#E6EAF2")
+def _DIM():       return _t("muted", "#9AA4B6")
+def _GREEN():     return _t("ok", "#3DBE8B")
+def _RED():       return _t("error", "#F2555A")
+def _YELLOW():    return _t("warn", "#E8B339")
+def _FF():        return "Segoe UI"
 
 
 # ── Feature 2: Second Opinion Page ───────────────────────────────────────────
@@ -240,33 +243,36 @@ class SecondOpinionPage(QWidget):
         else:
             self._cand_outer.setVisible(False)
 
-    def apply_theme(self, t):
+    def apply_theme(self, t=None):
         if hasattr(self, "_title"):
-            self._title.setStyleSheet(f"color: {t['PINK']}; padding-bottom: 4px;")
+            self._title.setStyleSheet(f"color: {_PINK()}; padding-bottom: 4px;")
         if hasattr(self, "_intro"):
-            self._intro.setStyleSheet(f"color: {t['TEXT_DIM']}; font-size: 12px;")
-        self._verdict_frame.setStyleSheet(
-            f"QFrame {{ background-color: {t['PANE_BG']}; border: 1px solid {t['BORDER_COLOR']}; "
-            f"border-radius: 8px; }}"
-        )
-        self._verdict_label.setStyleSheet(f"color: {t['PINK']};")
+            self._intro.setStyleSheet(f"color: {_DIM()}; font-size: 12px;")
+        if hasattr(self, "_verdict_frame"):
+            self._verdict_frame.setStyleSheet(
+                f"QFrame {{ background-color: {_PANE()}; border: 1px solid {_BORDER()}; "
+                f"border-radius: 8px; }}"
+            )
+        if hasattr(self, "_verdict_label"):
+            self._verdict_label.setStyleSheet(f"color: {_PINK()};")
         for card in [self._regex_card, self._ml_card]:
             card["frame"].setStyleSheet(
-                f"QFrame {{ background-color: {t['PANE_BG']}; border: 1px solid {t['BORDER_COLOR']}; border-radius: 8px; }}"
+                f"QFrame {{ background-color: {_PANE()}; border: 1px solid {_BORDER()}; border-radius: 8px; }}"
             )
-            card["title"].setStyleSheet(f"color: {t['PINK']};")
-            card["sub"].setStyleSheet(f"color: {t['TEXT_DIM']}; font-size: 10px;")
-            card["pred"].setStyleSheet(f"color: {t['TEXT_MAIN']}; margin-top: 8px;")
+            card["title"].setStyleSheet(f"color: {_PINK()};")
+            card["sub"].setStyleSheet(f"color: {_DIM()}; font-size: 10px;")
+            card["pred"].setStyleSheet(f"color: {_TEXT()}; margin-top: 8px;")
             card["bar"].setStyleSheet(
-                f"QProgressBar {{ background-color: {t['BG_COLOR']}; border: 1px solid {t['BORDER_COLOR']}; "
-                f"border-radius: 6px; color: {t['TEXT_MAIN']}; text-align: center; }}"
-                f"QProgressBar::chunk {{ background-color: {t['PINK']}; border-radius: 6px; }}"
+                f"QProgressBar {{ background-color: {_BG()}; border: 1px solid {_BORDER()}; "
+                f"border-radius: 6px; color: #FFFFFF; text-align: center; font-weight: bold; }}"
+                f"QProgressBar::chunk {{ background-color: {_PINK()}; border-radius: 6px; }}"
             )
-        self._cand_outer.setStyleSheet(
-            f"QFrame {{ background-color: {t['PANE_BG']}; border: 1px solid {t['BORDER_COLOR']}; border-radius: 8px; }}"
-        )
+        if hasattr(self, "_cand_outer"):
+            self._cand_outer.setStyleSheet(
+                f"QFrame {{ background-color: {_PANE()}; border: 1px solid {_BORDER()}; border-radius: 8px; }}"
+            )
         if hasattr(self, "_cand_title"):
-            self._cand_title.setStyleSheet(f"color: {t['TEXT_DIM']};")
+            self._cand_title.setStyleSheet(f"color: {_DIM()};")
 
     def clear(self):
         self.show_opinion("")
@@ -291,6 +297,7 @@ class BenchmarkPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._worker = None
+        self._last_results = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(20, 20, 20, 20)
@@ -412,43 +419,50 @@ class BenchmarkPage(QWidget):
         lay.addWidget(v)
         return {"frame": frame, "val": v, "title": t, "sub": sub}
 
-    def apply_theme(self, t):
+    def apply_theme(self, t=None):
         if hasattr(self, "_title"):
-            self._title.setStyleSheet(f"color: {t['PINK']}; padding-bottom: 2px;")
+            self._title.setStyleSheet(f"color: {_PINK()}; padding-bottom: 2px;")
         if hasattr(self, "_guide_frame"):
             self._guide_frame.setStyleSheet(
-                f"QFrame {{ background-color: {t['PANE_BG']}; border: 1px solid {t['BORDER_COLOR']}; "
+                f"QFrame {{ background-color: {_PANE()}; border: 1px solid {_BORDER()}; "
                 f"border-radius: 8px; }}"
             )
         if hasattr(self, "_guide_header"):
-            self._guide_header.setStyleSheet(f"color: {t['PINK']};")
+            self._guide_header.setStyleSheet(f"color: {_PINK()};")
         if hasattr(self, "_guide_summary"):
-            self._guide_summary.setStyleSheet(f"color: {t['TEXT_DIM']}; line-height: 1.4;")
+            self._guide_summary.setStyleSheet(f"color: {_DIM()}; line-height: 1.4;")
         self._scroll.setStyleSheet(
-            f"QScrollArea {{ border: 1px solid {t['BORDER_COLOR']}; "
-            f"background-color: {t['PANE_BG']}; border-radius: 6px; }}"
+            f"QScrollArea {{ border: 1px solid {_BORDER()}; "
+            f"background-color: {_PANE()}; border-radius: 6px; }}"
         )
+        if hasattr(self, "_table_host"):
+            self._table_host.setStyleSheet(f"QWidget {{ background-color: {_PANE()}; }}")
         self._progress.setFixedHeight(28)
         self._progress.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._progress.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
         self._progress.setStyleSheet(
-            f"QProgressBar {{ background-color: {t['BG_COLOR']}; border: 1px solid {t['BORDER_COLOR']}; "
-            f"border-radius: 8px; color: {t['TEXT_MAIN']}; text-align: center; font-weight: bold; padding: 2px; }}"
-            f"QProgressBar::chunk {{ background-color: {t['PINK']}; border-radius: 6px; }}"
+            f"QProgressBar {{ background-color: {_BG()}; border: 1px solid {_BORDER()}; "
+            f"border-radius: 8px; color: #FFFFFF; text-align: center; font-weight: bold; padding: 2px; }}"
+            f"QProgressBar::chunk {{ background-color: {_PINK()}; border-radius: 6px; }}"
         )
         self._btn_run.setStyleSheet(
-            f"QPushButton {{ background-color: {t['PINK']}; color: white; border: none; "
+            f"QPushButton {{ background-color: {_PINK()}; color: white; border: none; "
             f"border-radius: 6px; padding: 8px 18px; }}"
             f"QPushButton:hover {{ opacity: 0.9; }}"
             f"QPushButton:pressed {{ background-color: #4356c0; }}"
         )
         for card in [self._regex_card, self._ml_card, self._combo_card]:
             card["frame"].setStyleSheet(
-                f"QFrame {{ background-color: {t['PANE_BG']}; border: 1px solid {t['BORDER_COLOR']}; border-radius: 8px; }}"
+                f"QFrame {{ background-color: {_PANE()}; border: 1px solid {_BORDER()}; border-radius: 8px; }}"
             )
-            card["title"].setStyleSheet(f"color: {t['TEXT_MAIN']}; font-size: 11px; font-weight: bold;")
-            card["sub"].setStyleSheet(f"color: {t['TEXT_DIM']}; font-size: 9px;")
-            card["val"].setStyleSheet(f"color: {t['PINK']};")
+            card["title"].setStyleSheet(f"color: {_TEXT()}; font-size: 11px; font-weight: bold;")
+            card["sub"].setStyleSheet(f"color: {_DIM()}; font-size: 9px;")
+            card["val"].setStyleSheet(f"color: {_PINK()};")
+
+        if getattr(self, "_last_results", None):
+            self._render_results(self._last_results)
+        elif self._table_vbox.count() <= 1:
+            self._show_placeholder()
 
     def _clear_table(self):
         while self._table_vbox.count():
@@ -464,40 +478,52 @@ class BenchmarkPage(QWidget):
         self._table_vbox.addWidget(lbl)
 
     def _make_header_row(self) -> QWidget:
-        row = QWidget()
-        row.setStyleSheet(f"background-color: {_HEADER()}; border-radius: 4px;")
+        row = QFrame()
+        row.setObjectName("BenchmarkHeaderRow")
+        row.setStyleSheet(
+            f"QFrame#BenchmarkHeaderRow {{ background-color: {_HEADER()}; "
+            f"border: 1px solid {_BORDER()}; border-radius: 6px; }}"
+        )
         hl = QHBoxLayout(row)
-        hl.setContentsMargins(8, 6, 8, 6)
-        hl.setSpacing(0)
+        hl.setContentsMargins(12, 8, 12, 8)
+        hl.setSpacing(8)
         for text, stretch in [
             ("File", 5), ("Expected Category", 4),
             ("Regex", 1), ("ML", 1), ("Combined", 1),
         ]:
             lbl = QLabel(text)
-            lbl.setFont(QFont("Consolas", 9, QFont.Weight.Bold))
-            lbl.setStyleSheet(f"color: {_PINK()};")
+            lbl.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
+            lbl.setStyleSheet(f"color: {_TEXT()}; font-weight: bold;")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter if stretch == 1
                              else Qt.AlignmentFlag.AlignLeft)
             hl.addWidget(lbl, stretch)
         return row
 
-    def _make_result_row(self, file_result) -> QWidget:
-        row = QWidget()
+    def _make_result_row(self, file_result, alt: bool = False) -> QWidget:
+        row = QFrame()
+        row.setObjectName("BenchmarkRow")
+        bg_col = _PANE() if not alt else _HEADER()
+        row.setStyleSheet(
+            f"QFrame#BenchmarkRow {{ background-color: {bg_col}; "
+            f"border-bottom: 1px solid {_BORDER()}; border-radius: 4px; }}"
+        )
         hl = QHBoxLayout(row)
-        hl.setContentsMargins(8, 4, 8, 4)
-        hl.setSpacing(0)
+        hl.setContentsMargins(12, 6, 12, 6)
+        hl.setSpacing(8)
 
         fname = plain_label(file_result.filename)
-        fname.setStyleSheet(f"color: {_TEXT()}; font-size: 11px;")
+        fname.setFont(QFont("Consolas", 10))
+        fname.setStyleSheet(f"color: {_TEXT()}; font-size: 11px; font-weight: 600;")
         hl.addWidget(fname, 5)
 
         exp = plain_label(file_result.expected)
-        exp.setStyleSheet(f"color: {_DIM()}; font-size: 11px;")
+        exp.setFont(QFont("Consolas", 10))
+        exp.setStyleSheet(f"color: {_DIM()}; font-size: 11px; font-weight: 500;")
         hl.addWidget(exp, 4)
 
         for ok in [file_result.regex_ok, file_result.ml_ok, file_result.combo_ok]:
             icon  = "✓" if ok else "✗"
-            color = "#24b47e" if ok else "#d12441"
+            color = "#1F9D6B" if ok else "#D93B42"
             lbl = QLabel(icon)
             lbl.setStyleSheet(f"color: {color}; font-size: 13px; font-weight: bold;")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -539,21 +565,12 @@ class BenchmarkPage(QWidget):
             self._progress.setValue(int(100 * done / total))
             self._progress.setFormat(f"Testing {fname}  ({done}/{total})")
 
-    def _on_finished(self, results: dict):
-        self._progress.setValue(100)
-        self._progress.setFormat("Done!")
-
-        # Update summary cards
-        self._regex_card["val"].setText(f"{results['regex_pct']:.1f}%")
-        self._ml_card["val"].setText(f"{results['ml_pct']:.1f}%")
-        self._combo_card["val"].setText(f"{results['combo_pct']:.1f}%")
-
-        # Rebuild table
+    def _render_results(self, results: dict):
         self._clear_table()
         self._table_vbox.addWidget(self._make_header_row())
 
-        for file_result in results["rows"]:
-            self._table_vbox.addWidget(self._make_result_row(file_result))
+        for idx, file_result in enumerate(results.get("rows", [])):
+            self._table_vbox.addWidget(self._make_result_row(file_result, alt=(idx % 2 == 1)))
 
         # Separator
         sep = QFrame()
@@ -562,22 +579,38 @@ class BenchmarkPage(QWidget):
         self._table_vbox.addWidget(sep)
 
         # Totals row
-        tot_widget = QWidget()
-        tot_widget.setStyleSheet(f"background-color: {_HEADER()}; border-radius: 4px;")
+        tot_widget = QFrame()
+        tot_widget.setObjectName("BenchmarkTotalRow")
+        tot_widget.setStyleSheet(
+            f"QFrame#BenchmarkTotalRow {{ background-color: {_HEADER()}; "
+            f"border: 1px solid {_BORDER()}; border-radius: 6px; }}"
+        )
         tot_hl = QHBoxLayout(tot_widget)
-        tot_hl.setContentsMargins(8, 6, 8, 6)
-        tot_hl.setSpacing(0)
+        tot_hl.setContentsMargins(12, 8, 12, 8)
+        tot_hl.setSpacing(8)
         tot_lbl = QLabel(f"<b>TOTAL CORRECT  ({results['total']} files)</b>")
-        tot_lbl.setStyleSheet(f"color: {_TEXT()}; font-size: 11px;")
+        tot_lbl.setStyleSheet(f"color: {_TEXT()}; font-size: 11px; font-weight: bold;")
         tot_hl.addWidget(tot_lbl, 9)
         for correct in [
-            results["regex_correct"],
-            results["ml_correct"],
-            results["combo_correct"],
+            results.get("regex_correct", 0),
+            results.get("ml_correct", 0),
+            results.get("combo_correct", 0),
         ]:
             pct_lbl = QLabel(f"{correct}/{results['total']}")
             pct_lbl.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
-            pct_lbl.setStyleSheet(f"color: {_PINK()};")
+            pct_lbl.setStyleSheet(f"color: {_PINK()}; font-weight: bold;")
             pct_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             tot_hl.addWidget(pct_lbl, 1)
         self._table_vbox.addWidget(tot_widget)
+
+    def _on_finished(self, results: dict):
+        self._last_results = results
+        self._progress.setValue(100)
+        self._progress.setFormat("Done!")
+
+        # Update summary cards
+        self._regex_card["val"].setText(f"{results['regex_pct']:.1f}%")
+        self._ml_card["val"].setText(f"{results['ml_pct']:.1f}%")
+        self._combo_card["val"].setText(f"{results['combo_pct']:.1f}%")
+
+        self._render_results(results)
